@@ -36,15 +36,19 @@ exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, ca
 		"delay": body.delay,
 		"timeout": body.timeout
 	});
-	if (!id) {
-		buildId(doc, (err, id) => {
-			if (err) {
-				return callback(err);
-			}
-			save(id, doc, callback);
-		});
+	if(body.payload) {
+		resubmit(body, callback)	
 	} else {
-		save(id, doc, callback)
+		if (!id) {
+			buildId(doc, (err, id) => {
+				if (err) {
+					return callback(err);
+				}
+				save(id, doc, callback);
+			});
+		} else {
+			save(id, doc, callback)
+		}
 	}
 });
 
@@ -81,6 +85,18 @@ function buildId(doc, done) {
 
 	get();
 }
+
+function resubmit(body, callback) {
+	var refId = util.refId(body.botId, "bot");
+	let stream = leo.load(body.botId, body.queue);
+    stream.write(body.payload);
+	stream.end(() => {
+		callback(null, {
+			refId: refId
+		});
+	});
+}
+
 
 function save(id, doc, callback) {
 	var refId = util.refId(id, "bot");

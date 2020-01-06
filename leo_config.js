@@ -5,18 +5,29 @@ module.exports = {
         leoauth: process.env.leoauthsdk && JSON.parse(process.env.leoauthsdk).resources,
         leosdk: process.env.leosdk && JSON.parse(process.env.leosdk).resources,
         Resources: process.env.Resources && JSON.parse(process.env.Resources),
+    },
+    PROD: {
         ui: {
-            staticAssets: "https://assets.leoplatform.io/leo_botmon",
+            staticAssets: "https://d1duc0za9qk2vm.cloudfront.net/leo_botmon",
             cognito: {
-                id: "us-west-2:aa1428e4-3b13-4dc2-ac73-e2f8c9e5a3b4"
+                id: "us-east-1:76a899db-012a-452d-a06c-939362ed05b1"
             },
-            region: "us-west-2"
+            region: "us-east-1"
         }
     },
+    DEV: {
+        ui: {
+            staticAssets: "https://d1duc0za9qk2vm.cloudfront.net/leo_botmon",
+            cognito: {
+                id: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac"
+            },
+            region: "us-east-1"
+        }
+    },    
     _local: {
         leoaws: {
             profile: 'default',
-            region: 'us-west-2'
+            region: 'us-east-1'
         }
     }
 };

@@ -3,6 +3,7 @@ import { connect } from 'react-redux'
 import { inject, observer } from 'mobx-react'
 
 import EventReplay from '../dialogs/eventReplay.jsx'
+import EventResubmit from '../dialogs/eventResubmit.jsx'
 import PayloadSearch from '../elements/payloadSearch.jsx'
 import NoSource from '../elements/noSource.jsx'
 import NodeSearch from '../elements/nodeSearch.jsx'
@@ -109,6 +110,9 @@ class EventViewer extends React.Component {
 		this.setState({ replay: detail })
 	}
 
+	startResubmit(detail, index) {
+		this.setState({ resubmit: detail })
+	}
 
 	startTrace(source, start, index, event) {
 		event.stopPropagation()
@@ -288,6 +292,13 @@ class EventViewer extends React.Component {
 																			</a>
 																			: false
 																	}
+																	{
+																		!this.props.hideReply
+																			? <a onClick={this.startResubmit.bind(this, detail, index)} className="event-viewer-action-button" title="resubmit">
+																				<i className="icon-bullseye" style={{ fontSize: '1.25em' }} />
+																			</a>
+																			: false
+																	}																	
 																</div>
 															</td>
 														</tr>)
@@ -371,6 +382,11 @@ class EventViewer extends React.Component {
 					: false
 			}
 
+			{
+				this.state.resubmit
+					? <EventResubmit detail={this.state.resubmit} onClose={() => { this.setState({ resubmit: undefined }) }} />
+					: false
+			}
 		</div>)
 
 	}
