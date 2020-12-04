@@ -57,7 +57,7 @@ class Header extends React.Component {
 
 			<div className="page-logo-wrapper">
 				<div className="page-logo theme-dropdown-left">
-					<a href="#"><img src="//cdnleo.s3.amazonaws.com/logos/leo_icon.png" /></a>
+					<a href="#"><img src="https://smartshyp-public.s3.amazonaws.com/SS-White-Icon.png" /></a>
 				</div>
 
 				<div className="page-title">
