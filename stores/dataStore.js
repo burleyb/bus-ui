@@ -503,7 +503,7 @@ export default class DataStore {
                     system: node.system,
 
                     template: window.templates && node.templateId ? (window.templates[node.templateId] ||{}).name : undefined,
-
+                    lambdaName: node.lambdaName || undefined,
                     executions: node.executions || undefined,
                     errors: node.errors || undefined,
                     message: node.message || undefined,

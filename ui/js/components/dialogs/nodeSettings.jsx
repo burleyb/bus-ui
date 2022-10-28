@@ -89,11 +89,12 @@ class Settings extends React.Component {
 			nodeType = 'MapperBot'
 		}
 
-        this.mytabs = this.nodeTabs[nodeType]
+		this.mytabs = this.nodeTabs[nodeType]
 
         if(this.dataStore.nodes[nodeData.id].checksum !== "" && this.dataStore.nodes[nodeData.id].type !== 'queue' && this.dataStore.nodes[nodeData.id].checksum !== undefined && this.dataStore.nodes[nodeData.id].checksum !== false) {
             this.mytabs = this.nodeTabs['ChecksumBot']
         }
+
 
 		this.state = {
 			nodeData: nodeData,
@@ -377,6 +378,12 @@ class Settings extends React.Component {
 		})
 
 		var kinesis_number = node.checkpoint || node.kinesis_number || '';
+        var cronInfo = this.dataStore.getCron(nodeData.id);
+		
+		var consolelink
+		if(this.state.nodeData.type === 'bot') {
+			consolelink = "https://console.aws.amazon.com/lambda/home?region=us-east-1#/functions/"+(nodeData.details && nodeData.details.lambdaName ? nodeData.details.lambdaName : '')+"?tab=configure"
+		}
 
 		return (<div className="theme-modal">
 			<div tabIndex="-1" className="theme-dialog" onKeyDown={(e) => {
@@ -450,6 +457,11 @@ class Settings extends React.Component {
 										: false
 									}
 									<label>Id</label><span className="user-selectable">{this.state.nodeData.id}</span>
+									{ this.state.nodeData.type === 'bot' ?
+									<a href={consolelink} target="_blank">
+										<i className="icon-logout"></i>
+									</a>
+									: false }
 								</div>
 							</div>
 
