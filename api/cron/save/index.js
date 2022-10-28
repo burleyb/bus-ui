@@ -88,7 +88,7 @@ function buildId(doc, done) {
 
 function resubmit(body, callback) {
 	var refId = util.refId(body.botId, "bot");
-	let stream = leo.load(body.botId, body.queue);
+	let stream = leo.load(body.botId, body.queue, { partitionKey: body.queue, useS3: true });
     stream.write(body.payload);
 	stream.end(() => {
 		callback(null, {

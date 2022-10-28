@@ -11,6 +11,7 @@
 	},
 	"config": {
 		"leo": {
+			"runtime": "nodejs12.x",
 			"type": "resource",
 			"uri": [
 				"POST:/api/cron/save",
