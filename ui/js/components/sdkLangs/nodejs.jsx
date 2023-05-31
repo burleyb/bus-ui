@@ -1,6 +1,6 @@
 import React from 'react';
 import {observer, inject} from 'mobx-react';
-import CodeMirror from 'react-codemirror';
+import CodeMirror from '@uiw/react-codemirror';
 
 @inject('dataStore')
 @observer

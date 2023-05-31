@@ -42,6 +42,7 @@ module.exports = {
 		},	
 	},
 	test: {
+		port: 8080,
 		"personas": {
 			"default": {
 				"identity": {

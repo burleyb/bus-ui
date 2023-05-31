@@ -1,8 +1,7 @@
 {
   "presets": [
-    "react",
-    "es2015",
-    "stage-0"
+    "@babel/preset-react",
+    "@babel/preset-env" 
   ],
-  "plugins": ["transform-decorators-legacy"]
+	"plugins": [	"@babel/plugin-proposal-export-namespace-from", "@babel/plugin-transform-modules-commonjs", "@babel/plugin-proposal-function-bind", "@babel/plugin-proposal-decorators"]  
 }
