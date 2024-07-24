@@ -19,7 +19,7 @@
 			"name": "Leo_Botmon",
 			"display-name": "Bot Monitoring",
 			"root": "botmon",
-			"runtime": "nodejs16.x",
+			"runtime": "nodejs20.x",
 			"parallelCompile": 3,
 			"stacks": [
 				"leosdk",
@@ -60,8 +60,7 @@
 			},
 			"parallelCompile": 10,
 			"3rdParty": true,
-			"excludeProfiles": true,
-			"runtime": "nodejs16.x"
+			"excludeProfiles": true
 		},
 		"console": {
 			"navigation": [
@@ -91,7 +90,7 @@
 		"html5sortable": "^0.13.3",
 		"jsonpath": "^1.1.1",
 		"later": "^1.2.0",
-		"leo-auth": "^3.0.1",
+		"leo-auth": "file:../smartshyp-deps/leo-auth",
 		"leo-aws": "file:../smartshyp-deps/leo-aws",
 		"leo-sdk": "file:../smartshyp-deps/leo-sdk",
 		"mobx": "^6.9.0",
@@ -102,9 +101,8 @@
 		"moment-timezone": "^0.5.43",
 		"numeral": "^2.0.6",
 		"q": "^1.5.1",
-		"react": "^18.2.0",
+		"react": "^18.3.1",
 		"react-autobind": "^1.0.6",
-		"react-codemirror": "^1.0.0",
 		"react-dom": "^18.2.0",
 		"react-json-pretty": "^2.2.0",
 		"react-redux": "^8.0.5",
@@ -114,6 +112,7 @@
 		"uuid": "^9.0.0"
 	},
 	"overrides": {
+		"leo-auth": "file:../smartshyp-deps/leo-auth",
 		"leo-sdk": "file:../smartshyp-deps/leo-sdk",
 		"leo-aws": "file:../smartshyp-deps/leo-aws",
 		"leo-cron": "file:../smartshyp-deps/leo-cron"
