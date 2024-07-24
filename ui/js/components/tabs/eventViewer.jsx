@@ -7,6 +7,10 @@ import EventResubmit from '../dialogs/eventResubmit.jsx'
 import PayloadSearch from '../elements/payloadSearch.jsx'
 import NoSource from '../elements/noSource.jsx'
 import NodeSearch from '../elements/nodeSearch.jsx'
+import Ajv from "ajv";
+import addFormats from "ajv-formats";
+import ToggleSwitch from '../elements/toggleSwitch.jsx'
+import DiffLegend from '../elements/diffLegend.jsx'
 
 var timeFormat = '/YYYY/MM/DD/HH/mm/'
 
@@ -15,7 +19,6 @@ var timeFormat = '/YYYY/MM/DD/HH/mm/'
 class EventViewer extends React.Component {
 	rowHeight = 55
 	visibleRowCount = 100
-
 	constructor(props) {
 		super(props);
 		this.dataStore = this.props.dataStore;
@@ -23,7 +26,8 @@ class EventViewer extends React.Component {
 		this.state = {
 			eventIndex: 0,
 			node: {},
-			startRow: 0
+			startRow: 0,
+			checked: false,
 		}
 	}
 
@@ -63,12 +67,12 @@ class EventViewer extends React.Component {
 			this.clipboard.destroy()
 		}
 		this.clipboard = new Clipboard('.copy-button', {
-			text: function (trigger) {
+			text: function(trigger) {
 				return $('pre#data-to-copy').text()
 			}
-		}).on('success', function (e) {
+		}).on('success', function(e) {
 			window.messageLogNotify('Payload copied')
-		}).on('error', function (e) {
+		}).on('error', function(e) {
 			window.messageLogNotify('Error copying payload', 'error')
 		})
 
@@ -95,6 +99,10 @@ class EventViewer extends React.Component {
 
 	}
 
+	onChange = newValue => {
+		this.setState({checked: newValue})
+	}
+
 
 	toggleDetail(index) {
 		$('tr.current-payload div').slideUp(400)
@@ -106,7 +114,8 @@ class EventViewer extends React.Component {
 	}
 
 
-	startReplay(detail, index) {
+	startReplay(detail, index, event) {
+		event.stopPropagation()
 		this.setState({ replay: detail })
 	}
 
@@ -130,9 +139,77 @@ class EventViewer extends React.Component {
 			var nodeId = (Object.keys(this.dataStore.nodes).filter(node => this.dataStore.nodes[node].id === (this.dataStore.nodes[node].type + ':' + source)) || [])[0]
 			window.messageLogModal('Failure starting trace on ' + (this.dataStore.nodes[nodeId] || {}).type + ' "' + (this.dataStore.nodes[nodeId] || {}).label + '"', 'error', result)
 			$('.event-viewer > div').removeClass('theme-spinner-large')
+		}).always(() => {
+			this.currentRequest = null;
 		})
 	}
 
+	validateEvent(detail, index, event) {
+		event.stopPropagation()
+		let version = detail.version || Object.keys(this.dataStore.queueInfo)[0];
+		let message;
+		let type;
+		let details;
+		let valid = detail.is_valid;
+		let validate = {
+			errors: detail.validation_errors
+		}
+		if (valid) {
+			message = "Event is valid";
+			details = "No validation errors";
+			type = "info";
+		}
+		else {
+			message = "Errors";
+			details = validate.errors.join("\n");
+			type = "error";
+		}
+
+
+		let node = this.state.node;
+		window.messageModal(`${node.label}@${version}` + " - " + message + " : " + detail.eid, type, details, { open: true });
+	}
+
+	validateEvents(events) {
+		if (!this.dataStore.queueInfo) {
+			return;
+		}
+		let defaultVersion = Object.keys(this.dataStore.queueInfo || {})[0];
+		let ajvs = {};
+		events.forEach((event) => {
+			if (event.is_valid == null) {
+				let version = event.version || defaultVersion;
+				event.version = version;
+				if (!ajvs[version]) {
+					const ajv = new Ajv({ allErrors: true, strict: false });
+					addFormats(ajv);
+					let { schema, definitionsSchema } = (this.dataStore.queueInfo || {})[version] || {}
+					const validate = ajv.addSchema(definitionsSchema || {}).compile(schema || {});
+					ajvs[version] = validate;
+				}
+
+				const validate = ajvs[version];
+				const valid = validate(event.payload);
+
+				event.is_valid = valid;
+				if (!valid) {
+					let errors = validate.errors;
+					let options = options || {};
+					var dataVar = "payload";
+
+					let errorMessages = [];
+					for (var i = 0; i < errors.length; i++) {
+						var e = errors[i];
+						if (e) {
+							errorMessages.push(dataVar + (e.instancePath || e.dataPath) + ' ' + e.message);
+						}
+					}
+
+					event.validation_errors = errorMessages;
+				}
+			}
+		});
+	}
 
 	continueSearch(event) {
 		var scrollTop = $(event.currentTarget).scrollTop()
@@ -150,6 +227,7 @@ class EventViewer extends React.Component {
 
 	returnEvents(events, status) {
 		if (events) {
+			this.validateEvents(events);
 			this.setState({ events: events, status: status })
 		} else {
 			this.setState({ status: status })
@@ -248,9 +326,9 @@ class EventViewer extends React.Component {
 							</svg>
 						</div>)
 
-						: (<div className="flex-row height-1-1 flex-wrap overflow-auto">
+						: (<div className="flex-row height-1-1 flex-wrap">
 
-							<div className="flex-auto width-1-2 mobile-height-1-2">
+							<div style={{ height: 'calc(100% - 59px)' }} className="flex-auto width-1-2 mobile-height-1-2">
 
 								<div className="theme-table-fixed-header theme-table-overflow-hidden">
 									<table className="infiniteScroll" onScroll={this.continueSearch.bind(this)}>
@@ -279,7 +357,7 @@ class EventViewer extends React.Component {
 															<td className="two-icons">
 																<div>
 																	{
-																		detail.correlation_id
+																		true || detail.correlation_id
 																			? (<a onClick={this.startTrace.bind(this, detail.event, detail.eid, index)} className="event-viewer-action-button" title="trace">
 																				<i className="icon-flash" style={{ fontSize: '1.25em' }}></i>
 																			</a>)
@@ -289,6 +367,13 @@ class EventViewer extends React.Component {
 																		!this.props.hideReply
 																			? <a onClick={this.startReplay.bind(this, detail, index)} className="event-viewer-action-button" title="replay">
 																				<i className="icon-ccw" style={{ fontSize: '1.25em' }} />
+																			</a>
+																			: false
+																	}
+																	{
+																		Object.keys(this.dataStore.queueInfo || {}).length
+																			? <a onClick={this.validateEvent.bind(this, detail, index)} className="event-viewer-action-button" title="validate">
+																				<i className={detail.is_valid ? "icon-ok" : "icon-attention"} style={{ fontSize: '1.25em' }} />
 																			</a>
 																			: false
 																	}
@@ -328,17 +413,24 @@ class EventViewer extends React.Component {
 
 							</div>
 
-							<div className="width-1-2 flex-column position-relative mobile-height-1-2">
+							<div style={{ height: 'calc(100% - 59px)' }} className="width-1-2 flex-column position-relative mobile-height-1-2">
 
 								<div className="theme-table-column-header width-1-1">
 									Payload
-							</div>
+								</div>
 
 								<div className="flex-auto">
 									{
 										this.state.events
 											? this.state.events.map((detail, index) => {
 												if (this.state.eventIndex === index) {
+													// check to see if the event is an old-new variant
+													let old_new = detail.payload.old !== undefined && detail.payload.new !== undefined ? true: false;
+													let old_obj = old_new ? (detail.payload.old || {}) : null;
+													let new_obj = old_new ? (detail.payload.new || {}) : null;
+
+													// let [diffElementThingy, setDiffElementThingy] = useState(old_new && old_obj && new_obj ? getOldNewDiff(old_obj, new_obj) : '');
+													
 
 													detail = $('<div/>').text(JSON.stringify(detail, null, 4)).html()
 
@@ -359,9 +451,20 @@ class EventViewer extends React.Component {
 															}
 														})
 
-													return (<div key="index" className="current-payload">
-														<button type="button" id="copy-button" data-clipboard-target="#data-to-copy" className="copy-button theme-button">Copy to Clipboard</button>
-														<pre id="data-to-copy" className="user-selectable pre-wrap" dangerouslySetInnerHTML={{ __html: detailString }}></pre>
+													return (
+													<div key="eventSomethingOrOther">
+														{old_new && <ToggleSwitch id="toggleSwitch" checked={this.state.checked} onChange={this.onChange}/>}
+														{this.state.checked ? 
+														<div key="index" className="current-payload">
+															<DiffLegend id="diffLegend"/>
+															<button type="button" id="copy-button" data-clipboard-target="#data-to-copy" className="copy-button theme-button">Copy to Clipboard</button>
+															<pre id="data-to-copy" className="user-selectable pre-wrap">{getOldNewDiff(old_obj, new_obj)}</pre>
+														</div>
+														:
+														<div key="index" className="current-payload">
+															<button type="button" id="copy-button" data-clipboard-target="#data-to-copy" className="copy-button theme-button">Copy to Clipboard</button>
+															<pre id="data-to-copy" className="user-selectable pre-wrap">{detailString}</pre>
+														</div>}
 													</div>)
 												}
 											})
@@ -374,7 +477,6 @@ class EventViewer extends React.Component {
 				}
 
 			</div>
-			}
 
 			{
 				this.state.replay
@@ -394,3 +496,34 @@ class EventViewer extends React.Component {
 }
 
 export default connect(store => store)(EventViewer)
+
+
+function getOldNewDiff(oldData, newData) {
+	const {diffJson, jsonDiff, canonicalize} = require('diff/lib/diff/json');
+
+	// overwrite `castInput` so it uses 4 spaces rather than the default 2 for formatting
+	jsonDiff.castInput = function(value) {  
+		const {undefinedReplacement, stringifyReplacer = (k, v) => typeof v === 'undefined' ? undefinedReplacement : v} = this.options;
+		return typeof value === 'string' ? value : JSON.stringify(canonicalize(value, null, null, stringifyReplacer), stringifyReplacer, '    ');
+	};
+
+	const diff = diffJson(oldData, newData);
+	
+	let uniqueKey = 0;
+	return (
+		<div className="diff">
+		{
+			diff.map((part) => 
+				
+				// const spacer = color === 'green' ? '+++' : color === 'red' ? '---' : '   ';
+				<span key={uniqueKey++} className={part.added ? 'green' :
+				 part.removed ? 'red' : 'grey'}>{part.value}</span>
+			
+					
+		)
+			
+		}
+		</div>
+	);
+	
+}

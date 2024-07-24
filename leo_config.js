@@ -1,9 +1,12 @@
 'use strict';
+const leoauth = process.env.leoauthsdk && JSON.parse(process.env.leoauthsdk) || {};
+const leosdk = process.env.leosdk && JSON.parse(process.env.leosdk) || {};
+
 module.exports = {
     /**defaults applied to every system**/
     _global: {
-        leoauth: process.env.leoauthsdk && JSON.parse(process.env.leoauthsdk).resources,
-        leosdk: process.env.leosdk && JSON.parse(process.env.leosdk).resources,
+        leoauth: leoauth.resources || leoauth,
+        leosdk: leosdk.resources || leosdk,
         Resources: process.env.Resources && JSON.parse(process.env.Resources),
     },
     PROD: {
@@ -27,7 +30,7 @@ module.exports = {
     _local: {
         leoaws: {
             profile: 'default',
-            region: 'us-east-1'
+            region: leosdk.region || leosdk.Region || (leosdk.resources && leosdk.resources.Region) || 'us-east-1'
         }
     }
 };

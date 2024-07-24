@@ -169,10 +169,10 @@ Bot Id -            ${node.id}\n`;
 					let newBotOnList = false;
 					_.map(newReportBots, (value, id) => {
 						let skipOnReport = false;
-                        if (overridesObj[id].health.mute === true) {
+                        if (overridesObj[id] && overridesObj[id].health && overridesObj[id].health.mute === true) {
                             skipOnReport = true;
                         } else {
-                            let timeStamp = overridesObj[id].health.mute;
+                            let timeStamp = overridesObj[id]?.healthi?.mute || 0;
                             if (timeStamp >= moment.now()) {
                                 skipOnReport = true;
                             }

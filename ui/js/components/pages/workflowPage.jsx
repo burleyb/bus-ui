@@ -1,6 +1,6 @@
 import React, { Component } from 'react'
 import { connect } from 'react-redux';
-import {inject, observer} from 'mobx-react'
+import { inject, observer } from 'mobx-react'
 import { saveSettings } from '../../actions'
 
 import NodeSearch from '../elements/nodeSearch.jsx'
@@ -38,10 +38,10 @@ class NodeView extends React.Component {
 		if (!this.dataStore.hasData) {
 			this.dataStore.getStats();
 		}
-		window.dataStore= Object.assign({},this.dataStore);
-        window.keepTrackRight = {};
-        window.keepTrackLeft = {};
-        window.collapsedStart = [];
+		window.dataStore = Object.assign({}, this.dataStore);
+		window.keepTrackRight = {};
+		window.keepTrackLeft = {};
+		window.collapsedStart = [];
 	}
 
 
@@ -75,7 +75,7 @@ class NodeView extends React.Component {
 				icon = node.icon;
 			} else {
 				var icon = node.type
-				switch(node.status) {
+				switch (node.status) {
 					case 'paused':
 					case 'archived':
 					case 'danger':
@@ -83,7 +83,7 @@ class NodeView extends React.Component {
 						icon += '-' + node.status
 					case 'rogue':
 						icon += '-' + node.status
-					break
+						break
 				}
 				icon += '.png'
 			}
@@ -112,45 +112,76 @@ class NodeView extends React.Component {
 			var parents = []
 			var nId = n.id
 			foundNodeList = foundNodeList || { [n.id]: 1 }
-
-			for (var id in n.link_to.parent) {
-				if (n.type === "bot") {
-					var bot_id = nId
-					var queue_id = id
-				} else {
-					var bot_id = id
-					var queue_id = nId
-				}
-
-				var parent = basicNode(dataStore.nodes[id])
-
-				if (parent && parent.status !== 'archived' && !parent.archived) {
-					var link = n.link_to.parent[id]
-					//Is it in danger?
-					parent.relation = {
-						type: link.type,
-						line: link.display.line,
-						above: link.display.above,
-						below: link.display.below
-					}
-
-					if (!foundNodeList[id]) {
-						foundNodeList[id] = 1
-						parent.parents = getParents(dataStore.nodes[id], Object.assign({}, foundNodeList), dataStore, ++level)
+			let numberOfParents = Object.keys(n.link_to.parent).length;
+			if (numberOfParents > 10) {					
+				let basicNodeThing = basicNode({
+					id: n.id +'-TooManyParents',
+					type: 'infinite',
+					label: 'Too many parents refine by searching',
+					status: undefined,
+					display: {
+						above: ['test_above'],
+							below: ['test_below'],
+					},
+					message: undefined,
+					archived: false,
+					paused: false,
+				});
+				basicNodeThing.relation = {
+					type: 'TooManyParents',
+						line: 'dashed_gray',
+						above: ['test_relation_above'],
+						below: ['test_relation_below'],
+				};
+				basicNodeThing.kids = [n];
+				basicNodeThing.iconOverrides = {
+					type: 'icon',
+					icon: window.leostaticcdn + (n.type == 'bot' ? 'images/nodes/queue.png' : 'images/nodes/bot.png'),
+				};
+				parents = [
+					basicNodeThing
+				]
+			} else {
+				for (var id in n.link_to.parent) {
+					if (n.type === "bot") {
+						var bot_id = nId
+						var queue_id = id
 					} else {
-						parent.parents = [{
-							id: 'infinite',
-							icon: window.leostaticcdn + 'images/icons/infinite.png',
-							type: 'infinite',
-							kids: [n],
-							relation: {
-								line: 'dashed_gray'
-							}
-						}]
+						var bot_id = id
+						var queue_id = nId
 					}
-					parent.leftCollapsed = (level >= 1 && parent.parents.length > 1);
-                    parents.push(parent);
+	
+					var parent = basicNode(dataStore.nodes[id])
+	
+					if (parent && parent.status !== 'archived' && !parent.archived) {
+						var link = n.link_to.parent[id]
+						//Is it in danger?
+						parent.relation = {
+							type: link.type,
+							line: link.display.line,
+							above: link.display.above,
+							below: link.display.below
+						}
+	
+						if (!foundNodeList[id]) {
+							foundNodeList[id] = 1
+							parent.parents = getParents(dataStore.nodes[id], Object.assign({}, foundNodeList), dataStore, ++level)
+						} else {
+							parent.parents = [{
+								id: 'infinite',
+								icon: window.leostaticcdn + 'images/icons/infinite.png',
+								type: 'infinite',
+								kids: [n],
+								relation: {
+									line: 'dashed_gray'
+								}
+							}]
+						}
+						parent.leftCollapsed = (level >= 1 && parent.parents.length > 1);
+						parents.push(parent);
+					}
 				}
+
 			}
 			return parents.sort((a, b) => {
 				return a.label.localeCompare(b.label)
@@ -163,42 +194,74 @@ class NodeView extends React.Component {
 			var nId = n.id
 			foundNodeList = foundNodeList || { [n.id]: 1 }
 
-			for (var id in n.link_to.children) {
-				if (n.type === "bot") {
-					var bot_id = nId
-					var queue_id = id
-				} else {
-					var bot_id = id
-					var queue_id = nId
-				}
-
-				var child = basicNode(dataStore.nodes[id])
-
-				if (child && child.status !== 'archived' && !child.archived) {
-					var link = n.link_to.children[id];
-					//Is it in danger?
-					child.relation = {
-						type: link.type,
-						line: link.display.line,
-						above: link.display.above,
-						below: link.display.below
-					};
-					if (!foundNodeList[id]) {
-						foundNodeList[id] = 1;
-						child.kids = getKids(dataStore.nodes[id], Object.assign({}, foundNodeList), dataStore, ++level)
+			// Limit the number of children that we are rendering
+			let numberOfChildren = Object.keys(n.link_to.children).length;
+			if (numberOfChildren > 10) {					
+				let basicNodeThing = basicNode({
+					id: n.id +'-TooManyKids',
+					type: 'infinite',
+					label: 'Too many children refine by searching',
+					status: undefined,
+					display: {
+						above: ['test_above'],
+							below: ['test_below'],
+					},
+					message: undefined,
+					archived: false,
+					paused: false,
+				});
+				basicNodeThing.relation = {
+					type: 'TooManyKids',
+					line: 'dashed_gray',
+					above: ['test_relation_above'],
+					below: ['test_relation_below'],
+				};
+				basicNodeThing.parents = [n];
+				basicNodeThing.iconOverrides = {
+					type: 'icon',
+					icon: window.leostaticcdn + (n.type == 'bot' ? 'images/nodes/queue.png' : 'images/nodes/bot.png'),
+				};
+				kids = [
+					basicNodeThing
+				]
+			} else {
+				for (var id in n.link_to.children) {
+					if (n.type === "bot") {
+						var bot_id = nId
+						var queue_id = id
 					} else {
-						child.kids = [{
-							id: 'infinite',
-							icon: window.leostaticcdn + 'images/icons/infinite.png',
-							type: 'infinite',
-							parents: [n],
-							relation: {
-								line: 'dashed_gray'
-							}
-						}]
+						var bot_id = id
+						var queue_id = nId
 					}
-                    child.rightCollapsed = (level >= 1 && child.kids.length > 1);
-                  	kids.push(child);
+	
+					var child = basicNode(dataStore.nodes[id])
+	
+					if (child && child.status !== 'archived' && !child.archived) {
+						var link = n.link_to.children[id];
+						//Is it in danger?
+						child.relation = {
+							type: link.type,
+							line: link.display.line,
+							above: link.display.above,
+							below: link.display.below
+						};
+						if (!foundNodeList[id]) {
+							foundNodeList[id] = 1;
+							child.kids = getKids(dataStore.nodes[id], Object.assign({}, foundNodeList), dataStore, ++level)
+						} else {
+							child.kids = [{
+								id: 'infinite',
+								icon: window.leostaticcdn + 'images/icons/infinite.png',
+								type: 'infinite',
+								parents: [n],
+								relation: {
+									line: 'dashed_gray'
+								}
+							}]
+						}
+						child.rightCollapsed = (level >= 1 && child.kids.length > 1);
+						kids.push(child);
+					}
 				}
 			}
 			return kids.sort((a, b) => {
@@ -206,7 +269,7 @@ class NodeView extends React.Component {
 			})
 		}
 
-		node.parents = getParents(this.dataStore.nodes[root], {},this.dataStore)
+		node.parents = getParents(this.dataStore.nodes[root], {}, this.dataStore)
 		node.kids = getKids(this.dataStore.nodes[root], {}, this.dataStore)
 		return node
 	}
@@ -244,7 +307,7 @@ class NodeView extends React.Component {
 							thisComponent.props.dispatch(saveSettings({
 								node: data.id,
 								selected: me.selected,
-								offset: [0,0]
+								offset: [0, 0]
 							}))
 						}
 					}(data, which, me)
@@ -270,56 +333,60 @@ class NodeView extends React.Component {
 
 			(
 				localStorage.getItem('enableBetaFeatures')
-				? function(data, which, me) {
-					return (
-						(data.type !== 'bot')
-						? {'icon-plus': function(data) {
-							return function() {
-								data.group = 'bot',
-								window.createBot(data)
-							}
-						}(data)}
-						: false
-					)
-				}
-				: false
+					? function(data, which, me) {
+						return (
+							(data.type !== 'bot')
+								? {
+									'icon-plus': function(data) {
+										return function() {
+											data.group = 'bot',
+												window.createBot(data)
+										}
+									}(data)
+								}
+								: false
+						)
+					}
+					: false
 			),
 
 			function(data, which, me) {
 				return (
 					(data.message)
-					? {'icon-exclamation': function(data) {
-						return function() {
+						? {
+							'icon-exclamation': function(data) {
+								return function() {
 
-							var html = $('<div/>').append(
-								Object.keys(data.message).map((item) => {
-									var itemValue = data.message[item]
-									if (typeof itemValue == 'object') {
-										item = Object.keys(itemValue)[0]
-										itemValue = itemValue[item]
-									}
-									switch(item) {
-										case 'title':
-											return ''
-										break
+									var html = $('<div/>').append(
+										Object.keys(data.message).map((item) => {
+											var itemValue = data.message[item]
+											if (typeof itemValue == 'object') {
+												item = Object.keys(itemValue)[0]
+												itemValue = itemValue[item]
+											}
+											switch (item) {
+												case 'title':
+													return ''
+													break
 
-										case 'progress':
-											var progress = itemValue * 100
-											return '<div class="theme-progress-bar display-block width-1-1"><span style="width:' + progress + '%;"></span><span>' + progress + '%</span></div>'
-										break
+												case 'progress':
+													var progress = itemValue * 100
+													return '<div class="theme-progress-bar display-block width-1-1"><span style="width:' + progress + '%;"></span><span>' + progress + '%</span></div>'
+													break
 
-										default:
-											return '<p>' + JSON.stringify(itemValue, null, 4) + '</p>'
-										break
-									}
-								})
-							).html()
+												default:
+													return '<p>' + JSON.stringify(itemValue, null, 4) + '</p>'
+													break
+											}
+										})
+									).html()
 
-							LeoKit.modal(html, { close: false }, data.message.title || '')
+									LeoKit.modal(html, { close: false }, data.message.title || '')
 
+								}
+							}(data)
 						}
-					}(data)}
-					: false
+						: false
 				)
 			}
 
@@ -329,11 +396,11 @@ class NodeView extends React.Component {
 		var nodeSearch = <div className="theme-icon-group pull-left control">
 			{
 				this.state.showSearchBox
-				? <NodeSearch settings={'true'} toggleSearchBox={this.toggleSearchBox.bind(this)} className="black left-icon" placeholder="Search..." />
-				: (<div className="theme-autocomplete black left-icon">
-					<input type="search" name="undefined" className="searchBox theme-form-input" placeholder="Search..." value="" autoComplete="off" onClick={this.toggleSearchBox.bind(this, true)} onKeyDown={this.toggleSearchBox.bind(this, true)} />
-					<i className="search-icon icon-search" />
-				</div>)
+					? <NodeSearch settings={'true'} searchText={this.state.searchText} toggleSearchBox={this.toggleSearchBox.bind(this)} className="black left-icon" placeholder="Search..." />
+					: (<div className="theme-autocomplete black left-icon">
+						<input type="search" name="undefined" className="searchBox theme-form-input" placeholder="Search..." value="" autoComplete="off" onClick={this.toggleSearchBox.bind(this, true)} onKeyDown={this.toggleSearchBox.bind(this, true)} />
+						<i className="search-icon icon-search" />
+					</div>)
 			}
 			{/* <i className="icon-search" onClick={this.toggleSearchBox.bind(this, true)}></i> */}
 		</div>
@@ -354,81 +421,81 @@ class NodeView extends React.Component {
 
 			(
 				this.props.userSettings.node && !this.props.userSettings.details
-				? (<div key={3} className={'theme-icon-group show-charts' + (this.props.userSettings.details ? ' active' : '')} onClick={this.toggleDetails.bind(this)}>
-					<i className="icon-chart" title="show charts" /> Show Charts
-				</div>)
-				: false
+					? (<div key={3} className={'theme-icon-group show-charts' + (this.props.userSettings.details ? ' active' : '')} onClick={this.toggleDetails.bind(this)}>
+						<i className="icon-chart" title="show charts" /> Show Charts
+					</div>)
+					: false
 			)
 
 		]
 
 		var treeButtonsRight = <div className="theme-icon-group push-right">
-				<TimePeriod
-					className="control"
-					defaults={this.dataStore.urlObj.timePeriod}
-					intervals={['minute_15', 'hour', 'hour_6', 'day']}
-					onChange={this.dateRangeChanged}
-					singleField="true"
-					spread="false"
-					pauseButton="true"
-				/>
+			<TimePeriod
+				className="control"
+				defaults={this.dataStore.urlObj.timePeriod}
+				intervals={['minute_15', 'hour', 'hour_6', 'day']}
+				onChange={this.dateRangeChanged}
+				singleField="true"
+				spread="false"
+				pauseButton="true"
+			/>
 			{
 				localStorage.getItem('enableBetaFeatures')
-				? (<div className="theme-icon-group control">
-					<i className="icon-plus" onClick={window.createNode}></i>
-				</div>)
-				: false
+					? (<div className="theme-icon-group control">
+						<i className="icon-plus" onClick={window.createNode}></i>
+					</div>)
+					: false
 			}
 		</div>
 
 		return (
 			<div className={'node-view ' + (this.props.userSettings.details ? 'show-details-pane ' : '') + this.props.className}>
 				{
-                    this.dataStore.hasData
-					? <Tree
-						id="mainTree"
-						ref={(child) => { this.nodeTree = child }}
-						settings={this.props.userSettings}
-						saveSetting="true"
-						root={this.props.userSettings.node}
-						force={this.state.force}
-						source={this.getData(this.state.root)}
-						rotators={rotators}
-						hideLinkBelow={this.props.userSettings.stats === false}
-						onCollapse={(data, expanded) => {
-							this.dataStore.changeCollapsed(data, expanded);
-							this.props.dispatch(saveSettings({ collapsed: data, expanded: expanded }))
-						}}
-						onNodeClick={(data) => {
-							window.setDetailsPaneNodes([data.id])
-						}}
-						onLinkClick={window.setDetailsPaneNodes}
-						onNodeDblClick={(data, which, me) => {
-							d3.event.stopPropagation()
-							me.clickedSide = which.name
-							me.selected = [data.id]
-							this.dataStore.changeAllStateValues(me.selected,this.dataStore.urlObj.timePeriod,this.dataStore.view,[0,0], data.id, this.dataStore.zoom, this.dataStore.details);
-							this.props.dispatch(saveSettings({ node: data.id, selected: me.selected, offset: [0,0] }))
-						}}
-						nodeSearch={nodeSearch}
-						treeButtons={treeButtons}
-						treeButtonsRight={treeButtonsRight}
-					/>
-					: <div className="theme-spinner-large"></div>
+					this.dataStore.hasData
+						? <Tree
+							id="mainTree"
+							ref={(child) => { this.nodeTree = child }}
+							settings={this.props.userSettings}
+							saveSetting="true"
+							root={this.props.userSettings.node}
+							force={this.state.force}
+							source={this.getData(this.state.root)}
+							rotators={rotators}
+							hideLinkBelow={this.props.userSettings.stats === false}
+							onCollapse={(data, expanded) => {
+								this.dataStore.changeCollapsed(data, expanded);
+								this.props.dispatch(saveSettings({ collapsed: data, expanded: expanded }))
+							}}
+							onNodeClick={(data) => {
+								window.setDetailsPaneNodes([data.id])
+							}}
+							onLinkClick={window.setDetailsPaneNodes}
+							onNodeDblClick={(data, which, me) => {
+								d3.event.stopPropagation()
+								me.clickedSide = which.name
+								me.selected = [data.id]
+								this.dataStore.changeAllStateValues(me.selected, this.dataStore.urlObj.timePeriod, this.dataStore.view, [0, 0], data.id, this.dataStore.zoom, this.dataStore.details);
+								this.props.dispatch(saveSettings({ node: data.id, selected: me.selected, offset: [0, 0] }))
+							}}
+							nodeSearch={nodeSearch}
+							treeButtons={treeButtons}
+							treeButtonsRight={treeButtonsRight}
+						/>
+						: <div className="theme-spinner-large"></div>
 				}
 
 				{
 					this.state.dialog === 'ShareLink'
-					? (<Dialog title="Share Report" onClose={() => this.setState({ dialog: undefined })} buttons={{ close: false }}>
-						<textarea className="theme-monospace" style={{width:'50vw',height:'25vh'}} defaultValue={document.location}></textarea>
-					</Dialog>)
-					: false
+						? (<Dialog title="Share Report" onClose={() => this.setState({ dialog: undefined })} buttons={{ close: false }}>
+							<textarea className="theme-monospace" style={{ width: '50vw', height: '25vh' }} defaultValue={document.location}></textarea>
+						</Dialog>)
+						: false
 				}
 
 				{
 					this.props.userSettings.details
-					? <Footer settings={this.props.userSettings} />
-					: false
+						? <Footer settings={this.props.userSettings} />
+						: false
 				}
 
 			</div>
