@@ -56,6 +56,12 @@ module.exports = {
 	},
 	test: {
 		port: 8080,
+		basePath: "botmon",
+		basehref: "botmon",
+		ui: {
+			basePath: "botmon/",
+			apiHost: "http://34.225.230.43:8081",
+		},
 		"personas": {
 			"default": {
 				"identity": {
@@ -63,6 +69,7 @@ module.exports = {
 				}
 			}
 		},
+
 		defaultPersona: 'default'
 	}
 };

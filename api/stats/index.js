@@ -9,6 +9,7 @@ let logger = require("leo-logger")("stats-api");
 let compressionThreshold = 100000; // 100k
 
 exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, callback) => {
+    logger.log("[event]", event)
     await request.authorize(event, {
         lrn: 'lrn:leo:botmon:::',
         action: "stats",

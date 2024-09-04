@@ -7,7 +7,10 @@ module.exports = {
     _global: {
         leoauth: leoauth.resources || leoauth,
         leosdk: leosdk.resources || leosdk,
-        Resources: process.env.Resources && JSON.parse(process.env.Resources),
+        Resources: process.env.Resources || leosdk.resources,
+		CognitoId: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac",
+			basePath: "botmon/",
+			basehref: "botmon/",
     },
     PROD: {
         ui: {
@@ -24,7 +27,11 @@ module.exports = {
             cognito: {
                 id: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac"
             },
-            region: "us-east-1"
+			CognitoId: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac",
+			Region: "us-east-1",
+			CustomJS: "",
+			basePath: "botmon/",
+			basehref: "botmon/",
         }
     },    
     _local: {
