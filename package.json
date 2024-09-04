@@ -1,134 +1,134 @@
 {
-	"name": "botmon",
-	"version": "2.2.0",
-	"description": "",
-	"main": "app.js",
-	"scripts": {
-		"start": "leo-cli test .",
-		"old_start": "leo-cli test .",
-		"test": "mocha --require ./test/bootstrap.js --recursive -w",
-		"debug": "node-debug leo test ."
-	},
-	"config": {
-		"leo": {
-			"type": "microservice",
-			"subtype": "react",
-			"role": "ApiRole",
-			"name": "Leo_Botmon",
-			"display-name": "Bot Monitoring",
-			"root": "botmon",
-			"runtime": "nodejs16.x",
-			"parallelCompile": 3,
-			"stacks": [
-				"leosdk",
-				"leoauth"
-			],
-			"aws": {
-				"cognito_region": {
-					"ref": "micro.cognito.region"
-				},
-				"cognito_id": {
-					"ref": "micro.cognito.id"
-				}
-			},
-			"micro": {
-				"version": {
-					"ref": "micro.version"
-				}
-			},
-			"static": {
-				"s3": {
-					"ref": "micro.s3.id"
-				},
-				"cloudfront": {
-					"ref": "micro.cloudfront.domain"
-				}
-			},
-			"regions": [
-				"us-west-2",
-				"us-east-1"
-			],
-			"showPagesEnv": {
-				"Resources": {
-					"CognitoId": "${CognitoId}",
-					"Region": "${AWS::Region}",
-					"CustomJS": "${CustomJS}"
-				},
-				"Logins": "${Logins}"
-			},
-			"3rdParty": true,
-			"excludeProfiles": true
-		},
-		"console": {
-			"navigation": [
-				{
-					"title": "Botmon",
-					"href": "/botmon",
-					"icon": ""
-				}
-			]
-		}
-	},
-	"author": "",
-	"license": "ISC",
-	"dependencies": {
-		"@babel/plugin-transform-react-jsx": "^7.22.3",
-		"@emotion/react": "^11.11.0",
-		"@emotion/styled": "^11.11.0",
-		"@mui/material": "^5.13.3",
-		"@uiw/react-codemirror": "^4.20.2",
-		"child_process": "^1.0.2",
-		"csv-parse": "^5.4.0",
-		"d3-jetpack": "^2.2.1",
-		"deep-diff": "^1.0.2",
-		"elasticsearch": "^16.7.3",
-		"extend": "^3.0.2",
-		"html5sortable": "^0.13.3",
-		"jsonpath": "^1.1.1",
-		"later": "^1.2.0",
-		"leo-auth": "^3.0.1",
-		"leo-sdk": "^6.0.16",
-		"mobx": "^6.9.0",
-		"mobx-react": "^7.6.0",
-		"mocha": "^10.2.0",
-		"moment": "^2.29.4",
-		"moment-round": "^1.0.1",
-		"moment-timezone": "^0.5.43",
-		"numeral": "^2.0.6",
-		"q": "^1.5.1",
-		"react": "^18.2.0",
-		"react-autobind": "^1.0.6",
-		"react-dom": "^18.2.0",
-		"react-json-pretty": "^2.2.0",
-		"react-redux": "^8.0.5",
-		"redux": "^4.2.1",
-		"redux-thunk": "^2.4.2",
-		"styled-components": "^5.3.11",
-		"uuid": "^9.0.0"
-	},
-	"devDependencies": {
-		"@babel/core": "^7.22.1",
-		"@babel/plugin-proposal-decorators": "^7.22.3",
-		"@babel/plugin-proposal-export-namespace-from": "^7.18.9",
-		"@babel/plugin-proposal-function-bind": "^7.18.9",
-		"@babel/plugin-transform-modules-commonjs": "^7.21.5",
-		"@babel/preset-env": "^7.22.4",
-		"@babel/preset-react": "^7.22.3",
-		"@babel/types": "^7.22.4",
-		"babel-loader": "^9.1.2",
-		"babelify": "^10.0.0",
-		"css-loader": "^6.8.1",
-		"file-loader": "^6.2.0",
-		"install": "^0.13.0",
-		"json-loader": "^0.5.7",
-		"less-loader": "^11.1.1",
-		"node-sass": "^9.0.0",
-		"npm": "^9.6.7",
-		"sass-loader": "^13.3.1",
-		"style-loader": "^3.3.3",
-		"url-loader": "^4.1.1",
-		"webpack": "^5.84.1",
-		"webpack-dev-middleware": "^6.1.1",
-		"webpack-hot-middleware": "^2.25.3"
-	}
+  "name": "botmon",
+  "version": "2.2.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "start": "leo-cli test .",
+    "old_start": "leo-cli test .",
+    "test": "mocha --require ./test/bootstrap.js --recursive -w",
+    "debug": "node-debug leo test ."
+  },
+  "config": {
+    "leo": {
+      "type": "microservice",
+      "subtype": "react",
+      "role": "ApiRole",
+      "name": "Leo_Botmon",
+      "display-name": "Bot Monitoring",
+      "root": "botmon",
+      "runtime": "nodejs16.x",
+      "parallelCompile": 3,
+      "stacks": [
+        "leosdk",
+        "leoauth"
+      ],
+      "aws": {
+        "cognito_region": {
+          "ref": "micro.cognito.region"
+        },
+        "cognito_id": {
+          "ref": "micro.cognito.id"
+        }
+      },
+      "micro": {
+        "version": {
+          "ref": "micro.version"
+        }
+      },
+      "static": {
+        "s3": {
+          "ref": "micro.s3.id"
+        },
+        "cloudfront": {
+          "ref": "micro.cloudfront.domain"
+        }
+      },
+      "regions": [
+        "us-west-2",
+        "us-east-1"
+      ],
+      "showPagesEnv": {
+        "Resources": {
+          "CognitoId": "${CognitoId}",
+          "Region": "${AWS::Region}",
+          "CustomJS": "${CustomJS}"
+        },
+        "Logins": "${Logins}"
+      },
+      "3rdParty": true,
+      "excludeProfiles": true
+    },
+    "console": {
+      "navigation": [
+        {
+          "title": "Botmon",
+          "href": "/botmon",
+          "icon": ""
+        }
+      ]
+    }
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@babel/plugin-transform-react-jsx": "^7.22.3",
+    "@emotion/react": "^11.11.0",
+    "@emotion/styled": "^11.11.0",
+    "@mui/material": "^5.13.3",
+    "@uiw/react-codemirror": "^4.20.2",
+    "child_process": "^1.0.2",
+    "csv-parse": "^5.4.0",
+    "d3-jetpack": "^2.2.1",
+    "deep-diff": "^1.0.2",
+    "elasticsearch": "^16.7.3",
+    "extend": "^3.0.2",
+    "html5sortable": "^0.13.3",
+    "jsonpath": "^1.1.1",
+    "later": "^1.2.0",
+    "leo-auth": "^3.0.1",
+    "leo-sdk": "^6.0.16",
+    "mocha": "^10.2.0",
+    "moment": "^2.29.4",
+    "moment-round": "^1.0.1",
+    "moment-timezone": "^0.5.43",
+    "numeral": "^2.0.6",
+    "q": "^1.5.1",
+    "react": "^18.0.0",
+    "react-autobind": "^1.0.6",
+    "react-dom": "^18.0.0",
+    "react-json-pretty": "^2.2.0",
+    "react-redux": "^8.0.5",
+    "redux": "^4.2.1",
+    "redux-thunk": "^2.4.2",
+    "styled-components": "^5.3.11",
+    "uuid": "^9.0.0",
+    "react-admin": "^4.0.0",
+    "ra-data-json-server": "^4.0.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.22.1",
+    "@babel/plugin-proposal-decorators": "^7.22.3",
+    "@babel/plugin-proposal-export-namespace-from": "^7.18.9",
+    "@babel/plugin-proposal-function-bind": "^7.18.9",
+    "@babel/plugin-transform-modules-commonjs": "^7.21.5",
+    "@babel/preset-env": "^7.22.4",
+    "@babel/preset-react": "^7.22.3",
+    "@babel/types": "^7.22.4",
+    "babel-loader": "^9.1.2",
+    "babelify": "^10.0.0",
+    "css-loader": "^6.8.1",
+    "file-loader": "^6.2.0",
+    "install": "^0.13.0",
+    "json-loader": "^0.5.7",
+    "less-loader": "^11.1.1",
+    "node-sass": "^9.0.0",
+    "npm": "^9.6.7",
+    "sass-loader": "^13.3.1",
+    "style-loader": "^3.3.3",
+    "url-loader": "^4.1.1",
+    "webpack": "^5.84.1",
+    "webpack-dev-middleware": "^6.1.1",
+    "webpack-hot-middleware": "^2.25.3"
+  }
 }

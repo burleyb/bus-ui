@@ -1,240 +1,201 @@
-import React, {Component} from 'react';
+import React, { useState, useEffect } from 'react';
 import NodeSearch from '../elements/nodeSearch.jsx';
-import refUtil from "leo-sdk/lib/reference.js";
+import refUtil from 'leo-sdk/lib/reference.js';
+import moment from 'moment';
+import $ from 'jquery';
 
-export default class ResetStream extends React.Component {
+const ResetStream = ({ source, forceRun, links, nodeId, label, onClose }) => {
+  const [checkpoint, setCheckpoint] = useState('z' + moment.utc().format('/YYYY/MM/DD/HH/mm/ss/'));
+  const [advanced, setAdvanced] = useState(false);
+  const [openCustom, setOpenCustom] = useState(false);
+  const [checked, setChecked] = useState(true);
+  const [selected, setSelected] = useState(refUtil.refId(source !== false ? source : Object.keys(links)[0]).id);
+  const [selected2, setSelected2] = useState('');
+  const [shortcut, setShortcut] = useState('fromNow');
 
-	constructor(props) {
-		super(props);
-
-        let lambdaSource = {};
-        if(props.source) {
-            lambdaSource[props.source] = props.source;
+  useEffect(() => {
+    const modal = LeoKit.modal($('.checkpointDialog'), {
+      Save: (formData) => {
+        let sourceKey = formData['checkpoint-shortcut'][0];
+        if (selected === 'selectOther') {
+          sourceKey = selected2;
         }
+        const data = {
+          id: nodeId,
+          checkpoint: {
+            [sourceKey]: formData.checkpoint,
+          },
+        };
+        if (forceRun) {
+          data.executeNow = true;
+        }
+        $.post(window.api + '/cron/save', JSON.stringify(data), () => {
+          window.messageLogNotify(`Checkpoint changed on bot ${label || ''}`);
+          window.fetchData();
+        }).fail((result) => {
+          window.messageLogModal(`Failed changing checkpoint on bot ${label || ''}`, 'error', result);
+        });
+      },
+      cancel: false,
+    }, 'Change Checkpoint', onClose);
 
-		this.state = {
-			checkpoint: 'z' + moment.utc().format('/YYYY/MM/DD/HH/mm/ss/'),
-			forceRun: props.forceRun,
-			advanced: false,
-			openCustom: false,
-			checked: true,
-            links: Object.assign({}, refUtil.refId(lambdaSource).id, props.links),
-            selected: refUtil.refId(props.source !== false ? props.source : Object.keys(props.links)[0]).id
-		}
-	}
+    return () => {
+      LeoKit.closeModal(modal);
+    };
+  }, [forceRun, nodeId, label, selected, selected2, onClose]);
 
-
-	componentDidMount() {
-
-		LeoKit.modal($('.checkpointDialog'), {
-				Save: (formData) => {
-					let source = formData['checkpoint-shortcut'][0];
-                    if(this.state.selected === 'selectOther') {
-                        source = this.state.selected2
-					}
-
-					let data = {
-						id: this.props.nodeId,
-						checkpoint: {}
-					};
-                    data.checkpoint[source] = formData.checkpoint;
-
-                    if (this.props.forceRun) {
-						data.executeNow = true
-					}
-					$.post(window.api + '/cron/save', JSON.stringify(data), (response) => {
-						window.messageLogNotify('Checkpoint changed on bot ' + (this.props.label || ''))
-						window.fetchData()
-					}).fail((result) => {
-						window.messageLogModal('Failed changing checkpoint on bot ' + (this.props.label || ''), 'error', result)
-					})
-				},
-				cancel: false,
-			},
-			'Change Checkpoint',
-			this.props.onClose
-		)
-
-	}
-
-
-	setCheckpoint(event) {
-
-		if ($('#CheckpointDialogDateTimePicker').data('DateTimePicker')) {
-			$('#CheckpointDialogDateTimePicker').data('DateTimePicker').hide()
-		}
-
-		var shortcut = event.currentTarget.value;
-
-		switch(shortcut) {
-
-			case 'lastRead':
-				this.setState({ checkpoint: '', shortcut: shortcut, openCustom: false });
-			break;
-
-			case 'fromNow':
-				this.setState({ checkpoint: 'z' + moment.utc().format('/YYYY/MM/DD/HH/mm/ss/'), shortcut: shortcut, openCustom: false });
-			break;
-
-			case 'beginning':
-				this.setState({ checkpoint: 'z/', shortcut: shortcut, openCustom: false });
-			break;
-
-			case 'custom':
-                this.setState({ openCustom: true, shortcut:shortcut });
-                this.setCustom('now', false);
-			break;
-
-			case 'date':
-				this.setCustom('now', true);
-			break;
-		}
-
-	}
-
-
-	setCustom(event, openDatePicker) {
-
-		if (event === 'now') {
-			var checkpoint = 'z' + moment.utc().format('/YYYY/MM/DD/HH/mm/ss/')
-		} else {
-			var checkpoint = event.currentTarget.value
-		}
-
-		if(openDatePicker) {
-            this.setState({ checkpoint: checkpoint, shortcut: 'date', openCustom: false });
-
-            if (!$('#CheckpointDialogDateTimePicker').data('DateTimePicker')) {
-                $('#CheckpointDialogDateTimePicker').datetimepicker({
-                    inline: true,
-                    sideBySide: true,
-                    maxDate: moment().endOf('d'),
-                    defaultDate: moment()
-                })
-                $('#CheckpointDialogDateTimePicker').on('dp.change', (event) => {
-                    if (this.state.checked) {
-                        this.setState({ checkpoint: 'z' + event.date.utc().format('/YYYY/MM/DD/HH/mm/ss/'), shortcut: 'date' })
-                    } else {
-                        this.setState({ checkpoint: 'z' + event.date.format('/YYYY/MM/DD/HH/mm/ss/'), shortcut: 'date' })
-                    }
-                })
-            } else {
-                $('#CheckpointDialogDateTimePicker').data('DateTimePicker').show()
-            }
-		} else {
-            this.setState({ checkpoint: checkpoint });
-		}
-	}
-
-    openMoreOptions(event) {
-        let selected = event.currentTarget.value;
-
-        if(selected === 'selectOther') {
-        	this.setState({
-                advanced: true,
-                selected: selected
-			});
-		} else {
-            this.setState({
-                advanced: false,
-                selected: selected
-            });
-		}
+  const handleSetCheckpoint = (event) => {
+    const value = event.currentTarget.value;
+    switch (value) {
+      case 'lastRead':
+        setCheckpoint('');
+        setShortcut(value);
+        setOpenCustom(false);
+        break;
+      case 'fromNow':
+        setCheckpoint('z' + moment.utc().format('/YYYY/MM/DD/HH/mm/ss/'));
+        setShortcut(value);
+        setOpenCustom(false);
+        break;
+      case 'beginning':
+        setCheckpoint('z/');
+        setShortcut(value);
+        setOpenCustom(false);
+        break;
+      case 'custom':
+        setShortcut(value);
+        setOpenCustom(true);
+        handleSetCustom('now', false);
+        break;
+      case 'date':
+        handleSetCustom('now', true);
+        break;
+      default:
+        break;
     }
+  };
 
-    useUTC() {
-		let checked = !this.state.checked;
-        let dp = $('#CheckpointDialogDateTimePicker').data().date;
-        let checkpoint;
-        if (checked) {
-			checkpoint = 'z' + moment(dp).utc().format('/YYYY/MM/DD/HH/mm/ss/')
-		} else {
-            checkpoint = 'z' + moment(dp).format('/YYYY/MM/DD/HH/mm/ss/')
-        }
-		this.setState({checked: checked, checkpoint: checkpoint});
-	}
+  const handleSetCustom = (event, openDatePicker) => {
+    let newCheckpoint = event === 'now' ? 'z' + moment.utc().format('/YYYY/MM/DD/HH/mm/ss/') : event.currentTarget.value;
+    if (openDatePicker) {
+      setCheckpoint(newCheckpoint);
+      setShortcut('date');
+      setOpenCustom(false);
 
-    setEventStream(stream) {
-        if (stream) {
-            if (typeof stream === 'object') {
-                stream = stream.label
-            }
-            this.setState({ selected2: stream })
-        }
+      if (!$('#CheckpointDialogDateTimePicker').data('DateTimePicker')) {
+        $('#CheckpointDialogDateTimePicker').datetimepicker({
+          inline: true,
+          sideBySide: true,
+          maxDate: moment().endOf('d'),
+          defaultDate: moment(),
+        }).on('dp.change', (e) => {
+          if (checked) {
+            setCheckpoint('z' + e.date.utc().format('/YYYY/MM/DD/HH/mm/ss/'));
+          } else {
+            setCheckpoint('z' + e.date.format('/YYYY/MM/DD/HH/mm/ss/'));
+          }
+        });
+      } else {
+        $('#CheckpointDialogDateTimePicker').data('DateTimePicker').show();
+      }
+    } else {
+      setCheckpoint(newCheckpoint);
     }
+  };
 
+  const handleOpenMoreOptions = (event) => {
+    const value = event.currentTarget.value;
+    if (value === 'selectOther') {
+      setAdvanced(true);
+      setSelected(value);
+    } else {
+      setAdvanced(false);
+      setSelected(value);
+    }
+  };
 
-	render() {
-		let nodeSearch = (
-			<div className="theme-form-row">
-				<label>Other Source</label>
-				<NodeSearch key="0" name="sources" value={''} className="display-inline-block" nodeType={'queues|systems'} onChange={this.setEventStream.bind(this)} />
-			</div>
-		);
+  const handleUseUTC = () => {
+    const isChecked = !checked;
+    const dp = $('#CheckpointDialogDateTimePicker').data().date;
+    const newCheckpoint = isChecked ? 'z' + moment(dp).utc().format('/YYYY/MM/DD/HH/mm/ss/') : 'z' + moment(dp).format('/YYYY/MM/DD/HH/mm/ss/');
+    setChecked(isChecked);
+    setCheckpoint(newCheckpoint);
+  };
 
-		let customCheckpoint = this.state.openCustom ? {} : {display:'none'};
+  const handleSetEventStream = (stream) => {
+    if (stream) {
+      const streamValue = typeof stream === 'object' ? stream.label : stream;
+      setSelected2(streamValue);
+    }
+  };
 
-		return (<div>
-			<div className="checkpointDialog">
-				<div className="resetBody">
-					<p>This operation will change the checkpoint of the bot.  Please be sure you know what you are doing.</p>
-					<div className="theme-form-row">
-						<label>Source</label>
-						<select name="checkpoint-shortcut" value={this.state.selected || ''} onChange={this.openMoreOptions.bind(this)}>
-                            {
-                                Object.keys(this.state.links).map((key, index) => {
-                                    return <option key={index} value={key}>{key}</option>
-                                })
-                            }
-							<option value="selectOther">select other...</option>
-						</select>
-					</div>
+  const nodeSearch = (
+    <div className="theme-form-row">
+      <label>Other Source</label>
+      <NodeSearch
+        key="0"
+        name="sources"
+        value={''}
+        className="display-inline-block"
+        nodeType="queues|systems"
+        onChange={handleSetEventStream}
+      />
+    </div>
+  );
 
-					{
-						this.state.advanced
-							? nodeSearch
-							: false
-					}
-					<div className="theme-form-row">
-						<label></label>
-						<div>
-							<select name="checkpoint-shortcut" onChange={this.setCheckpoint.bind(this)} value={this.state.shortcut || ''}>
-								<option value="fromNow">Start from Now</option>
-								<option value="beginning">From the Beginning of Time</option>
-								<option value="date">Choose Date</option>
-								<option value="custom">Custom</option>
-							</select>
-                            {
-                                this.state.shortcut === 'date' ?
-									<div style={{paddingBottom: '10px'}}>
-										<label style={{paddingRight: '10px'}}> Use UTC</label>
-										<input type="checkbox" checked={this.state.checked} onChange={this.useUTC.bind(this)} />
-									</div>
-                                    : false
-                            }
+  const customCheckpointStyle = openCustom ? {} : { display: 'none' };
 
-							<div className="input-group" id="CheckpointDialogDateTimePicker">
-								<input type="hidden" name="customTimeFrame" />
-							</div>
-						</div>
-					</div>
+  return (
+    <div>
+      <div className="checkpointDialog">
+        <div className="resetBody">
+          <p>This operation will change the checkpoint of the bot. Please be sure you know what you are doing.</p>
+          <div className="theme-form-row">
+            <label>Source</label>
+            <select name="checkpoint-shortcut" value={selected} onChange={handleOpenMoreOptions}>
+              {Object.keys(links).map((key, index) => (
+                <option key={index} value={key}>{key}</option>
+              ))}
+              <option value="selectOther">select other...</option>
+            </select>
+          </div>
+          {advanced && nodeSearch}
+          <div className="theme-form-row">
+            <label></label>
+            <div>
+              <select name="checkpoint-shortcut" onChange={handleSetCheckpoint} value={shortcut}>
+                <option value="fromNow">Start from Now</option>
+                <option value="beginning">From the Beginning of Time</option>
+                <option value="date">Choose Date</option>
+                <option value="custom">Custom</option>
+              </select>
+              {shortcut === 'date' && (
+                <div style={{ paddingBottom: '10px' }}>
+                  <label style={{ paddingRight: '10px' }}> Use UTC</label>
+                  <input type="checkbox" checked={checked} onChange={handleUseUTC} />
+                </div>
+              )}
+              <div className="input-group" id="CheckpointDialogDateTimePicker">
+                <input type="hidden" name="customTimeFrame" />
+              </div>
+            </div>
+          </div>
+          <div className="theme-form-row" style={customCheckpointStyle}>
+            <label>Resume Checkpoint</label>
+            <input
+              className="fixed-size"
+              name="checkpoint"
+              type="text"
+              value={checkpoint}
+              onChange={handleSetCustom}
+            />
+            <span>UTC</span>
+          </div>
+          {forceRun && <div className="forceWarning">Will be Force Run once Checkpoint is Saved</div>}
+        </div>
+      </div>
+    </div>
+  );
+};
 
-					<div className="theme-form-row" style={customCheckpoint}>
-						<label style={customCheckpoint}>Resume Checkpoint</label>
-						<input className="fixed-size" name="checkpoint" type="text" value={this.state.checkpoint || ''} onChange={this.setCustom.bind(this)} />
-						<span>UTC</span>
-					</div>
-
-
-					{
-						this.props.forceRun
-						? <div className="forceWarning">Will be Force Run once Checkpoint is Saved</div>
-						: false
-					}
-				</div>
-			</div>
-		</div>)
-
-	}
-
-}
+export default ResetStream;

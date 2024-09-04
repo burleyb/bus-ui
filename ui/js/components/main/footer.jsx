@@ -1,29 +1,12 @@
-import React, {Component} from 'react'
-import { connect } from 'react-redux'
+import React from 'react';
+import DetailsPane from './detailsPane.jsx';
 
-import DetailsPane from './detailsPane.jsx'
+const Footer = ({ userSettings }) => {
+    return (
+        <footer className="details-pane">
+            {userSettings.details ? <DetailsPane /> : null}
+        </footer>
+    );
+};
 
-
-class Footer extends React.Component {
-	constructor(props) {
-		super(props)
-
-		this.state = {}
-	}
-
-
-	render() {
-		return (
-			<footer className="details-pane">
-				{
-					this.props.userSettings.details
-					? <DetailsPane />
-					: false
-				}
-			</footer>
-		)
-	}
-
-}
-
-export default connect(store => store)(Footer)
+export default Footer;

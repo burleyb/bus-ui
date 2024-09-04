@@ -1,34 +1,33 @@
-import React from 'react';
-import {observer, inject} from 'mobx-react';
+import React, { useContext } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
+import { useDataStore } from '../../../stores/dataStore';  // Assuming you have a data store context set up
 
-@inject('dataStore')
-@observer
-export default class Nodejs extends React.Component {
+const Nodejs = () => {
+    const { sdkConfig } = useDataStore(); // Assuming sdkConfig comes from the dataStore
 
-    constructor(props) {
-        super(props);
-        this.dataStore = this.props.dataStore;
-    }
+    let options = {
+        lineNumbers: true,
+    };
 
-    render() {
-        let options = {
-            lineNumbers: true,
-        };
-        let code = `var leo = require("leo-sdk")({\n\tkinesis: "${this.dataStore.sdkConfig.kinesis}",\n\tfirehose: "${this.dataStore.sdkConfig.firehose}",\n\ts3: "${this.dataStore.sdkConfig.s3}",\n\tregion: "${this.dataStore.sdkConfig.region}"\n});`
+    let code = `var leo = require("leo-sdk")({
+        kinesis: "${sdkConfig.kinesis}",
+        firehose: "${sdkConfig.firehose}",
+        s3: "${sdkConfig.s3}",
+        region: "${sdkConfig.region}"
+    });`;
 
-        return (
-            !code
-                ? <div className="theme-spinner-large" />
-                : (
-                    <div>
-                        <h1>NodeJS SDK</h1>
-                        <div style={{width: '1000px'}}>
-                            <CodeMirror value={code} options={options} />
-                        </div>
+    return (
+        !code
+            ? <div className="theme-spinner-large" />
+            : (
+                <div>
+                    <h1>NodeJS SDK</h1>
+                    <div style={{ width: '1000px' }}>
+                        <CodeMirror value={code} options={options} />
                     </div>
-                )
-        )
+                </div>
+            )
+    );
+};
 
-    }
-}
+export default Nodejs;

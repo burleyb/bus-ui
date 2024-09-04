@@ -1,120 +1,92 @@
-import React, {Component} from 'react'
-import {inject, observer} from 'mobx-react'
-let refUtil = require("leo-sdk/lib/reference.js");
+import React, { useState, useEffect } from 'react';
+import refUtil from 'leo-sdk/lib/reference.js';
+import moment from 'moment';
+import $ from 'jquery'; // Assuming jQuery is used globally in your app.
 
-@inject('dataStore')
-@observer
-class EventReplay extends React.Component {
+const EventReplay = ({ detail, onClose, dataStore }) => {
+  const [bots, setBots] = useState({});
+  let currentRequest = null;
 
-	constructor(props) {
-		super(props);
-		this.dataStore = this.props.dataStore;
+  useEffect(() => {
+    // Similar to componentWillMount
+    const rangeCount = window.timePeriod.interval.split('_');
+    currentRequest = $.get(
+      `api/dashboard/${encodeURIComponent(detail.event)}?range=${rangeCount[0]}&count=${rangeCount[1] || 1}&timestamp=${encodeURIComponent(moment().format())}`,
+      (result) => {
+        setBots(result.bots.read);
+      }
+    ).fail((result) => {
+      result.call = `api/dashboard/${encodeURIComponent(detail.event)}?range=${rangeCount[0]}&count=${rangeCount[1] || 1}&timestamp=${encodeURIComponent(moment().format())}`;
+      window.messageLogModal('Failure to get data', 'error', result);
+    });
 
-		this.state = {
-			bots: {}
-		}
-	}
+    // Clean up on unmount (componentWillUnmount)
+    return () => {
+      if (currentRequest) {
+        currentRequest.abort();
+      }
+    };
+  }, [detail.event]);
 
+  useEffect(() => {
+    // Equivalent to componentDidMount
+    LeoKit.modal(
+      $('.EventReplayDialog'),
+      {
+        Replay: (formData) => {
+          if (!formData.botId) {
+            window.messageModal('No bot to replay to', 'warning');
+            return false;
+          }
 
-	componentWillMount() {
+          LeoKit.confirm(`Replay bot "${dataStore.nodes[formData.botId].label}".`, () => {
+            let checkpoint = detail.eid;
+            checkpoint =
+              checkpoint.slice(-1) === '0'
+                ? checkpoint.slice(0, -1)
+                : checkpoint.slice(0, -1) + (checkpoint.slice(-1) - 1);
 
-		var range_count = window.timePeriod.interval.split('_')
-		this.currentRequest = $.get(`api/dashboard/${encodeURIComponent(this.props.detail.event)}?range=${range_count[0]}&count=${range_count[1] || 1}&timestamp=${encodeURIComponent(moment().format())}`, (result) => {
-			this.setState({ bots: result.bots.read })
-		}).fail((result) => {
-			result.call = `api/dashboard/${encodeURIComponent(this.props.detail.event)}?range=${range_count[0]}&count=${range_count[1] || 1}&timestamp=${encodeURIComponent(moment().format())}`
-			window.messageLogModal('Failure get data', 'error', result)
-		})
+            const id = refUtil.botRef(formData.botId).id;
 
+            const data = {
+              id: id,
+              checkpoint: { [`queue:${detail.event}`]: checkpoint },
+              executeNow: true,
+            };
 
-	}
+            $.post(`${window.api}/cron/save`, JSON.stringify(data), (response) => {
+              window.messageLogNotify(`Replay triggered for ${dataStore.nodes[formData.botId].label}`, 'info');
+            }).fail((result) => {
+              window.messageLogModal(`Failure triggering replay for ${dataStore.nodes[formData.botId].label}`, 'error', result);
+            });
+          });
+        },
+        cancel: false,
+      },
+      'Replay Event',
+      onClose
+    );
+  }, [dataStore, detail.eid, detail.event, onClose]);
 
+  return (
+    <div>
+      <div className="EventReplayDialog theme-form">
+        <div>
+          <label>Select Bot</label>
+          <select name="botId">
+            {Object.keys(bots).map((botId) => {
+              const bot = dataStore.nodes[botId] || bots[botId];
+              return !bot.archived ? (
+                <option key={botId} value={botId}>
+                  {bot.label}
+                </option>
+              ) : null;
+            })}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-	componentDidMount() {
-
-		LeoKit.modal($('.EventReplayDialog'),
-			{
-				Replay: (formData) => {
-
-					if (!formData.botId) {
-						window.messageModal('No bot to replay to', 'warning')
-						return false
-					}
-
-					LeoKit.confirm('Replay bot "' + this.dataStore.nodes[formData.botId].label + '".', () => {
-
-						let checkpoint = this.props.detail.eid;
-
-						if (checkpoint.slice(-1) == '0') {
-							checkpoint = checkpoint.slice(0, -1)
-						} else {
-							checkpoint = checkpoint.slice(0, -1) + (checkpoint.slice(-1) - 1)
-						}
-
-                        let id = refUtil.botRef(formData.botId).id;
-
-						let data = {
-							id: id,
-							checkpoint: {[`queue:${this.props.detail.event}`]: checkpoint},
-							executeNow: true
-						};
-
-						$.post(window.api + '/cron/save', JSON.stringify(data), (response) => {
-							window.messageLogNotify('Replay triggered for ' + this.dataStore.nodes[formData.botId].label, 'info')
-						}).fail((result) => {
-							window.messageLogModal('Failure triggering replay for ' + this.dataStore.nodes[formData.botId].label, 'error', result)
-						})
-
-					})
-
-				},
-				cancel: false
-			},
-			'Replay Event',
-			this.props.onClose
-		)
-
-	}
-
-
-	componentWillUnmount() {
-		if (this.currentRequest) {
-			this.currentRequest.abort()
-		}
-	}
-
-
-	render() {
-
-		return (<div>
-			<div className="EventReplayDialog theme-form">
-				{/*<div>
-					<label>Replay Single Event</label>
-					<input type="radio" name="events" value="1" />
-				</div>
-				<div>
-					<label>Replay all Events from this point on</label>
-					<input type="radio" name="events" value="${eventCount}" />
-				</div>*/}
-				<div>
-					<label>Select Bot</label>
-					<select name="botId">
-					{
-						Object.keys(this.state.bots).map((botId) => {
-							var bot = this.dataStore.nodes[botId] || this.state.bots[botId]
-							return (!bot.archived
-								? (<option key={botId} value={botId}>{bot.label}</option>)
-								: false
-							)
-						})
-					}
-					</select>
-				</div>
-			</div>
-		</div>)
-
-	}
-
-}
-
-export default EventReplay
+export default EventReplay;

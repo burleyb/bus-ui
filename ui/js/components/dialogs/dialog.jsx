@@ -1,33 +1,23 @@
-import React, {Component} from 'react';
+import React, { useEffect } from 'react';
 
-class Content extends React.Component {
-	constructor(props) {
-		super(props)
-		this.state = {}
-	}
+const Content = ({ buttons = { close: false }, title, onClose, children }) => {
+  useEffect(() => {
+    // Equivalent to componentDidMount
+    LeoKit.modal($('#dialogTag'), buttons, title, onClose);
 
+    // Clean up when the component is unmounted
+    return () => {
+      LeoKit.closeModal(); // Assuming this closes the modal on unmount.
+    };
+  }, [buttons, title, onClose]);
 
-	componentDidMount() {
+  return (
+    <div>
+      <div id="dialogTag">
+        {children}
+      </div>
+    </div>
+  );
+};
 
-		LeoKit.modal($('#dialogTag'),
-			this.props.buttons || { close: false },
-			this.props.title,
-			this.props.onClose
-		)
-
-	}
-
-	render() {
-
-		return (<div>
-			<div id="dialogTag">
-				{this.props.children}
-			</div>
-		</div>)
-
-	}
-
-}
-
-
-export default Content
+export default Content;

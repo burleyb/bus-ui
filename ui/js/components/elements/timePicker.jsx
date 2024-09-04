@@ -1,98 +1,62 @@
-import React, {Component} from 'react';
+import React, { useState, useEffect } from 'react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+import moment from 'moment';
 
+const TimePicker = ({ active, timeFrames = ['15m', '1hr', '6hr', '1d', '1w'], customTimeFrame, onClick, datePicker, now, onRefresh }) => {
+    const [selectedDate, setSelectedDate] = useState(customTimeFrame ? moment(customTimeFrame).toDate() : new Date());
 
-export default class TimePicker extends React.Component {
+    useEffect(() => {
+        if (customTimeFrame) {
+            setSelectedDate(moment(customTimeFrame).toDate());
+        }
+    }, [customTimeFrame]);
 
-	constructor(props) {
-		super(props)
-		this.state = {}
-	}
+    const handleDateChange = (date) => {
+        setSelectedDate(date);
+        if (datePicker) {
+            datePicker(date);
+        }
+    };
 
+    const handleTimeFrameClick = (timePeriod) => {
+        const formattedTimePeriod = timePeriod.replace('hr', 'h');
+        if (onClick) {
+            onClick(formattedTimePeriod);
+        }
+    };
 
-	componentDidMount() {
+    return (
+        <div className={'theme-time-picker' + (datePicker ? ' has-date-picker' : '')}>
+            <div className="wrapper">
+                {timeFrames.map((timePeriod) => (
+                    <span
+                        key={timePeriod}
+                        className={'time' + (active === timePeriod.replace('h', 'hr') ? ' active' : '')}
+                        onClick={() => handleTimeFrameClick(timePeriod)}
+                    >
+                        {timePeriod}
+                    </span>
+                ))}
+            </div>
 
-		//https://eonasdan.github.io/bootstrap-datetimepicker/
-		$('#dateTimePicker').datetimepicker({
-			sideBySide: true,
-			maxDate: moment().endOf('d'),
-			defaultDate: this.props.customTimeFrame || moment()
-		})
+            {datePicker && (
+                <div className="input-group time position-relative">
+                    <DatePicker
+                        selected={selectedDate}
+                        onChange={handleDateChange}
+                        maxDate={new Date()}
+                        showTimeSelect
+                        dateFormat="MMMM d, yyyy h:mm aa"
+                    />
+                </div>
+            )}
 
-	}
+            {now && <div>Now</div>}
 
+            {onRefresh && <i className="icon-refresh" onClick={onRefresh} />}
+        </div>
+    );
+};
 
-	componentDidUpdate(props, state) {
-
-		if (props.customTimeFrame !== this.props.customTimeFrame) {
-			$('#dateTimePicker').data('DateTimePicker') && $('#dateTimePicker').data('DateTimePicker').destroy()
-
-			$('#dateTimePicker').datetimepicker({
-				sideBySide: true,
-				maxDate: moment().endOf('d'),
-				date: moment(this.props.customTimeFrame)
-			})
-		}
-
-	}
-
-
-	componentWillUnmount() {
-
-		$('#dateTimePicker').data('DateTimePicker') && $('#dateTimePicker').data('DateTimePicker').destroy()
-
-	}
-
-
-	onClick(timePeriod) {
-		timePeriod = timePeriod.replace('hr', 'h')
-		this.props.onClick && this.props.onClick(timePeriod)
-	}
-
-
-	customTimeFrame() {
-		$('#dateTimePicker').data("DateTimePicker").hide()
-		this.props.datePicker && this.props.datePicker($('#dateTimePicker [name=customTimeFrame]').val() || moment())
-	}
-
-
-	render() {
-
-		var active = (this.props.active || '').replace('h', 'hr')
-
-		return (<div className={'theme-time-picker' + (this.props.datePicker ? ' has-date-picker' : '')}>
-
-			<div className="wrapper">
-				{
-					( this.props.timeFrames || ['15m', '1hr', '6hr', '1d', '1w'] ).map((timePeriod) => {
-						return (<span key={timePeriod} className={'time' + (active === timePeriod ? ' active' : '')} onClick={this.onClick.bind(this, timePeriod)}>{timePeriod}</span>)
-					})
-				}
-			</div>
-
-			{
-				this.props.datePicker
-				? (<span className="input-group time position-relative" id="dateTimePicker">
-					<input type="hidden" name="customTimeFrame" value={this.props.customTimeFrame || ''} />
-					<i className={'icon-calendar-empty datepickerbutton ' + (active ? '' : ' active')} />
-					<div className="mask" onClick={this.customTimeFrame.bind(this)}></div>
-				</span>
-				)
-				: false
-			}
-
-			{
-				this.props.now
-				? <div>Now</div>
-				: false
-			}
-
-			{
-				this.props.onRefresh
-				? <i className="icon-refresh" onClick={this.props.onRefresh} />
-				: false
-			}
-
-		</div>)
-	}
-
-}
+export default TimePicker;

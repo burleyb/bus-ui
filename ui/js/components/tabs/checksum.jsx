@@ -1,282 +1,198 @@
-import React, { Component } from 'react'
-import {observer, inject } from 'mobx-react'
-import NodeIcon from '../elements/nodeIcon.jsx'
+import React, { useContext, useEffect, useState } from 'react';
+import NodeIcon from '../elements/nodeIcon.jsx';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { DataStoreContext } from '../../../stores/dataStore';  // Adjust the path to your dataStore context
 import _ from 'lodash';
-let refUtil = require("leo-sdk/lib/reference.js");
+import moment from 'moment';
 
-@inject('dataStore')
-@observer
-class Checksum extends React.Component {
+const Checksum = ({ nodeData }) => {
+    const { nodes, getChecksums, runChecksumNow, restartChecksum } = useContext(DataStoreContext);
+    const [checksums, setChecksums] = useState({});
+    const [sampleData, setSampleData] = useState({});
+    const systems = {};
 
-	systems = {};
-
-	constructor(props) {
-		super(props);
-		this.dataStore = this.props.dataStore;
-
-		for (let node in this.dataStore.nodes) {
-			if (this.dataStore.nodes[node].type === 'system') {
-				this.systems['s_' + this.dataStore.nodes[node].id] = this.dataStore.nodes[node].label;
-			}
-		}
-
-		this.state = {
-			checksums: {},
-			sampleData: {}
-		};
-	}
-
-
-	componentWillMount() {
-        if(!this.refreshRequest) {
-            this.dataStore.getChecksums(this.props.nodeData, this.dataStore.nodes);
-            this.refreshRequest = setInterval(() => {this.dataStore.getChecksums(this.props.nodeData, this.dataStore.nodes)}, 1000 * 5);
+    // Map systems from nodes
+    Object.keys(nodes).forEach((node) => {
+        if (nodes[node].type === 'system') {
+            systems['s_' + nodes[node].id] = nodes[node].label;
         }
-	}
+    });
 
+    const { data: checksumData } = useQuery(
+        ['checksums', nodeData.id],
+        () => getChecksums(nodeData, nodes),
+        {
+            refetchInterval: 5000,
+            onSuccess: (data) => {
+                setChecksums(data);
+            },
+        }
+    );
 
-	componentWillUnmount() {
-		clearInterval(this.refreshRequest);
-	}
+    const runNowMutation = useMutation((botId) => runChecksumNow(botId), {
+        onSuccess: (botId) => {
+            window.messageLogNotify(`Checksum run triggered on ${nodes[botId].label}`);
+        },
+        onError: (error, botId) => {
+            window.messageLogModal(`Failure triggering checksum run on ${nodes[botId].label}`, 'error', error);
+        },
+    });
 
+    const restartNowMutation = useMutation((botId) => restartChecksum(botId), {
+        onSuccess: (botId) => {
+            window.messageLogNotify(`Checksum restart triggered on ${nodes[botId].label}`);
+        },
+        onError: (error, botId) => {
+            window.messageLogModal(`Failure triggering checksum restart on ${nodes[botId].label}`, 'error', error);
+        },
+    });
 
-	runNow(botId) {
-		$.post(window.api + '/cron/save', JSON.stringify({ id: botId, executeNow: true }), (response) => {
-            this.dataStore.runNow = botId;
-			window.messageLogNotify('Checksum run triggered on ' + this.dataStore.nodes[botId].label)
-		}).fail((result) => {
-			window.messageLogModal('Failure triggering checksum run on ' + this.dataStore.nodes[botId].label, 'error', result)
-		})
-	}
-
-
-	restartNow(botId) {
-		$.post(window.api + '/cron/save', JSON.stringify({ id: botId, executeNow: true, checksumReset: true }), (response) => {
-            this.dataStore.runNow = false;
-            window.messageLogNotify('Checksum restart triggered on ' + this.dataStore.nodes[botId].label);
-		}).fail((result) => {
-			window.messageLogModal('Failure triggering checksum restart on ' + this.dataStore.nodes[botId].label, 'error', result)
-		})
-	}
-
-
-
-	showSampleData(columnName, botId) {
-		let data = this.dataStore.checksums[botId].sample[columnName];
-			return (<div>
-				{
-					data.length
-					? data.map((data, ndex) => {
-						return (<div key={ndex}>
-							<div>ID: {data.id || data}</div>
-
-							{columnName === 'incorrect' ? (
+    const showSampleData = (columnName, botId) => {
+        const data = checksums[botId]?.sample[columnName] || [];
+        return (
+            <div>
+                {data.length > 0 ? (
+                    data.map((item, ndex) => (
+                        <div key={ndex}>
+                            <div>ID: {item.id || item}</div>
+                            {columnName === 'incorrect' && item.diff ? (
                                 <table>
-								<thead>
-									<tr>
-										<th>column</th>
-										{
-											data.diff && Object.keys(data.diff).length > 0
-											? Object.keys(data.diff).map((diffId, index) => {
-												if (index > 0) {
-													return false
-												}
-												return Object.keys(data.diff[diffId]).map((systemId) => {
-													return (<th key={systemId}>{systemId}</th>)
-												})
-											})
-											: false
-										}
-									</tr>
-								</thead>
-								<tbody>
-									{
-										data.diff && Object.keys(data.diff).length > 0
-										? Object.keys(data.diff).map((diffId) => {
-											return (<tr key={diffId}>
-												<td>{diffId}</td>
-												{
-													Object.keys(data.diff[diffId]).map((systemId) => {
-														return (<td key={systemId}>{data.diff[diffId][systemId] === null ? 'NULL' : data.diff[diffId][systemId]}</td>)
-													})
-												}
-											</tr>)
-										})
-										: (<tr><td>No differences</td></tr>)
-									}
-								</tbody>
-							</table>)
-								: ''}
-						</div>)
-					})
-					: (<div>No differences</div>)
-				}
-			</div>)
-	}
+                                    <thead>
+                                        <tr>
+                                            <th>column</th>
+                                            {Object.keys(item.diff).map((diffId, index) => (
+                                                Object.keys(item.diff[diffId]).map((systemId) => (
+                                                    <th key={systemId}>{systemId}</th>
+                                                ))
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {Object.keys(item.diff).map((diffId) => (
+                                            <tr key={diffId}>
+                                                <td>{diffId}</td>
+                                                {Object.keys(item.diff[diffId]).map((systemId) => (
+                                                    <td key={systemId}>
+                                                        {item.diff[diffId][systemId] === null ? 'NULL' : item.diff[diffId][systemId]}
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : null}
+                        </div>
+                    ))
+                ) : (
+                    <div>No differences</div>
+                )}
+            </div>
+        );
+    };
 
-	render() {
+    return (
+        <div className="height-1-1 flex-column">
+            <div className="theme-table-fixed-header height-1-1">
+                <table className="width-1-1">
+                    <thead>
+                        <tr>
+                            {nodeData.type === 'bot' ? null : <th>Sync'd System</th>}
+                            <th className="width-1-3">Status</th>
+                            <th>Last Run</th>
+                            <th>Correct</th>
+                            <th>Incorrect</th>
+                            <th>Missing</th>
+                            <th>Extra</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {Object.keys(checksums).sort((a, b) => checksums[a].label.localeCompare(checksums[b].label)).map((checksumId, index) => {
+                            const checksum = checksums[checksumId];
+                            const system = nodes[checksum.system] || {};
+                            const startTime = moment(checksum.startTime);
+                            const startTimeFormatted = startTime.calendar(null, {
+                                sameDay: 'h:mm a [Today]',
+                                lastDay: 'h:mm a [Yesterday]',
+                                sameElse: 'h:mm a MM-DD-YYYY',
+                            });
 
-		return (<div className="height-1-1 flex-column">
-
-			<div className="theme-table-fixed-header height-1-1">
-				<table className="width-1-1">
-					<thead>
-						<tr>
-							{this.props.nodeData.type === 'bot' ? false : <th>Sync'd System</th>}
-							<th className="width-1-3">Status</th>
-							<th>Last Run</th>
-							<th>Correct</th>
-							<th>Incorrect</th>
-							<th>Missing</th>
-							<th>Extra</th>
-							<th>Action</th>
-						</tr>
-					</thead>
-					<tbody>
-						{
-							Object.keys(this.dataStore.checksums).sort((a, b) => {
-								return this.dataStore.checksums[a].label.localeCompare(this.dataStore.checksums[b].label)
-							}).map((checksumId, index) => {
-
-								let checksum = this.dataStore.checksums[checksumId];
-
-                                let system = (this.dataStore.nodes[checksum.system] || {});
-
-                                let startTime = moment(checksum.startTime)
-								,   startTimeFormatted = startTime.calendar(null, {
-										sameDay: 'h:mm a [Today]',
-										nextDay: 'h:mm a MM-DD-YYYY',
-										nextWeek: 'h:mm a MM-DD-YYYY',
-										lastDay: 'h:mm a [Yesterday]',
-										lastWeek: 'h:mm a MM-DD-YYYY',
-										sameElse: 'h:mm a MM-DD-YYYY'
-									});
-
-								return (<tr key={index}>
-                                    {this.props.nodeData.type === 'bot' ? false :
-										<td>
-											<a className="theme-link flex-row flex-wrap" onClick={() => {
-                                                let bot = this.dataStore.nodes[checksum.bot_id];
+                            return (
+                                <tr key={index}>
+                                    {nodeData.type !== 'bot' && (
+                                        <td>
+                                            <a className="theme-link flex-row flex-wrap" onClick={() => {
+                                                const bot = nodes[checksum.bot_id];
                                                 window.subNodeSettings({
                                                     id: checksum.bot_id,
                                                     label: bot.label,
                                                     type: bot.type,
                                                     server_id: bot.id
-                                                }, true)
+                                                }, true);
                                             }}>
-												<NodeIcon className="theme-image-thumbnail margin-0-5" node={system}/>
-												<div className="display-inline-block overflow-hidden"
-													 style={{maxWidth: '10vw'}}>
+                                                <NodeIcon className="theme-image-thumbnail margin-0-5" node={system} />
+                                                <div className="display-inline-block overflow-hidden" style={{ maxWidth: '10vw' }}>
                                                     {checksum.label}
-													<small className="display-block">
-														System: {system.label || ''}</small>
-												</div>
-											</a>
-										</td>
-                                    }
-									<td className="width-1-3">
-										{
-											(() => {
-												switch(checksum.status) {
-													case 'running':
-														return (<div>
-															<span className="theme-color-success">{(checksum.status || '').capitalize()}: </span>
-															{
-																true
-																? (<div className="theme-progress-bar display-inline-block width-1-2">
-																	<span style={{ width: checksum.log.percent + '%' }}></span>
-																	<span>{checksum.log.percent}%</span>
-																</div>)
-																: <progress className="theme-progress width-1-2" value={checksum.log.percent} max="100"></progress>
-															}
-															<small className="display-block">
-																Correct: {(checksum.log.correct || {}).count || '-'},
-																Incorrect: {(checksum.log.incorrect || {}).count || '-'},
-																Missing: {(checksum.log.missing || {}).count || '-'},
-																Extra: {(checksum.log.extra || {}).count || '-'}
-															</small>
-														</div>)
-													break
+                                                    <small className="display-block">System: {system.label || ''}</small>
+                                                </div>
+                                            </a>
+                                        </td>
+                                    )}
+                                    <td className="width-1-3">
+                                        {checksum.status === 'running' ? (
+                                            <div>
+                                                <span className="theme-color-success">{checksum.status.capitalize()}: </span>
+                                                <div className="theme-progress-bar display-inline-block width-1-2">
+                                                    <span style={{ width: checksum.log.percent + '%' }}></span>
+                                                    <span>{checksum.log.percent}%</span>
+                                                </div>
+                                                <small className="display-block">
+                                                    Correct: {(checksum.log.correct || {}).count || '-'},
+                                                    Incorrect: {(checksum.log.incorrect || {}).count || '-'},
+                                                    Missing: {(checksum.log.missing || {}).count || '-'},
+                                                    Extra: {(checksum.log.extra || {}).count || '-'}
+                                                </small>
+                                            </div>
+                                        ) : checksum.status === 'error' ? (
+                                            <div>
+                                                <span className="theme-color-primary">{checksum.status.capitalize()}</span>
+                                                <small className="display-block">{checksum.statusReason || ''}&nbsp;</small>
+                                            </div>
+                                        ) : (
+                                            <div>
+                                                <span className="theme-color-primary">{checksum.status.capitalize()}</span>
+                                                <small className="display-block">&nbsp;</small>
+                                            </div>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {checksum.startTime ? startTime.fromNow() : 'never'}
+                                        <small className="display-block">{checksum.startTime ? startTimeFormatted : '-'}</small>
+                                        <small className="display-block">Duration: {moment.duration((checksum.endTime || moment.now()) - checksum.startTime).humanize()}</small>
+                                    </td>
+                                    <td>{checksum.totals.correct || '-'}</td>
+                                    <td>{checksum.totals.incorrect || '-'} <span>{showSampleData('incorrect', checksum.bot_id)}</span></td>
+                                    <td>{checksum.totals.missing || '-'} <span>{showSampleData('missing', checksum.bot_id)}</span></td>
+                                    <td>{checksum.totals.extra || '-'} <span>{showSampleData('extra', checksum.bot_id)}</span></td>
+                                    <td className="text-center">
+                                        {checksum.status !== 'complete' ? (
+                                            <button type="button" className="theme-button-tiny margin-2" onClick={() => restartNowMutation.mutate(checksum.bot_id)}>
+                                                <i className="icon-refresh" /> Restart
+                                            </button>
+                                        ) : (
+                                            <button type="button" className="theme-button-tiny margin-2" onClick={() => runNowMutation.mutate(checksum.bot_id)}>
+                                                <i className="icon-play" /> Run Now
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
 
-													case 'starting':
-													case 'initializing':
-														return (<div>
-															<span className="theme-color-success">{(checksum.status || '').capitalize()}: </span>
-															<div className="theme-progress-bar display-inline-block width-1-2"></div>
-															<small className="display-block">&nbsp;</small>
-														</div>)
-													break
-
-													case 'error':
-														return (<div>
-															<span className="theme-color-primary">{(checksum.status || '').capitalize()}</span>
-															<small className="display-block">{checksum.statusReason || ''}&nbsp;</small>
-														</div>)
-													break
-
-													default:
-														return (<div>
-															<span className="theme-color-primary">{(checksum.status || '').capitalize()}</span>
-															<small className="display-block">&nbsp;</small>
-														</div>)
-													break
-												}
-
-											})()
-										}
-									</td>
-									<td>
-										{checksum.startTime ? startTime.fromNow() : 'never'}
-										<small className="display-block">{checksum.startTime ? startTimeFormatted : '-'}</small>
-										<small className="display-block">Duration: {humanize(moment.duration((checksum.endTime || moment.now()) - checksum.startTime))}</small>
-									</td>
-									<td>
-										{checksum.totals.correct || '-'}
-										<small className="display-block">{checksum.total ? Math.round(checksum.totals.correct / checksum.total * 10000)/100 + '%' : '-'}</small>
-									</td>
-									<td className="hover-tool-tip">
-										{checksum.totals.incorrect || '-'}
-										<small className="display-block">{checksum.total ? Math.round(checksum.totals.incorrect / checksum.total * 10000)/100 + '%' : '-'}</small>
-										<span className="checksum">
-										<dd>{this.showSampleData('incorrect', checksum.bot_id)}</dd>
-										</span>
-									</td>
-									<td className="hover-tool-tip">
-										{checksum.totals.missing || '-'}
-										<small className="display-block">{checksum.total ? Math.round(checksum.totals.missing / checksum.total * 10000)/100 + '%' : '-'}</small>
-										<dd>{this.showSampleData('missing', checksum.bot_id)}</dd>
-									</td>
-									<td className="hover-tool-tip">
-										{checksum.totals.extra || '-'}
-										<small className="display-block">{checksum.total ? Math.round(checksum.totals.extra / checksum.total * 10000)/100 + '%' : '-'}</small>
-										<dd>{this.showSampleData('extra', checksum.bot_id)}</dd>
-									</td>
-									<td className="text-center">
-										{
-											checksum.status && checksum.status != 'complete'
-											? (<button type="button" className="theme-button-tiny margin-2" onClick={this.restartNow.bind(this, checksum.bot_id)}>
-												<i className="icon-refresh" /> Restart
-											</button>)
-											: (<button type="button" className="theme-button-tiny margin-2" onClick={this.runNow.bind(this, checksum.bot_id)}>
-												<i className="icon-play" /> Run Now
-											</button>)
-										}
-									</td>
-								</tr>)
-							})
-						}
-					</tbody>
-				</table>
-			</div>
-			{
-				this.state.showSettings || this.state.showSettings == 0
-				? <ChecksumSettings checksum={this.dataStore.checksums[this.state.showSettings || 0]} systems={this.systems} />
-				: false
-			}
-
-		</div>)
-	}
-
-}
-
-export default Checksum
+export default Checksum;

@@ -1,32 +1,28 @@
-import React from 'react';
-import {observer, inject} from 'mobx-react';
+import React, { useState } from 'react';
 
-@inject('dataStore')
-@observer
-export default class DropDown extends React.Component {
-    constructor(props) {
-        super(props);
-        this.dataStore = this.props.dataStore;
-    }
+const DropDown = () => {
+    const [sdkPick, setSdkPick] = useState('');
 
-    handleChange = (e) => {
-        this.dataStore.sdkPick = e.target.value;
+    const handleChange = (e) => {
+        setSdkPick(e.target.value);
     };
 
-    render() {
-        return (
-            <div>
-                Pick a Langauge...
-                <br/>
-                <select
-                    name={'picking'}
-                    id={'picking'}
-                    onChange={this.handleChange}
-                >
-                    <option value="node">NodeJs</option>
-                    <option value="php">PHP</option>
-                </select>
-            </div>
-        )
-    };
+    return (
+        <div>
+            Pick a Language...
+            <br />
+            <select
+                name="picking"
+                id="picking"
+                onChange={handleChange}
+                value={sdkPick}
+            >
+                <option value="node">NodeJs</option>
+                <option value="php">PHP</option>
+            </select>
+            <p>Selected Language: {sdkPick}</p>
+        </div>
+    );
 };
+
+export default DropDown;

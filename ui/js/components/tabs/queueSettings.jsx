@@ -1,161 +1,129 @@
-import React, {Component} from 'react';
-import {inject, observer} from 'mobx-react';
+import React, { useEffect, useState } from 'react';
 import TagsInput from '../elements/tagsInput.jsx';
+import dataStore from '../../../stores/dataStore.jsx'; // Direct dataStore usage
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
 
-@inject('dataStore')
-@observer
-class QueueSettings extends React.Component {
+const fetchQueueSettings = async (nodeId) => {
+  const response = await axios.get(`/eventsettings/${encodeURIComponent(nodeId)}`);
+  return response.data;
+};
 
-	constructor(props) {
-		super(props);
-		this.dataStore = this.props.dataStore;
-		this.state = {};
-	}
+const saveQueueSettings = async (setup) => {
+  await axios.post('/eventsettings/save', setup);
+};
 
+const QueueSettings = ({ nodeData }) => {
+  const [isReady, setIsReady] = useState(false);
+  const [tags, setTags] = useState('');
+  const [min, setMin] = useState('');
+  const [name, setName] = useState('');
+  const [archived, setArchived] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const queryClient = useQueryClient();
 
-	componentWillMount() {
+  const { data, isLoading, isError } = useQuery(['queueSettings', nodeData.id], () => fetchQueueSettings(nodeData.id), {
+    onSuccess: (response) => {
+      setTags((response.other || {}).tags || '');
+      setMin(response.min_kinesis_number);
+      setName(response.name || response.event);
+      setArchived(response.archived);
+      setIsReady(true);
+    },
+  });
 
-		$.get(window.api + '/eventsettings/' + encodeURIComponent(this.props.nodeData.id), (response) => {
-			this.setState({
-				isReady: true,
-				tags: (response.other || {}).tags || '',
-				min: response.min_kinesis_number,
-				name: response.name || response.event,
-				archived: response.archived
-			})
-		}).fail((result) => {
-			window.messageLogModal('Failure retrieving queue settings ' + this.dataStore.nodes[this.props.nodeData.id].label, 'warning', result)
-			this.setState({
-				isReady: true,
-				tags: ''
-			})
-		})
+  const mutation = useMutation(saveQueueSettings, {
+    onSuccess: () => {
+      setDirty(false);
+      queryClient.invalidateQueries(['queueSettings', nodeData.id]);
+      window.messageLogNotify(`Queue settings saved successfully for ${dataStore.nodes[nodeData.id]?.label}`);
+    },
+    onError: (error) => {
+      window.messageLogModal(`Failure saving queue ${dataStore.nodes[nodeData.id]?.label}`, 'error', error);
+    },
+  });
 
-	}
+  const handleSave = () => {
+    const setup = {
+      id: nodeData.id,
+      other: { tags: tags || null },
+      name: name,
+      min_kinesis_number: min || undefined,
+    };
+    mutation.mutate(setup);
+  };
 
+  const handleReset = () => {
+    setTags((data.other || {}).tags || '');
+    setMin(data.min_kinesis_number);
+    setName(data.name || data.event);
+    setDirty(false);
+  };
 
-	setDirty() {
-		if (!this.state.dirty) {
-			this.setState({ dirty: true })
-		}
-		this.props.setDirtyState && this.props.setDirtyState({
-			onSave: this.onSave.bind(this),
-			onReset: this.onReset.bind(this)
-		})
-	}
+  const handleArchive = () => {
+    const archiveState = !archived;
+    const archiveData = { id: nodeData.id, event: nodeData.id, archived: archiveState, paused: true };
+    mutation.mutate(archiveData);
+    setArchived(archiveState);
+  };
 
+  const handleChange = () => {
+    if (!dirty) {
+      setDirty(true);
+    }
+  };
 
-	onReset(callback) {
-		callback = (typeof callback == 'function' ? callback : false)
-		var formData = $('.QueueSettings').closest('form')[0].reset()
-		this.setState({ dirty: false }, () => {
-			this.props.setDirtyState && this.props.setDirtyState(false)
-			callback && callback()
-		})
-	}
+  if (isLoading) {
+    return <div className="theme-spinner-large"></div>;
+  }
 
+  if (isError) {
+    return <div>Error loading settings.</div>;
+  }
 
-	onSave(callback) {
-		callback = (typeof callback == 'function' ? callback : false)
-		var formData = $('.QueueSettings').closest('form').serializeObject()
-		var setup = {
-			id: this.props.nodeData.id,
-			other: {
-				tags: formData.tags || null
-			},
-			name: formData.name,
-			min_kinesis_number: formData.min || undefined
-		}
+  return (
+    <div className="QueueSettings position-relative height-1-1">
+      <div className="flex-row">
+        <div className="theme-form">
+          <div className="theme-form-section">
+            <div className="theme-form-row theme-form-group-heading">
+              <div>queue info</div>
+              <div>&nbsp;</div>
+            </div>
+            <div>&nbsp;</div>
+            <div>
+              <label>Name</label>
+              <input type="text" name="name" value={name} onChange={(e) => { setName(e.target.value); handleChange(); }} />
+            </div>
+            <div>
+              <label>Tags</label>
+              <TagsInput name="tags" value={tags} onChange={(value) => { setTags(value); handleChange(); }} />
+            </div>
+            <div>
+              <label>Min</label>
+              <input type="text" name="min" value={min} onChange={(e) => { setMin(e.target.value); handleChange(); }} />
+            </div>
+            <div>
+              <label>Id</label>
+              <span className="text-left theme-color-disabled">{nodeData.id}</span>
+            </div>
+          </div>
 
-		$.post(window.api + '/eventsettings/save', JSON.stringify(setup), (response) => {
-			this.setState({ dirty: false }, () => {
-				this.props.setDirtyState && this.props.setDirtyState(false)
-				callback && callback()
+          <div className="form-button-bar">
+            <button type="button" className="theme-button" onClick={handleReset} disabled={!dirty}>
+              Discard Changes
+            </button>
+            <button type="button" className="theme-button-primary" onClick={handleSave} disabled={!dirty}>
+              Save Changes
+            </button>
+            <button type="button" className="theme-button pull-right" onClick={handleArchive}>
+              {archived ? <i className="icon-unarchive"> Unarchive</i> : <i className="icon-archive"> Archive</i>}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-				window.messageLogNotify('Queue settings saved successfully ' + this.dataStore.nodes[this.props.nodeData.id].label)
-			})
-		}).fail((result) => {
-			window.messageLogModal('Failure saving queue ' + this.dataStore.nodes[this.props.nodeData.id].label, 'error', result)
-		})
-	}
-
-
-	archiveQueue() {
-		let node = this.dataStore.nodes[this.props.nodeData.id] || {};
-        let archive = !this.state.archived;
-        let data = { id: this.props.nodeData.id, event: this.props.nodeData.id, archived: archive, paused: true };
-		$.post(window.api + '/eventsettings/save', JSON.stringify(data), (response) => {
-			window.fetchData()
-			window.messageLogNotify((!archive ? 'Unarchived' : 'Archived') + ' queue ' + (node.label || ''), 'info')
-			this.setState({ archived: archive })
-		}).fail((result) => {
-			window.messageLogModal('Failed attempting to ' + (!archive ? 'Unarchive' : 'Archive') + ' bot ' + (node.label || ''), 'error', result)
-		})
-	}
-
-
-	render() {
-
-		return (<div className="QueueSettings position-relative height-1-1">
-
-			{
-				!this.state.isReady
-
-				? <div className="theme-spinner-large"></div>
-
-				: <div className="flex-row">
-
-					<div className="theme-form">
-
-						<div className="theme-form-section">
-							<div className="theme-form-row theme-form-group-heading">
-								<div>queue info</div>
-								<div>&nbsp;</div>
-							</div>
-							<div>&nbsp;</div>
-
-							<div>
-								<label>Name</label>
-								<input type="text" name="name" defaultValue={this.state.name} onChange={this.setDirty.bind(this)} />
-							</div>
-							<div>
-								<label>Tags</label>
-								{/*<input type="text" name="tags" defaultValue={this.state.tags} onChange={this.setDirty.bind(this)} />*/}
-								<TagsInput name="tags" defaultValue={this.state.tags} onChange={this.setDirty.bind(this)} />
-							</div>
-							<div>
-								<label>Min</label>
-								<input type="text" name="min" defaultValue={this.state.min} onChange={this.setDirty.bind(this)} />
-							</div>
-
-							<div>
-								<label>Id</label>
-								<span className="text-left theme-color-disabled">{this.props.nodeData.id}</span>
-							</div>
-
-						</div>
-
-						<div className="form-button-bar">
-							<button type="button" className="theme-button" onClick={this.onReset.bind(this, false)}>Discard Changes</button>
-							<button type="button" className="theme-button-primary" onClick={this.onSave.bind(this, false)} disabled={!this.state.dirty}>Save Changes</button>
-							<button type="button" className="theme-button pull-right" onClick={this.archiveQueue.bind(this)}>
-								{
-									this.state.archived
-									? <i className="icon-unarchive"> Unarchive</i>
-									: <i className="icon-archive"> Archive</i>
-								}
-							</button>
-						</div>
-
-					</div>
-
-				</div>
-			}
-
-		</div>)
-
-	}
-
-}
-
-export default QueueSettings
+export default QueueSettings;

@@ -1,89 +1,72 @@
-import React, {Component} from 'react';
+import React, { useState, useEffect } from 'react';
 
-export default class ManageAccess extends React.Component {
+const ManageAccess = ({ onClose }) => {
+  const [ips, setIps] = useState(['127.0.0.1']);
+  const [adding, setAdding] = useState(false);
 
+  useEffect(() => {
+    const modal = LeoKit.modal($('.manageAccess'), {}, 'Manage Access', onClose);
 
-	constructor(props) {
-		super(props)
+    return () => {
+      LeoKit.closeModal(modal); // Clean up modal on unmount
+    };
+  }, [onClose]);
 
-		this.state = {
-			ips: [
-				'127.0.0.1'
-			]
-		}
-	}
+  const add = () => {
+    setAdding(true);
+    setTimeout(() => {
+      $('[name="add"]').focus();
+    }, 0);
+  };
 
+  const save = (event) => {
+    const value = event.currentTarget.value;
+    if (value) {
+      setIps((prevIps) => [...prevIps, value]);
+    }
+    setAdding(false);
+  };
 
-	componentDidMount() {
+  const deleteIp = (ip) => {
+    setIps((prevIps) => prevIps.filter((currentIp) => currentIp !== ip));
+  };
 
-		LeoKit.modal($('.manageAccess'),
-			{},
-			'Manage Access',
-			this.props.onClose
-		)
+  const onKeyDown = (event) => {
+    if (event.keyCode === 13) {
+      event.currentTarget.blur();
+    }
+  };
 
-	}
+  return (
+    <div className="display-none">
+      <div className="manageAccess">
+        <div className="saved-views">
+          {ips.map((ip) => (
+            <div key={ip} className="workflow-div flex-row flex-space">
+              <span className="flex-grow">{ip}</span>
+              <i className="icon-minus-circled pull-right" onClick={() => deleteIp(ip)} />
+            </div>
+          ))}
+          <div className="workflow-div flex-row flex-space text-left">
+            {adding ? (
+              <input
+                type="text"
+                name="add"
+                className="flex-grow theme-form-input"
+                placeholder="IP address"
+                onBlur={save}
+                onKeyDown={onKeyDown}
+              />
+            ) : (
+              <span className="flex-grow" onClick={add}>
+                <i className="icon-plus" /> add
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
-
-	add() {
-		this.setState({ adding: true }, () => {
-			$('[name="add"]').focus()
-		})
-	}
-
-
-	save(event) {
-		var value = event.currentTarget.value
-		var ips = this.state.ips
-		if (value) {
-			ips.push(event.currentTarget.value)
-		}
-		this.setState({ adding: false, ips: ips })
-	}
-
-
-	delete(ip) {
-		var ips = this.state.ips
-		ips.splice(ips.indexOf(ip), 1)
-		this.setState({ ips: ips })
-	}
-
-
-	onKeyDown(event) {
-		if (event.keyCode === 13) {
-			event.currentTarget.blur()
-		}
-	}
-
-
-	render() {
-
-		return (<div className="display-none">
-			<div className="manageAccess">
-
-				<div className="saved-views">
-					{
-						this.state.ips.map((ip) => {
-							return (<div key={ip} className="workflow-div flex-row flex-space">
-								<span className="flex-grow">{ip}</span>
-								<i className="icon-minus-circled pull-right" onClick={this.delete.bind(this, ip)} />
-							</div>)
-						})
-					}
-					<div className="workflow-div flex-row flex-space text-left">
-					{
-						this.state.adding
-						? <input type="text" name="add" className="flex-grow theme-form-input" placeholder="ip address" onBlur={this.save.bind(this)} onKeyDown={this.onKeyDown.bind(this)} />
-						: <span className="flex-grow" onClick={this.add.bind(this)}>
-							<i className="icon-plus" /> add
-						</span>
-					}
-					</div>
-				</div>
-
-			</div>
-		</div>)
-
-	}
-
-}
+export default ManageAccess;

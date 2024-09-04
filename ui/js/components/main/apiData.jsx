@@ -1,63 +1,53 @@
-import React, { Component } from 'react'
-import { connect } from 'react-redux'
-import { inject, observer } from 'mobx-react'
+import React from 'react';
+import { useQuery } from '@tanstack/react-query'; // Importing useQuery hook
 
-@inject('dataStore')
-@observer
-class ApiData extends React.Component {
+// Define a function to fetch settings data
+const fetchSettings = async (apiUrl) => {
+    const response = await fetch(`${apiUrl}/settings/`);
+    if (!response.ok) {
+        throw new Error('Network response was not ok');
+    }
+    const data = await response.json();
 
-	api = window.api
-	currentRequest = undefined
+    // Process the lambda templates if they exist
+    const templates = data.lambda_templates || {};
+    Object.keys(templates).forEach((templateId) => {
+        const template = templates[templateId];
+        if (template?.validator) {
+            const module = { exports: {} };
+            eval(template.validator); // Be careful with eval
+            template.validator = module.exports;
+        }
+    });
 
-	constructor(props) {
-		super(props)
-		this.dataStore = this.props.dataStore;
+    return data;
+};
 
-		this.state = {}
+const ApiData = ({ apiUrl }) => {
+    // Use the TanStack Query to fetch settings data
+    const { data, error, isLoading, isError } = useQuery(
+        ['settings'], // Unique key for this query
+        () => fetchSettings(apiUrl) // Query function that fetches data
+    );
 
-		window.getSettings = this.getSettings.bind(this)
-		window.fetchData = this.fetchData.bind(this)
-	}
+    // If loading, show a loading message
+    if (isLoading) {
+        return <div>Loading settings...</div>;
+    }
 
+    // If there's an error, show an error message
+    if (isError) {
+        return <div>Error fetching settings: {error.message}</div>;
+    }
 
-	getSettings() {
+    // Processed data is available here once the request is successful
+    return (
+        <div>
+            <h2>Settings Loaded</h2>
+            {/* You can render or further process the settings data here */}
+            <pre>{JSON.stringify(data, null, 2)}</pre>
+        </div>
+    );
+};
 
-		this.props.dispatch({ type: 'SET_IS_AUTHENTICATED' })
-
-		$.get(this.api + "/settings/", (data) => {
-			window.templates = data.lambda_templates || {};
-			for (var template_id in data.lambda_templates) {
-				var template = data.lambda_templates[template_id] || {};
-				if (template.validator) {
-					(function wrap() {
-						var module = {
-							exports: {}
-						};
-						eval(template.validator);
-						template.validator = module.exports;
-					})();
-				}
-			}
-			this.fetchData()
-		}).fail((result) => {
-			if (result.statusText != 'canceled') {
-				result.call = this.api + "/settings/"
-				window.messageLogNotify('Failure retrieving settings', 'warning', result)
-				this.fetchData()
-			}
-		})
-	}
-
-
-	fetchData() {
-		this.dataStore.getStats();
-	}
-
-
-	render() {
-		return false
-	}
-
-}
-
-export default connect(store => store)(ApiData)
+export default ApiData;
