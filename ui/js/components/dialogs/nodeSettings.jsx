@@ -1,6 +1,6 @@
-import React, {Component} from 'react'
+import React, { Component } from 'react'
 import { connect } from 'react-redux'
-import {observer, inject} from 'mobx-react'
+import { observer, inject } from 'mobx-react'
 import ResetStream from './resetStream.jsx'
 import { NodeImages } from '../elements/nodeIcon.jsx'
 
@@ -20,7 +20,8 @@ config.registry.tabs = Object.assign({
 	Checksum: require("../tabs/checksum.jsx").default,
 	Cron: require("../tabs/cron.jsx").default,
 	Webhooks: require("../tabs/webhooks.jsx").default,
-	SystemSettings: require("../tabs/systemSettings.jsx").default
+	SystemSettings: require("../tabs/systemSettings.jsx").default,
+	QueueSchema: require("../tabs/queueSchema.jsx").default,
 }, config.registry.tabs);
 
 
@@ -48,18 +49,19 @@ class Settings extends React.Component {
 			Settings: 'BotSettings'
 		},
 
-        ChecksumBot: {
-            Dashboard: 'BotDashboard',
-            Code: 'CodeEditor', //'Mapper',
-            Checksum: 'Checksum',
-            Logs: 'Logs',
-            Settings: 'BotSettings'
-        },
+		ChecksumBot: {
+			Dashboard: 'BotDashboard',
+			Code: 'CodeEditor', //'Mapper',
+			Checksum: 'Checksum',
+			Logs: 'Logs',
+			Settings: 'BotSettings'
+		},
 
 		EventQueue: {
 			Dashboard: 'QueueDashboard',
 			Events: 'EventViewer',
-			Settings: 'QueueSettings'
+			Settings: 'QueueSettings',
+			Schema: "QueueSchema"
 		},
 
 		System: {
@@ -91,9 +93,9 @@ class Settings extends React.Component {
 
 		this.mytabs = this.nodeTabs[nodeType]
 
-        if(this.dataStore.nodes[nodeData.id].checksum !== "" && this.dataStore.nodes[nodeData.id].type !== 'queue' && this.dataStore.nodes[nodeData.id].checksum !== undefined && this.dataStore.nodes[nodeData.id].checksum !== false) {
-            this.mytabs = this.nodeTabs['ChecksumBot']
-        }
+		if (this.dataStore.nodes[nodeData.id].checksum !== "" && this.dataStore.nodes[nodeData.id].type !== 'queue' && this.dataStore.nodes[nodeData.id].checksum !== undefined && this.dataStore.nodes[nodeData.id].checksum !== false) {
+			this.mytabs = this.nodeTabs['ChecksumBot']
+		}
 
 
 		this.state = {
@@ -115,7 +117,7 @@ class Settings extends React.Component {
 
 		this.refreshData()
 
-		var dialog = $('.settingsDialog.dialog'+this.dialogTagKey).closest('.theme-dialog').focus()
+		var dialog = $('.settingsDialog.dialog' + this.dialogTagKey).closest('.theme-dialog').focus()
 		this.modal = dialog.closest('.theme-modal').click((event) => {
 			if ($(event.target).hasClass('theme-modal')) {
 				dialog.focus()
@@ -151,12 +153,12 @@ class Settings extends React.Component {
 			$('#CheckpointDialogDateTimePicker').data('DateTimePicker').hide()
 		}
 
-		switch(event.currentTarget.value) {
+		switch (event.currentTarget.value) {
 			case '1':
 				this.setState({ dirty: true, checkpoint: 'z' + moment().format('/YYYY/MM/DD/HH/mm/ss/') }, () => {
 					this.setDirty()
 				})
-			break
+				break
 
 			case '2':
 				if (!$('#CheckpointDialogDateTimePicker').data('DateTimePicker')) {
@@ -174,13 +176,13 @@ class Settings extends React.Component {
 				} else {
 					$('#CheckpointDialogDateTimePicker').data('DateTimePicker').show()
 				}
-			break
+				break
 
 			default:
 				this.setState({ dirty: true, checkpoint: event.currentTarget.value }, () => {
 					this.setDirty()
 				})
-			break
+				break
 		}
 
 	}
@@ -188,10 +190,10 @@ class Settings extends React.Component {
 
 	refreshData() {
 
-		switch(this.state.nodeType) {
+		switch (this.state.nodeType) {
 			case 'System':
 				var nodeData = this.props.data
-				if(nodeData.system) {
+				if (nodeData.system) {
 					this.mytabs = Object.assign(this.mytabs, config.registry.systems[nodeData.system.toLowerCase()]);
 				}
 				nodeData.settings = {}
@@ -202,7 +204,7 @@ class Settings extends React.Component {
 				}, () => {
 					LeoKit.center(this.modal)
 				})
-			break
+				break
 
 			case 'EventQueue':
 				var nodeData = this.props.data
@@ -213,18 +215,18 @@ class Settings extends React.Component {
 				}, () => {
 					LeoKit.center(this.modal)
 				})
-			break
+				break
 
 			default:
-					var nodeData = this.state.nodeData
-					nodeData.settings = {}
-					this.setState({
-						nodeData: this.props.data,
-						isReady: true
-					}, () => {
-						LeoKit.center(this.modal)
-					})
-			break
+				var nodeData = this.state.nodeData
+				nodeData.settings = {}
+				this.setState({
+					nodeData: this.props.data,
+					isReady: true
+				}, () => {
+					LeoKit.center(this.modal)
+				})
+				break
 
 		}
 
@@ -242,9 +244,11 @@ class Settings extends React.Component {
 
 
 	componentWillMount() {
-        if (this.props.data.type === 'bot') {
-            this.dataStore.getCron(this.props.data.id);
-        }
+		if (this.props.data.type === 'bot') {
+			this.dataStore.getCron(this.props.data.id);
+		} else if (this.props.data.type === 'queue') {
+			this.dataStore.getQueue(this.props.data.id);
+		}
 	}
 
 
@@ -304,26 +308,31 @@ class Settings extends React.Component {
 
 	togglePause() {
 		let node = this.dataStore.nodes[this.props.data.id] || {};
-        let pause = !this.dataStore.nodes[this.props.data.id].paused;
-        let data = { id: node.id, paused: pause };
-        this.dataStore.nodes[node.id].paused = !this.dataStore.nodes[node.id].paused;
+		let pause = !this.dataStore.nodes[this.props.data.id].paused;
+		let data = { id: node.id, paused: pause };
+		this.dataStore.nodes[node.id].paused = !this.dataStore.nodes[node.id].paused;
 		$.post(window.api + '/cron/save', JSON.stringify(data), (response) => {
 			this.dataStore.getStats();
 			window.messageLogNotify('Bot ' + (!pause ? 'Unpaused' : 'Paused'), 'info')
 		}).fail((result) => {
 			this.dataStore.nodes[node.id].paused = !this.dataStore.nodes[node.id];
-            window.messageLogModal('Failed attempting to ' + (!pause ? 'Unpause' : 'Pause') + ' bot ' + (node.label || ''), 'error', result)
+			window.messageLogModal('Failed attempting to ' + (!pause ? 'Unpause' : 'Pause') + ' bot ' + (node.label || ''), 'error', result)
 		})
 	}
 
 
-	runNow() {
-		var data = { id: this.state.nodeData.id, executeNow: true }
+	runNow(trueForce = false) {
+		var data = { id: this.state.nodeData.id, executeNow: true };
+		if (trueForce) {
+			data.executeNowClear = true;
+		}
 		$.post(window.api + '/cron/save', JSON.stringify(data), (response) => {
 			window.messageLogNotify('Run triggered for bot ' + (this.props.data.label || ''), 'info')
 			window.fetchData()
-		}).fail((result) => {
-			window.messageLogModal('Failed attempting to run bot ' + (this.props.data.label || ''), 'error', result)
+		}).fail((result, status) => {
+			if (status !== "abort" && status != "canceled") {
+				window.messageLogModal('Failed attempting to run bot ' + (this.props.data.label || ''), 'error', result)
+			}
 		})
 	}
 
@@ -333,19 +342,21 @@ class Settings extends React.Component {
 			$.get(`api/dashboard/${encodeURIComponent(this.props.data.id)}?range=minute&count=15&timestamp=${encodeURIComponent(moment().format())}`, (result) => {
 				var lastRead = false
 				if (result && result.queues && result.queues.read) {
-					for(var queueId in result.queues.read) {
+					for (var queueId in result.queues.read) {
 						lastRead = (lastRead || result.queues.read[queueId].last_read)
 					}
 				}
-				this.setState({ resetStream: {
-					forceRun: forceRun,
-					nodeId: this.props.data.id,
-					value: this.props.data.settings.checkpoint,
-					lastRead: lastRead,
-					label: this.props.data.label,
-                    links: (this.dataStore.nodes && this.dataStore.nodes[this.props.data.id] && this.dataStore.nodes[this.props.data.id].link_to && this.dataStore.nodes[this.props.data.id].link_to.parent) || {},
-                    source: (this.dataStore.nodes && this.dataStore.nodes[this.props.data.id] && this.dataStore.nodes[this.props.data.id].source) || false
-				}})
+				this.setState({
+					resetStream: {
+						forceRun: forceRun,
+						nodeId: this.props.data.id,
+						value: this.props.data.settings.checkpoint,
+						lastRead: lastRead,
+						label: this.props.data.label,
+						links: (this.dataStore.nodes && this.dataStore.nodes[this.props.data.id] && this.dataStore.nodes[this.props.data.id].link_to && this.dataStore.nodes[this.props.data.id].link_to.parent) || {},
+						source: (this.dataStore.nodes && this.dataStore.nodes[this.props.data.id] && this.dataStore.nodes[this.props.data.id].source) || false
+					}
+				})
 			}).fail((result) => {
 				result.call = `api/dashboard/${encodeURIComponent(this.props.data.id)}?range=minute&count=15&timestamp=${encodeURIComponent(moment().format())}`
 				window.messageLogNotify('Failed to get bot settings', 'warning', result)
@@ -356,6 +367,17 @@ class Settings extends React.Component {
 
 	toggleDropdown() {
 		this.setState({ showDropdown: !this.state.showDropdown })
+	}
+
+	copyCheckpointToClipboard(checkpoint) {
+		if(checkpoint) {
+			navigator.clipboard.writeText(checkpoint).then(() => {
+				window.messageLogNotify('Successfully copied checkpoint to the clipboard','');
+			});
+
+		} else {
+			window.messageLogNotify('Expected Checkpoint text is empty. Failed to Copy', 'warning');
+		}
 	}
 
 
@@ -393,42 +415,42 @@ class Settings extends React.Component {
 			}} >
 				{
 					((nodeData.logs || {}).errors || []).length > 0
-					? (<div className={"node-error-message" + (this.state.showErrorDetails ? ' active' : '')} onClick={this.toggleErrorDetails.bind(this)}>
-						<div className="error-exclamation">
-							<i className="icon-exclamation margin-5" /> ERROR
-						</div>
-						<div className="error-preview">
-						{
-							nodeData.logs.errors.filter(e => e!=null).map((error, i) => {
-								hasErrorStack = hasErrorStack || error.stack
-								return (error.msg || error.id || error.message || error.code
-									? (<div key={i}>
-										<span>{error.id || error.code}</span>
-										<pre>{JSON.stringify(error.msg || error.message, null, 4)}</pre>
-									</div>)
-									: (<div key={i}>
-										<pre>{JSON.stringify(error, null, 4)}</pre>
-									</div>)
-								)
-							})
-						}
-						</div>
-						{
-							hasErrorStack
-							? <button type="button" className="theme-button-warning theme-button-small">{this.state.showErrorDetails ? 'Hide' : 'View'} Error</button>
-							: false
-						}
-						{
-							this.state.showErrorDetails
-							? (
-								nodeData.logs.errors.map((error, i) => {
-									return <pre key={i} className="stack">{error.stack}</pre>
-								})
-							)
-							: false
-						}
-					</div>)
-					: false
+						? (<div className={"node-error-message" + (this.state.showErrorDetails ? ' active' : '')} onClick={this.toggleErrorDetails.bind(this)}>
+							<div className="error-exclamation">
+								<i className="icon-exclamation margin-5" /> ERROR
+							</div>
+							<div className="error-preview">
+								{
+									nodeData.logs.errors.filter(e => e != null).map((error, i) => {
+										hasErrorStack = hasErrorStack || error.stack
+										return (error.msg || error.id || error.message || error.code
+											? (<div key={i}>
+												<span>{error.id || error.code}</span>
+												<pre>{JSON.stringify(error.msg || error.message, null, 4)}</pre>
+											</div>)
+											: (<div key={i}>
+												<pre>{JSON.stringify(error, null, 4)}</pre>
+											</div>)
+										)
+									})
+								}
+							</div>
+							{
+								hasErrorStack
+									? <button type="button" className="theme-button-warning theme-button-small">{this.state.showErrorDetails ? 'Hide' : 'View'} Error</button>
+									: false
+							}
+							{
+								this.state.showErrorDetails
+									? (
+										nodeData.logs.errors.map((error, i) => {
+											return <pre key={i} className="stack">{error.stack}</pre>
+										})
+									)
+									: false
+							}
+						</div>)
+						: false
 				}
 
 				<header tabIndex="-2" className="theme-dialog-header flex-row flex-spread">
@@ -437,7 +459,7 @@ class Settings extends React.Component {
 
 						<div className="flex-row overflow-hidden">
 
-							<svg dangerouslySetInnerHTML={{__html: NodeImages(nodeId,this.dataStore ,{ paused: this.dataStore.nodes[node.id].paused} )}}></svg>
+							<svg dangerouslySetInnerHTML={{ __html: NodeImages(nodeId, this.dataStore, { paused: this.dataStore.nodes[node.id].paused }) }}></svg>
 
 							<div className="flex-column no-wrap overflow-hidden">
 								<div className="flex-row">
@@ -450,11 +472,11 @@ class Settings extends React.Component {
 								<div className="theme-default-font-size header-data">
 									{
 										templateName || node.system
-										? [
-											<label key="0">Type</label>,
-											<span key="1">{templateName || node.system}</span>
-										]
-										: false
+											? [
+												<label key="0">Type</label>,
+												<span key="1">{templateName || node.system}</span>
+											]
+											: false
 									}
 									<label>Id</label><span className="user-selectable">{this.state.nodeData.id}</span>
 									{ this.state.nodeData.type === 'bot' ?
@@ -463,6 +485,10 @@ class Settings extends React.Component {
 									</a>
 									: false }
 								</div>
+								{
+									(this.dataStore.cronInfo && nodeId == this.dataStore.cronInfo.id && this.dataStore.cronInfo.scheduledTrigger && this.dataStore.cronInfo.scheduledTrigger > Date.now()) ? <span className="bot-invoke-backoff">Backoff Until: {moment(this.dataStore.cronInfo.scheduledTrigger).format("MMM D, Y h:mm:ss a")}</span> : false
+									
+								}
 							</div>
 
 						</div>
@@ -472,19 +498,19 @@ class Settings extends React.Component {
 						<div className="node-button-wrapper theme-default-font-size no-wrap flex-row overflow-hidden">
 							{
 								this.state.nodeData.type === 'bot'
-								? (<div className="node-button-bar no-wrap">
+									? (<div className="node-button-bar no-wrap">
 
-									<img title={(this.dataStore.nodes[nodeId].paused ? 'play' : 'pause')} src={window.leostaticcdn + 'images/icons/' + (this.dataStore.nodes[nodeId].paused ? 'play' : 'pause') + '.png'} onClick={this.togglePause.bind(this)} />
+										<img title={(this.dataStore.nodes[nodeId].paused ? 'play' : 'pause')} src={window.leostaticcdn + 'images/icons/' + (this.dataStore.nodes[nodeId].paused ? 'play' : 'pause') + '.png'} onClick={this.togglePause.bind(this)} />
 
-									<div className="flex-row overflow-hidden" onClick={this.toggleDropdown.bind(this)}>
-										<i className="icon-flash" />
-										<span className="kinesis-number">{kinesis_number || ' '}</span>
-										<i className="icon-cog" />
-										<i className="icon-down-dir" />
-									</div>
+										<div className="flex-row overflow-hidden" onClick={this.toggleDropdown.bind(this)}>
+											<i className="icon-flash" />
+											<span className="kinesis-number">{kinesis_number || ' '}</span>
+											<i className="icon-cog" />
+											<i className="icon-down-dir" />
+										</div>
 
-								</div>)
-								: false
+									</div>)
+									: false
 							}
 
 						</div>
@@ -494,99 +520,99 @@ class Settings extends React.Component {
 							<span className={'node-navigate' + (parents.length ? '' : ' disabled')}>
 								<i className="icon-left-open" onClick={
 									(parents.length === 1)
-									? () => {
-										var parentId = parents[0]
-										var parent = this.dataStore.nodes[parentId]
-										this.props.onClose && this.props.onClose()
-										window.nodeSettings({
-											id: parentId,
-											label: parent.label,
-											server_id: parent.id,
-											type: parent.type
-										})
-									}
-									: () => {
-										this.setState({ showPrev: !this.state.showPrev })
-									}
+										? () => {
+											var parentId = parents[0]
+											var parent = this.dataStore.nodes[parentId]
+											this.props.onClose && this.props.onClose()
+											window.nodeSettings({
+												id: parentId,
+												label: parent.label,
+												server_id: parent.id,
+												type: parent.type
+											})
+										}
+										: () => {
+											this.setState({ showPrev: !this.state.showPrev })
+										}
 								} />
 								{
 									parents.length > 1
-									? <em>{parents.length}</em>
-									: false
+										? <em>{parents.length}</em>
+										: false
 								}
 								{
 									parents.length > 1 && this.state.showPrev
-									? (<div className="node-navigate-popup theme-popup-below-left">
-										<div className="mask" onClick={() => { this.setState({ showPrev: !this.state.showPrev })}}></div>
-										<header>Previous Nodes</header>
-										<ul>
-										{
-											parents.map((parentId, index) => {
-												var parent = this.dataStore.nodes[parentId]
-												return (<li key={index} onClick={() => {
-													this.props.onClose && this.props.onClose()
-													window.nodeSettings({
-														id: parentId,
-														label: parent.label,
-														server_id: parent.id,
-														type: parent.type
+										? (<div className="node-navigate-popup theme-popup-below-left">
+											<div className="mask" onClick={() => { this.setState({ showPrev: !this.state.showPrev }) }}></div>
+											<header>Previous Nodes</header>
+											<ul>
+												{
+													parents.map((parentId, index) => {
+														var parent = this.dataStore.nodes[parentId]
+														return (<li key={index} onClick={() => {
+															this.props.onClose && this.props.onClose()
+															window.nodeSettings({
+																id: parentId,
+																label: parent.label,
+																server_id: parent.id,
+																type: parent.type
+															})
+														}}>{parent.label}</li>)
 													})
-												}}>{parent.label}</li>)
-											})
-										}
-										</ul>
-									</div>)
-									: false
+												}
+											</ul>
+										</div>)
+										: false
 								}
 							</span>
 
 							<span className={'node-navigate' + (children.length ? '' : ' disabled')}>
 								<i className="icon-right-open" onClick={
 									(children.length === 1)
-									? () => {
-										var childId = children[0]
-										var child = this.dataStore.nodes[childId]
-										this.props.onClose && this.props.onClose()
-										window.nodeSettings({
-											id: childId,
-											label: child.label,
-											server_id: child.id,
-											type: child.type
-										})
-									}
-									: () => {
-										this.setState({ showNext: !this.state.showNext })
-									}
+										? () => {
+											var childId = children[0]
+											var child = this.dataStore.nodes[childId]
+											this.props.onClose && this.props.onClose()
+											window.nodeSettings({
+												id: childId,
+												label: child.label,
+												server_id: child.id,
+												type: child.type
+											})
+										}
+										: () => {
+											this.setState({ showNext: !this.state.showNext })
+										}
 								} />
 								{
 									children.length > 1
-									? <em>{children.length}</em>
-									: false
+										? <em>{children.length}</em>
+										: false
 								}
 								{
 									children.length > 1 && this.state.showNext
-									? (<div className="node-navigate-popup theme-popup-below-left">
-										<div className="mask" onClick={() => { this.setState({ showNext: !this.state.showNext })}}></div>
-										<header>Next Nodes</header>
-										<ul>
-										{
-											children.map((childId, index) => {
-												var child = this.dataStore.nodes[childId]
-												return (<li key={index} onClick={() => {
-													this.props.onClose && this.props.onClose()
-													window.nodeSettings({
-														id: childId,
-														label: child.label,
-														server_id: child.id,
-														type: child.type
-														//,openTab: Object.keys(this.state.tabs)[this.state.tabIndex]
+										? (<div className="node-navigate-popup theme-popup-below-left">
+											<div className="mask" onClick={() => { this.setState({ showNext: !this.state.showNext }) }}></div>
+											<header>Next Nodes</header>
+											<ul>
+												{
+													children.map((childId, index) => {
+														var child = this.dataStore.nodes[childId]
+														return (<li key={index} onClick={() => {
+															this.props.onClose && this.props.onClose()
+															window.nodeSettings({
+																id: childId,
+																label: child.label,
+																server_id: child.id,
+																type: child.type
+																//,openTab: Object.keys(this.state.tabs)[this.state.tabIndex]
+															})
+														}}>{child.label}</li>)
 													})
-												}}>{child.label}</li>)
-											})
-										}
-										</ul>
-									</div>)
-									: false
+												}
+											</ul>
+										</div>)
+										: false
 								}
 							</span>
 
@@ -594,18 +620,24 @@ class Settings extends React.Component {
 
 						{
 							this.state.showDropdown
-							? (<ul className="dropdown">
-								<div className="mask" onClick={this.toggleDropdown.bind(this)} />
+								? (<ul className="dropdown">
+									<div className="mask" onClick={this.toggleDropdown.bind(this)} />
 									<li onClick={this.resetStream.bind(this, false)}><a>Change Checkpoint</a></li>
-									<li onClick={this.runNow.bind(this)}><a>Force Run</a></li>
+									<li onClick={this.copyCheckpointToClipboard.bind(this, kinesis_number)}> <a>Copy Checkpoint</a></li>
+									<li onClick={this.runNow.bind(this, false)}><a>Force Run</a></li>
+									{
+										localStorage.getItem('enableAdminFeatures')
+											? <li onClick={this.runNow.bind(this, true)}><a>Force Run (Really)</a></li>
+											: false
+									}
 									<li><a>Replay a range of events (coming soon)</a></li>
 									{
 										(this.state.nodeData.parents || []).length
-										? <li onClick={this.resetStream.bind(this, true)}><a>Change Checkpoint and Force Run</a></li>
-										: false
+											? <li onClick={this.resetStream.bind(this, true)}><a>Change Checkpoint and Force Run</a></li>
+											: false
 									}
-							</ul>)
-							: false
+								</ul>)
+								: false
 						}
 
 					</div>
@@ -615,51 +647,51 @@ class Settings extends React.Component {
 				</header>
 				<form className="theme-form">
 					<main>
-						<div className={'settingsDialog dialog'+this.dialogTagKey}>
-						{
-							!this.state.isReady
+						<div className={'settingsDialog dialog' + this.dialogTagKey}>
+							{
+								!this.state.isReady
 
-							? (<div className="theme-spinner-large"></div>)
+									? (<div className="theme-spinner-large"></div>)
 
-							: (<div className="theme-tabs toggleTabs height-1-1">
+									: (<div className="theme-tabs toggleTabs height-1-1">
 
-								<ul>
-									{
-										Object.keys(this.state.tabs).map((label, index) => {
-											return (<li key={label} className={this.state.tabIndex == index ? 'active' : ''} onClick={this.switchingTabs.bind(this, index)} title={label}>{label}</li>)
-										})
-									}
-								</ul>
+										<ul>
+											{
+												Object.keys(this.state.tabs).map((label, index) => {
+													return (<li key={label} className={this.state.tabIndex == index ? 'active' : ''} onClick={this.switchingTabs.bind(this, index)} title={label}>{label}</li>)
+												})
+											}
+										</ul>
 
-								<div style={{ height: 'calc(100% - 45px)'}}>
+										<div style={{ height: 'calc(100% - 45px)' }}>
 
-									{
-										Object.keys(this.state.tabs).map((label, tabIndex) => {
+											{
+												Object.keys(this.state.tabs).map((label, tabIndex) => {
 
-											return (<div key={label} className={(this.state.tabIndex == tabIndex ? 'active' : '') + ' height-1-1'}>
+													return (<div key={label} className={(this.state.tabIndex == tabIndex ? 'active' : '') + ' height-1-1'}>
 
-												{(function(me) {
+														{(function(me) {
 
-													if (me.state.tabIndex !== tabIndex) {
-														return false
-													}
+															if (me.state.tabIndex !== tabIndex) {
+																return false
+															}
 
-													var TAB = config.registry.tabs[me.state.tabs[label]];
-													if(TAB) {
-														return <TAB nodeData={me.state.nodeData} onClose={me.onClose.bind(me)} setDirtyState={me.setDirtyState.bind(me)} />;
-													} else {
-															return 'Tab "' + me.state.tabs[label] + '" not configured'
-													}
-												})(this)}
+															var TAB = config.registry.tabs[me.state.tabs[label]];
+															if (TAB) {
+																return <TAB nodeData={me.state.nodeData} onClose={me.onClose.bind(me)} setDirtyState={me.setDirtyState.bind(me)} />;
+															} else {
+																return 'Tab "' + me.state.tabs[label] + '" not configured'
+															}
+														})(this)}
 
-											</div>)
-										})
-									}
+													</div>)
+												})
+											}
 
-								</div>
+										</div>
 
-							</div>)
-						}
+									</div>)
+							}
 						</div>
 
 					</main>
@@ -671,8 +703,8 @@ class Settings extends React.Component {
 
 			{
 				this.state.resetStream
-				? <ResetStream {...this.state.resetStream} onClose={() => { this.setState({ resetStream: undefined }) }} />
-				: false
+					? <ResetStream {...this.state.resetStream} onClose={() => { this.setState({ resetStream: undefined }) }} />
+					: false
 			}
 
 

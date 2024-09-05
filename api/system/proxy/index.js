@@ -1,24 +1,25 @@
-"use strict";
-var configure = require("leo-sdk/leoConfigure.js");
+'use strict';
 
-var aws = require("aws-sdk");
-var lambda = new aws.Lambda({
-	// region: region
+import { LambdaClient } from "@aws-sdk/client-lambda";
+import configure from "leo-sdk/leoConfigure.js";
+import { handler as resourceHandler } from "leo-sdk/wrappers/resource";
+
+const lambda = new LambdaClient({
+  region: configure.aws.region
 });
-var proxies = [{
-	match: /^csv\/upload/,
-	file: "systems/csv/api/upload/index.js",
-	lambda_function: 'Leo_csv_api_upload',
-	event: {
 
-	}
+const proxies = [{
+  match: /^csv\/upload/,
+  file: "systems/csv/api/upload/index.js",
+  lambda_function: 'Leo_csv_api_upload',
+  event: {}
 }];
 
-exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, callback) => {
-	var proxy = proxies[0];
+export const handler = resourceHandler(async (event, context, callback) => {
+  const proxy = proxies[0];
 
-	if (configure._meta.env == "local") {
-        var file = require("leo-sdk/" + proxy.file);
-        file.handler(event, context, callback);
-    }
+  if (configure._meta.env === "local") {
+    const file = await import("leo-sdk/" + proxy.file);
+    file.handler(event, context, callback);
+  }
 });

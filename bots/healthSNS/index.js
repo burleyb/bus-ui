@@ -5,7 +5,7 @@ require("moment-round");
 let stats = require("../../lib/stats.js");
 let leo = require("leo-sdk");
 let refutil = require("leo-sdk/lib/reference.js");
-let aws = require("aws-sdk");
+import { SNSClient, PublishCommand } from "@aws-sdk/client-sns";
 let dynamodb = leo.aws.dynamodb;
 let _ = require("lodash");
 let async = require("async");
@@ -169,10 +169,10 @@ Bot Id -            ${node.id}\n`;
 					let newBotOnList = false;
 					_.map(newReportBots, (value, id) => {
 						let skipOnReport = false;
-                        if (overridesObj[id].health.mute === true) {
+                        if (overridesObj[id] && overridesObj[id].health && overridesObj[id].health.mute === true) {
                             skipOnReport = true;
                         } else {
-                            let timeStamp = overridesObj[id].health.mute;
+                            let timeStamp = overridesObj[id]?.healthi?.mute || 0;
                             if (timeStamp >= moment.now()) {
                                 skipOnReport = true;
                             }
@@ -248,26 +248,23 @@ function getLatest(callback) {
 	});
 }
 
-function sendSNS(topic, message, subject) {
-	console.log(`Sending SNS to Topic:${topic}  Message:${message}`);
-	return new Promise((resolve, reject) => {
-		let sns = new aws.SNS({
-			params: {
-				TopicArn: topic,
-				Subject: subject
-			},
-			region: configure.aws.region
-		});
-		sns.publish({
-			Message: message
-		}, function (err, data) {
-			console.log(err, data);
-			if (err) {
-				reject(err);
-			} else {
-				resolve(data)
-			}
-		});
+async function sendSNS(topic, message, subject) {
+  console.log(`Sending SNS to Topic:${topic}  Message:${message}`);
+  
+  const snsClient = new SNSClient({ region: configure.aws.region });
 
-	});
+  const params = {
+    TopicArn: topic,
+    Message: message,
+    Subject: subject
+  };
+
+  try {
+    const data = await snsClient.send(new PublishCommand(params));
+    console.log(null, data);
+    return data;
+  } catch (err) {
+    console.log(err, null);
+    throw err;
+  }
 }

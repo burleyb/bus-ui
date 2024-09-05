@@ -1,7 +1,30 @@
 {
   "presets": [
-    "@babel/preset-react",
-    "@babel/preset-env" 
+    [
+      "@babel/preset-react",
+      {
+        "pragma": "dom", // default pragma is React.createElement (only in classic runtime)
+        "pragmaFrag": "DomFrag", // default is React.Fragment (only in classic runtime)
+        "throwIfNamespace": false, // defaults to true
+        // "runtime": "automatic" // defaults to classic
+        // "importSource": "custom-jsx-library" // defaults to react (only in automatic runtime)
+      }
+    ],    
+    [
+      "@babel/preset-env",
+      {
+  			"modules": false,
+  			"useBuiltIns": "usage",
+  			"corejs": "3.37.1"
+  		}
+    ]
   ],
-	"plugins": [	"@babel/plugin-proposal-export-namespace-from", "@babel/plugin-transform-modules-commonjs", "@babel/plugin-proposal-function-bind", "@babel/plugin-proposal-decorators"]  
+	"plugins": [
+	  "@babel/plugin-proposal-export-namespace-from", 
+	  "@babel/plugin-transform-modules-commonjs", 
+	  "@babel/plugin-proposal-function-bind", 
+	  ["@babel/plugin-proposal-decorators", { "legacy": true }],
+	  "@babel/plugin-proposal-class-properties",
+	  "@babel/plugin-transform-runtime",
+	 ]  
 }
