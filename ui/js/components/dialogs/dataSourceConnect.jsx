@@ -1,281 +1,151 @@
-import React, {Component} from 'react';
-
-import TagsInput from '../elements/tagsInput.jsx'
-import ComboBox from '../elements/comboBox.jsx'
-
-class DataSourceConnect extends React.Component {
-
-	constructor(props) {
-		super(props)
-
-		this.state = {
-			step: 0
-		}
-	}
-
-
-	componentDidMount() {
-
-		this.modal = LeoKit.modal($('.DataSourceConnect'),
-			{},
-			'<i class="icon-database" /> Connect to a data source',
-			this.props.onClose
-		)
-
-	}
-
-	onChoose() {
-		this.setState({ step: 1 }, () => {
-			LeoKit.center(this.modal)
-		})
-	}
-
-
-	onFocus() {
-		this.setState({ active: true })
-		console.log('focus')
-	}
-
-
-	onBlur() {
-		setTimeout(() => {
-			this.setState({ active: false })
-			console.log('blur')
-		}, 100)
-	}
-
-
-	onChange(event) {
-		this.setState({ text: event.currentTarget.value })
-	}
-
-	setDirty() {}
-
-	setIcon() {}
-
-
-	pickProfile() {
-		console.log('pi<li onClick={this.pickProfile}>')
-		this.setState({ active: false })
-	}
-
-
-	onNext() {
-		this.setState({ step: this.state.step+1 }, () => {
-			console.log('step', this.state.step)
-		})
-	}
-
-
-	onPrev() {
-		this.setState({ step: this.state.step-1 }, () => {
-			console.log('step', this.state.step)
-		})
-	}
-
-
-	render() {
-
-		return (<div>
-			<div className="DataSourceConnect">
-
-				{
-					this.state.step === 0
-
-					? (<div>
-						<div style={{maxWidth: 890, padding: 45 }}>
-
-							<div className="flex-row flex-spread">
-								<div className="theme-section-header">Choose a New Data Source</div>
-
-								<div>
-									<label className="theme-form-label">Existing Data Sources</label>
-									<select className="theme-form-input">
-										<option>Select an existing data source...</option>
-									</select>
-								</div>
-							</div>
-
-							<div className="flex-row" style={{ flexWrap: 'wrap', marginLeft: -8 }}>
-
-								<button type="button" className="theme-button-big align-middle" onClick={this.onChoose.bind(this, 'mongoDB')}>
-									<img src={window.leostaticcdn + '/images/icons/leaf.png'} />
-									mongoDB
-								</button>
-
-								<button type="button" className="theme-button-big align-middle">
-									<img src={window.leostaticcdn + '/images/icons/gear.png'} />
-									Custom
-								</button>
-
-								<button type="button" className="theme-button-big align-middle flex-row disabled">
-									<img src={window.leostaticcdn + '/images/icons/gear.png'} />
-									<div className="display-inline-block">
-										<small>coming soon</small>
-										MySQL
-									</div>
-								</button>
-
-								<button type="button" className="theme-button-big align-middle flex-row disabled">
-									<img src={window.leostaticcdn + '/images/icons/gear.png'} />
-									<div className="display-inline-block">
-										<small>coming soon</small>
-										SQL
-									</div>
-								</button>
-
-								<button type="button" className="theme-button-big align-middle flex-row disabled">
-									<img src={window.leostaticcdn + '/images/icons/gear.png'} />
-									<div className="display-inline-block">
-										<small>coming soon</small>
-										Webhook
-									</div>
-								</button>
-
-							</div>
-
-						</div>
-
-						<footer className="flex-row" style={{ background: '#E2E2E2', maxWidth: 890, padding: '20px 45px' }}>
-
-							<div className="flex-grow">
-								<div className="theme-section-header">Leo SDK</div>
-								<div className="theme-section-subheader">Load events directly using the Leo SDK:</div>
-								<table className="theme-plain-table">
-									<tbody>
-										<tr>
-											<th>nodeJS</th>
-											<td><a href={window.leoDocsLink} target="documentation">Docker</a></td>
-											<td>|</td>
-											<td><a href={window.leoDocsLink} target="documentation">Github</a></td>
-										</tr>
-										<tr>
-											<th>php</th>
-											<td><a href={window.leoDocsLink} target="documentation">Docker</a></td>
-											<td>|</td>
-											<td><a href={window.leoDocsLink} target="documentation">Github</a></td>
-										</tr>
-									</tbody>
-								</table>
-							</div>
-
-							<div className="flex-grow">
-								<div className="theme-section-header">Leo API</div>
-								<div className="theme-section-subheader">Data can also be added via the Leo API:</div>
-								<a href={window.leoDocsLink} target="documentation">API documentation</a>
-							</div>
-
-						</footer>
-					</div>)
-
-					: (<div className="theme-tabs">
-						<ul>
-							<li className={this.state.step === 1 ? 'active' : ''}>Connection</li>
-							<li className={this.state.step === 2 ? 'active' : 'disabled'}>Destination</li>
-							<li className={this.state.step === 3 ? 'active' : 'disabled'}>Bot</li>
-						</ul>
-						<div>
-
-							<div className={'theme-form' + (this.state.step === 1 ? ' active' : '')}>
-
-								<ComboBox label="Connection Profile" placeholder="Choose a connection profile..."  icon={window.leostaticcdn + 'images/system.png'} name="connection profile" />
-
-								<div className="theme-form-section">
-									<div className="theme-form-group-heading">
-										Connection Profile Details
-									</div>
-
-									<div className="theme-required">
-										<label>Host</label>
-										<input type="text" name="host" defaultValue={this.state.host} onChange={this.setDirty.bind(this)} />
-									</div>
-
-									<div className="theme-required">
-										<label>Database</label>
-										<input type="text" name="database" defaultValue={this.state.database} onChange={this.setDirty.bind(this)} />
-									</div>
-
-									<div>
-										<label>Icon</label>
-										<input type="url" name="icon" defaultValue={this.state.icon} placeholder="http://" onChange={this.setIcon.bind(this)} />
-										<div><small className="field-description">A custom icon can help this data source be quickly identified in the workflow.</small></div>
-									</div>
-
-									<div>
-										<label>Tags</label>
-										<TagsInput name="tags" defaultValue={this.state.tags} onChange={this.setDirty.bind(this)} />
-									</div>
-
-
-								</div>
-
-
-							</div>
-
-							<div className={'theme-form' + (this.state.step === 2 ? ' active' : '')}>
-
-								<ComboBox label="Queue name" placeholder="Add a queue..." icon={window.leostaticcdn + 'images/queue.png'} name="queue" />
-
-								<div>
-									<label>Tags</label>
-									<TagsInput name="queue_tags" defaultValue={this.state.queue_tags} onChange={this.setDirty.bind(this)} />
-								</div>
-							</div>
-
-							<div className={'theme-form' + (this.state.step === 3 ? ' active' : '')}>
-
-								<div className="theme-required">
-									<label>Bot name</label>
-									<input  />
-								</div>
-
-								<div className="theme-required">
-									<label>Description</label>
-									<textarea />
-								</div>
-
-								<div>
-									<label>Tags</label>
-									<TagsInput name="queue_tags" defaultValue={this.state.queue_tags} onChange={this.setDirty.bind(this)} />
-								</div>
-
-								<div className="theme-form-section">
-									<div className="theme-form-group-heading">Bot Settings</div>
-
-									<div className="theme-required">
-										<label>Collection</label>
-										<input />
-									</div>
-								</div>
-
-							</div>
-
-						</div>
-
-						<div className="form-button-bar">
-							{
-								this.state.step > 1
-								? <button type="button" className="theme-button pull-left" onClick={this.onPrev.bind(this)}>Prev</button>
-								: false
-							}
-							<div className="pull-right">
-								<button type="button" className="theme-button">Cancel</button>
-								{
-									this.state.step === 3
-									? <button type="button" className="theme-button-primary" onClick={this.onNext.bind(this)}>Create Data Source</button>
-									: <button type="button" className="theme-button-primary" onClick={this.onNext.bind(this)}>Next</button>
-								}
-							</div>
-						</div>
-
-					</div>)
-				}
-
-			</div>
-		</div>)
-
-	}
-
+import React, { useState, useEffect } from 'react';
+import { useForm, Controller } from 'react-hook-form';
+import TagsInput from '../elements/tagsInput.jsx';
+import { useLeoKit } from './useLeoKit';
+
+function DataSourceConnect({ onClose }) {
+    const { alert } = useLeoKit(); // Using useLeoKit to control dialogs
+    const [step, setStep] = useState(0);
+    const [queueTags, setQueueTags] = useState([]);
+    const { control, handleSubmit, formState: { errors }, setValue } = useForm(); // Initializing react-hook-form
+
+    useEffect(() => {
+        // Display modal dialog using LeoKit
+        const content = (
+            <div className="DataSourceConnect">
+                <h3><i className="icon-database" /> Connect to a Data Source</h3>
+                <form onSubmit={handleSubmit(onSubmit)}>
+                    <DataSourceForm 
+                        step={step} 
+                        control={control} 
+                        errors={errors} 
+                        queueTags={queueTags} 
+                        setQueueTags={setQueueTags} 
+                        setValue={setValue}
+                    />
+                    <FormButtonBar step={step} onPrev={onPrev} onNext={onNext} />
+                </form>
+            </div>
+        );
+
+        alert(content, 'Connect to Data Source'); // Show as alert modal
+        return () => {
+            if (onClose) onClose(); // Close handler
+        };
+    }, [step, queueTags, onClose]);
+
+    const onSubmit = (data) => {
+        console.log('Form submitted', data);
+        onNext();
+    };
+
+    const onNext = () => {
+        setStep((prevStep) => prevStep + 1);
+    };
+
+    const onPrev = () => {
+        setStep((prevStep) => prevStep - 1);
+    };
+
+    return null; // Render nothing since modal is handled by useLeoKit's alert
 }
 
-export default DataSourceConnect
+const DataSourceForm = ({ step, control, errors, queueTags, setQueueTags, setValue }) => {
+    if (step === 0) {
+        return (
+            <div>
+                <div style={{ maxWidth: 890, padding: 45 }}>
+                    <div className="flex-row flex-spread">
+                        <div className="theme-section-header">Choose a New Data Source</div>
+                        <div>
+                            <label className="theme-form-label">Existing Data Sources</label>
+                            <select className="theme-form-input">
+                                <option>Select an existing data source...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="flex-row">
+                        <TagsInput name="queue_tags" value={queueTags} onChange={setQueueTags} />
+                    </div>
+                </div>
+            </div>
+        );
+    } else {
+        return (
+            <div>
+                <div className={`theme-form${step === 3 ? ' active' : ''}`}>
+                    <div className="theme-required">
+                        <label>Bot name</label>
+                        <Controller
+                            name="botName"
+                            control={control}
+                            defaultValue=""
+                            render={({ field }) => (
+                                <input {...field} className="theme-form-input" />
+                            )}
+                            rules={{ required: 'Bot name is required' }}
+                        />
+                        {errors.botName && <span className="error">{errors.botName.message}</span>}
+                    </div>
+                    <div className="theme-required">
+                        <label>Description</label>
+                        <Controller
+                            name="description"
+                            control={control}
+                            defaultValue=""
+                            render={({ field }) => (
+                                <textarea {...field} className="theme-form-input" />
+                            )}
+                            rules={{ required: 'Description is required' }}
+                        />
+                        {errors.description && <span className="error">{errors.description.message}</span>}
+                    </div>
+                    <div>
+                        <label>Tags</label>
+                        <TagsInput name="queue_tags" value={queueTags} onChange={setQueueTags} />
+                    </div>
+                    <div className="theme-form-section">
+                        <div className="theme-form-group-heading">Bot Settings</div>
+                        <div className="theme-required">
+                            <label>Collection</label>
+                            <Controller
+                                name="collection"
+                                control={control}
+                                defaultValue=""
+                                render={({ field }) => (
+                                    <input {...field} className="theme-form-input" />
+                                )}
+                                rules={{ required: 'Collection is required' }}
+                            />
+                            {errors.collection && <span className="error">{errors.collection.message}</span>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+};
+
+const FormButtonBar = ({ step, onPrev, onNext }) => (
+    <div className="form-button-bar">
+        {step > 1 && (
+            <button type="button" className="theme-button pull-left" onClick={onPrev}>
+                Prev
+            </button>
+        )}
+        <div className="pull-right">
+            <button type="button" className="theme-button">Cancel</button>
+            {step === 3 ? (
+                <button type="submit" className="theme-button-primary">
+                    Create Data Source
+                </button>
+            ) : (
+                <button type="submit" className="theme-button-primary">
+                    Next
+                </button>
+            )}
+        </div>
+    </div>
+);
+
+export default DataSourceConnect;

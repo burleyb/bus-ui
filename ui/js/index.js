@@ -1,91 +1,41 @@
-import React, {
-	Component
-} from 'react';
-import {
-	Provider,
-	connect
-} from 'react-redux';
-import {
-	createStore,
-	applyMiddleware
-} from 'redux';
-import thunkMiddleware from 'redux-thunk';
-//import createLogger from 'redux-logger';
-import rootReducer from './reducers.js';
-
-//import watcher from 'leo-sdk/ui/watcher.js';
-
+import React, { useContext } from 'react';
+import ReactDOM from 'react-dom';
 import moment from 'moment';
 import momenttz from 'moment-timezone';
-//var config = require('leo-sdk/leoConfigure.js');
+import { DataProvider } from '../../..//stores/DataContext'; 
+import { DialogProvider } from '../../..//stores/DialogContext'; 
+import App from './components/main.jsx';
 
-window.registry = {
-	tabs: {},
-	systems: {
-		csv: {
-			'Bob the Builder': 'EventViewer'
-		}
-	}
-};
-
+// Set up moment timezone
 window.moment = moment;
-
 if (window.botmon.timezone) {
     moment.tz.setDefault(window.botmon.timezone);
-} else if (localStorage.getItem("defaultBotmonTimezone")){
-	moment.tz.setDefault(localStorage.getItem("defaultBotmonTimezone"))
+} else if (localStorage.getItem("defaultBotmonTimezone")) {
+    moment.tz.setDefault(localStorage.getItem("defaultBotmonTimezone"));
 }
 
-/*
-const loggerMiddleware = createLogger();
-
-var preloadedState = {
-	state: {
-		running: true,
-	},
-	navigation: {
-		tab: 'micro'
-	},
-	window: {
-		period: "day",
-		start: moment().utc().startOf('day').valueOf(),
-		end: moment.now(),
-	},
-	data: []
-};
-*/
-
-var store = createStore(
-	rootReducer,
-	//preloadedState,
-	applyMiddleware(
-		thunkMiddleware,
-		//loggerMiddleware
-	)
-);
-
-//window.store = store
-
-//watcher.setStore(store);
-
-var App = require("./components/main.jsx").default;
-class Root extends Component {
-	render() {
-		return ( 
-			<Provider store={store}>
-				<App />
-			</Provider>
-		);
-	}
+// Main application component wrapped in DataProvider
+function Root() {
+    return (
+        <DataProvider>
+            <DialogProvider>
+                <App />
+            </DialogProvider>
+        </DataProvider>
+    );
 }
 
-//Set up CSS required
+// Load necessary CSS and JavaScript files
 import "../css/main.less";
-
 import "../static/js/data.js";
 import "../static/js/dialogs.js";
-$(function () {
-    LEOCognito.start(window.leoAws.cognitoId, (window.leo && window.leo.getToken) || false, {apiUri: "api/", region: window.leoAws.region, cognito_region: window.leoAws.cognito_region}, function () {
-        require("react-dom").render( < Root /> , document.getElementById('EventBus'));
-    })
-})
+
+// Initialize the application with authentication logic
+LEOCognito.start(
+    window.leoAws.cognitoId, 
+    (window.leo && window.leo.getToken) || false, 
+    { apiUri: "api/", region: window.leoAws.region, cognito_region: window.leoAws.cognito_region }, 
+    function () {
+        ReactDOM.render(<Root />, document.getElementById('EventBus'));
+    }
+);

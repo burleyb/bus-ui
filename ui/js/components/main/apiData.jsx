@@ -1,63 +1,58 @@
-import React, { Component } from 'react'
-import { connect } from 'react-redux'
-import { inject, observer } from 'mobx-react'
+import React, { useContext, useEffect } from 'react';
+import axios from 'axios';
+import { useQuery } from '@tanstack/react-query';
+import { DataContext } from '../../../stores/DataContext'; // Assuming Context API for global state
 
-@inject('dataStore')
-@observer
-class ApiData extends React.Component {
+function ApiData() {
+    const { state, dispatch } = useContext(DataContext); // Use Context for global state management
 
-	api = window.api
-	currentRequest = undefined
+    // Function to get settings from API
+    const getSettings = () => {
+        axios.get('/api/settings/')
+            .then((response) => {
+                const data = response.data;
+                window.templates = data.lambda_templates || {};
+                
+                for (const template_id in data.lambda_templates) {
+                    const template = data.lambda_templates[template_id] || {};
+                    if (template.validator) {
+                        const module = { exports: {} };
+                        eval(template.validator);  // Handle validation logic, keeping it as is
+                        template.validator = module.exports;
+                    }
+                }
 
-	constructor(props) {
-		super(props)
-		this.dataStore = this.props.dataStore;
+                // Call fetchData after settings are loaded
+                fetchData();
+            })
+            .catch((error) => {
+                if (error.message !== 'canceled') {
+                    console.warn('Failure retrieving settings', error);
+                    fetchData(); // Attempt to fetch data even on error
+                }
+            });
+    };
 
-		this.state = {}
+    // Function to fetch data (replacing MobX logic)
+    const fetchData = () => {
+        dispatch({ type: 'FETCH_STATS_START' });
 
-		window.getSettings = this.getSettings.bind(this)
-		window.fetchData = this.fetchData.bind(this)
-	}
+        axios.get('/api/stats/')
+            .then((response) => {
+                const stats = response.data;
+                dispatch({ type: 'SET_STATS', payload: stats });
+            })
+            .catch((error) => {
+                console.error('Error fetching stats', error);
+            });
+    };
 
+    // Call getSettings on component mount
+    useEffect(() => {
+        getSettings();
+    }, []); // Empty dependency array ensures it runs only once on mount
 
-	getSettings() {
-
-		this.props.dispatch({ type: 'SET_IS_AUTHENTICATED' })
-
-		$.get(this.api + "/settings/", (data) => {
-			window.templates = data.lambda_templates || {};
-			for (var template_id in data.lambda_templates) {
-				var template = data.lambda_templates[template_id] || {};
-				if (template.validator) {
-					(function wrap() {
-						var module = {
-							exports: {}
-						};
-						eval(template.validator);
-						template.validator = module.exports;
-					})();
-				}
-			}
-			this.fetchData()
-		}).fail((result) => {
-			if (result.statusText != 'canceled') {
-				result.call = this.api + "/settings/"
-				window.messageLogNotify('Failure retrieving settings', 'warning', result)
-				this.fetchData()
-			}
-		})
-	}
-
-
-	fetchData() {
-		this.dataStore.getStats();
-	}
-
-
-	render() {
-		return false
-	}
-
+    return null; // As in the original, this component does not render anything
 }
 
-export default connect(store => store)(ApiData)
+export default ApiData;

@@ -1,112 +1,82 @@
-import React, { Component } from 'react'
+import React, { useState, useEffect } from 'react';
 
+function MessageCenter({ messageLogged }) {
+    const [messageQueue, setMessageQueue] = useState([]);
+    const [currentMessage, setCurrentMessage] = useState(null);
 
-export default class MessageCenter extends React.Component {
+    // Helper function to build a message object
+    const buildMessage = (message, priority, details) => ({
+        details,
+        timestamp: Date.now(),
+        message: typeof message === 'string' ? [message] : message,
+        priority,
+    });
 
-	constructor(props) {
-		super(props)
+    // Message notification logic
+    const messageNotify = (message, priority, details) => {
+        const newMessage = buildMessage(message, priority, details);
+        setMessageQueue((prevQueue) => [...prevQueue, newMessage]);
+        nextMessage();
+    };
 
-		this.state = {
-			messageQueue: []
-		}
+    // Message logging logic
+    const messageLog = (message, priority, details) => {
+        const newMessage = buildMessage(message, priority, details);
+        let messages = sessionStorage.getItem('messageQueue') || '[]';
+        try {
+            messages = JSON.parse(messages);
+        } catch (e) {
+            messages = [];
+        }
+        messages.push(newMessage);
+        sessionStorage.setItem('messageQueue', JSON.stringify(messages));
+        messageLogged(messages.length);
+    };
 
+    // Combined message notification and logging
+    const messageLogNotify = (message, priority, details) => {
+        messageNotify(message, priority, details);
+        messageLog(message, priority, details);
+    };
 
-		var buildMessage = (message, priority, details) => {
-			return {
-				details: details,
-				timestamp: Date.now(),
-				message: (typeof message == 'string' ? [message] : message),
-				priority: priority
-			}
-		}
+    // Handle showing the next message in the queue
+    const nextMessage = () => {
+        if (messageQueue.length > 0) {
+            const next = messageQueue.shift();
+            setCurrentMessage(next);
+            setMessageQueue([...messageQueue]);
+            setTimeout(() => {
+                setCurrentMessage(null);
+                setTimeout(nextMessage, 500); // Continue to the next message after a delay
+            }, 2500);
+        }
+    };
 
-		window.messageNotify = (message, priority, details) => {
-			var message = buildMessage(message, priority, details)
-			var messageQueue = this.state.messageQueue
-			messageQueue.push(message)
-			this.setState({ messageQueue: messageQueue }, () => {
-				this.nextMessage()
-			})
-		}
+    useEffect(() => {
+        // Attach the functions to window object for external calls (if needed)
+        window.messageNotify = messageNotify;
+        window.messageLog = messageLog;
+        window.messageLogNotify = messageLogNotify;
 
-		window.messageLog = (message, priority, details) => {
-			var message = buildMessage(message, priority, details)
-			var messages = sessionStorage.getItem('messageQueue') || '[]'
-			try {
-				messages = JSON.parse(messages)
-			} catch (e) {
-				messages = []
-			}
-			messages.push(message)
-			sessionStorage.setItem('messageQueue', JSON.stringify(messages))
-			this.props.messageLogged(messages.length)
-		}
+        // Cleanup window functions on component unmount
+        return () => {
+            delete window.messageNotify;
+            delete window.messageLog;
+            delete window.messageLogNotify;
+        };
+    }, [messageQueue]);
 
-		window.messageLogNotify = (message, priority, details) => {
-			window.messageNotify(message, priority, details)
-			window.messageLog(message, priority, details)
-		}
-
-		window.messageLogModal = (message, priority, details) => {
-			window.messageLog(message, priority, details)
-			window.messageModal(message, priority, details)
-		}
-
-		window.messageModal = (message, priority, details, opts = {}) => {
-			if (typeof message == 'object') {
-				message = message.map(line => line.htmlEncode()).join('<br/>')
-			} else {
-				message = message.htmlEncode()
-			}
-
-			if (details) {
-				message += `<details class="message-details" ${opts.open ? 'open' : ''}>
-					<summary></summary>
-					<pre>` + (typeof details === "string" ? details : JSON.stringify(details || {}, null, 4)) + `</pre>
-				</details>`
-			}
-
-			LeoKit.alert(message, priority)
-		}
-
-	}
-
-
-	nextMessage() {
-		$('.message-center .message').removeClass('show')
-		var messageQueue = this.state.messageQueue
-		var currentMessage = messageQueue.shift()
-
-		this.setState({ currentMessage: currentMessage, messageQueue: messageQueue }, () => {
-			setTimeout(() => { $('.message-center .message').addClass('show') }, 0)
-			if (currentMessage) {
-				setTimeout(() => {
-					$('.message-center .message').removeClass('show')
-					setTimeout(() => {
-						this.nextMessage()
-					}, 500)
-				}, 2500)
-			}
-		})
-	}
-
-
-	render() {
-
-		return (<div className="message-center message-list">
-			{
-				this.state.currentMessage
-					? (<div className={'message ' + (this.state.currentMessage.priority || 'success')}>
-						{
-							this.state.currentMessage.message.map((text, key) => {
-								return (<div key={key}>{text}</div>)
-							})
-						}
-					</div>)
-					: false
-			}
-		</div>)
-
-	}
-
+    return (
+        <div className="message-center message-list">
+            {currentMessage && (
+                <div className={`message ${currentMessage.priority || 'success'}`}>
+                    {currentMessage.message.map((text, key) => (
+                        <div key={key}>{text}</div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
 }
+
+export default MessageCenter;

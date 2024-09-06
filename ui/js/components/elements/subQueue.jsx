@@ -1,103 +1,78 @@
-import React, { Component } from 'react'
-import { inject, observer } from 'mobx-react'
+import React, { useState, useContext } from 'react';
+import NodeSearch from '../elements/nodeSearch.jsx';
+import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context
+import refUtil from 'leo-sdk/lib/reference';
 
-import NodeSearch from '../elements/nodeSearch.jsx'
+const QueueSelector = (props) => {
+    const { dataStore } = useContext(DataContext); // Replacing MobX inject with React Context
+    const [systemId, setSystemId] = useState((refUtil.ref(props.value) || { owner: () => null }).owner()?.id || '');
+    const [subqueue, setSubqueue] = useState((refUtil.ref(props.value) || { owner: () => null }).owner()?.queue || '');
+    const [subqueues, setSubqueues] = useState([]);
+    const [id, setId] = useState(props.value);
+    const [showDropdown, setShowDropdown] = useState(false);
 
-var refUtil = require("leo-sdk/lib/reference.js")
+    const pickedSystem = (system) => {
+        if (system.id) {
+            const availableSubqueues = dataStore.queues
+                .filter((queueId) => dataStore.nodes[queueId].owner === system.id)
+                .map((queueId) => refUtil.ref(queueId).owner().queue)
+                .filter((value, index, self) => value && self.indexOf(value) === index);
 
-@inject('dataStore')
-@observer
-export default class QueueSelector extends React.Component {
+            setSubqueues(availableSubqueues);
+            const newId = (refUtil.ref(system.id).queue(subqueue) || {}).toString();
+            setSystemId(system.id);
+            setId(newId);
+        } else {
+            setSubqueues([]);
+            setId('');
+        }
+    };
 
-	constructor(props) {
-		super(props);
-		this.dataStore = this.props.dataStore;
+    const inputChanged = (event) => {
+        const newSubqueue = event.currentTarget.value;
+        setSubqueue(newSubqueue);
+        const newId = refUtil.ref(systemId).queue(newSubqueue).toString();
+        setId(newId);
+    };
 
-		var owner = (refUtil.ref(props.value) || { owner: () => null }).owner() || {}
+    const toggleDropdown = (show) => setShowDropdown(show);
 
-		this.state = {
-			systemId: owner.id,
-			subqueue: owner.queue,
-			subqueues: [],
-			id: props.value
-		}
-	}
+    const selectSubqueue = (selectedSubqueue) => {
+        setSubqueue(selectedSubqueue);
+        setShowDropdown(false);
+    };
 
+    return (
+        <div title={props.title} className="display-inline-block">
+            <NodeSearch
+                value={systemId}
+                className="display-block"
+                nodeType={props.nodeType}
+                onChange={pickedSystem}
+            />
+            <div className="theme-autocomplete">
+                <input
+                    value={subqueue || ''}
+                    onChange={inputChanged}
+                    placeholder={props.placeholder}
+                    onFocus={() => toggleDropdown(true)}
+                />
+                {showDropdown && subqueues.length ? (
+                    <>
+                        <div className="mask" onClick={() => toggleDropdown(false)} />
+                        <ul>
+                            {subqueues.map((subqueueItem) => (
+                                <li key={subqueueItem} onClick={() => selectSubqueue(subqueueItem)}>
+                                    {subqueueItem}
+                                </li>
+                            ))}
+                        </ul>
+                    </>
+                ) : null}
+            </div>
+            <input type="hidden" name={props.name} value={id || ''} readOnly onChange={props.onChange} />
+        </div>
+    );
+};
 
-	pickedSystem(system) {
-		var subqueues = []
-		if (system.id) {
-			subqueues = this.dataStore.queues.filter((queueId) => {
-				return this.dataStore.nodes[queueId].owner === system.id
-			}).map((queueId) => {
-				return refUtil.ref(queueId).owner().queue
-			}).filter((value, index, self) => (value && self.indexOf(value) === index))
-		}
-		this.setState({ systemId: system.id, subqueues: subqueues, id: ((refUtil.ref(system.id) || { queue: () => null }).queue(this.state.subqueue) || {}).toString() })
-	}
-
-
-	inputChanged(event) {
-		var subqueue = event.currentTarget.value
-		this.setState({ subqueue: subqueue, id: refUtil.ref(this.state.systemId).queue(subqueue).toString() })
-	}
-
-
-	toggleDropdown(showDropdown) {
-		this.setState({ showDropdown: showDropdown })
-	}
-
-
-	selectSubqueue(subqueue) {
-		this.setState({ subqueue: subqueue, showDropdown: false })
-	}
-
-
-	render() {
-
-		/*
-
-		Pick a system queue with a subqueue
-
-		result should look like this
-
-		{
-		   fieldName: "queue:system.systemName.subqueue"
-		}
-		you can use core/lib/reference.js to convert from the system & subqueue to the saved queue
-
-		var refutil = require("leo-sdk/lib/reference.js")
-		var queueReferenceToSave = refutl.ref(systemId).queue(subqueue).id;
-
-		you can also get the system out of the saved queue like
-
-		refutil.ref(savedQueueReference).owner()
-
-		*/
-
-		var field = this.props
-		return (<div title={field.title} className="display-inline-block">
-			<NodeSearch value={this.state.systemId} className="display-block" nodeType={field.nodeType} onChange={this.pickedSystem.bind(this)} />
-			<div className="theme-autocomplete">
-				<input value={this.state.subqueue || ''} onChange={this.inputChanged.bind(this)} placeholder={field.placeholder} onFocus={this.toggleDropdown.bind(this, true)} />
-				{
-					this.state.showDropdown && this.state.subqueues.length
-						? [<div key="0" className="mask" onClick={this.toggleDropdown.bind(this, false)} />,
-						<ul key="1">
-							{
-								this.state.subqueues.map((subqueue) => {
-									return (<li key={subqueue} onClick={this.selectSubqueue.bind(this, subqueue)}>{subqueue}</li>)
-								})
-							}
-						</ul>]
-						: false
-				}
-
-			</div>
-			<input type="hidden" name={field.name} value={this.state.id || ''} readOnly onChange={field.onChange} />
-		</div>)
-
-	}
-
-
-}
+export default QueueSelector;

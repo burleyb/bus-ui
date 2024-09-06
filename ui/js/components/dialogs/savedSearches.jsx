@@ -1,70 +1,76 @@
-import React, {Component} from 'react';
+import React, { useState, useEffect } from 'react';
+import { SortableContainer, SortableElement, arrayMove } from 'react-sortable-hoc';
+import Dialog from './dialog'; // Assuming you have a reusable Dialog component
 
-import sortable from 'html5sortable'
+const SortableItem = SortableElement(({ value, onRestore, onDelete }) => (
+    <div className="workflow-div flex-row flex-space" data-search={value}>
+        <i className="icon-menu" />
+        <span className="flex-grow" onClick={onRestore}>
+            {value}
+        </span>
+        <i className="icon-minus-circled pull-right" onClick={onDelete} />
+    </div>
+));
 
-export default class SavedSearches extends React.Component {
-	constructor(props) {
-		super(props)
+const SortableList = SortableContainer(({ items, onRestore, onDelete }) => {
+    return (
+        <div>
+            {items.length > 0 ? (
+                items.map((value, index) => (
+                    <SortableItem
+                        key={`item-${value}`}
+                        index={index}
+                        value={value}
+                        onRestore={() => onRestore(value)}
+                        onDelete={() => onDelete(value)}
+                    />
+                ))
+            ) : (
+                <div>There are no saved Searches</div>
+            )}
+        </div>
+    );
+});
 
-		this.state = {}
-	}
+function SavedSearches({ searches, onClose }) {
+    const [savedSearches, setSavedSearches] = useState(searches.views);
+    const [order, setOrder] = useState(searches.order());
 
+    useEffect(() => {
+        // Optionally, load saved searches if necessary
+        setSavedSearches(searches.views);
+        setOrder(searches.order());
+    }, [searches]);
 
-	componentDidMount() {
+    const onSortEnd = ({ oldIndex, newIndex }) => {
+        const newOrder = arrayMove(order, oldIndex, newIndex);
+        setOrder(newOrder);
+        searches.order(newOrder); // Update the order in the parent component/context
+    };
 
-		LeoKit.modal($('#savedSearches'),
-			{},
-			'Saved Searches',
-			this.props.onClose
-		)
+    const restoreSearch = (search) => {
+        searches.restore(search);
+    };
 
-		sortable('#savedSearches', {
-			handle: '.icon-menu',
-			forcePlaceholderSize: true
-		})
+    const deleteSearch = (search) => {
+        const updatedOrder = order.filter((view) => view !== search);
+        setOrder(updatedOrder);
+        searches.delete(search);
+    };
 
-		sortable('#savedSearches')[0].addEventListener('sortupdate', (event) => {
-			var order = event.detail.newStartList.map((element) => {
-				return $(element).data('search')
-			})
-			this.props.searches.order(order)
-		})
-
-	}
-
-
-	componentWillUnmount() {
-
-		sortable('#savedSearches', 'destroy')
-
-	}
-
-
-	restoreSearch(search) {
-		this.props.searches.restore(search)
-	}
-
-
-	render() {
-
-		var savedSearches = this.props.searches.views
-		,   order = this.props.searches.order()
-
-		return (<div>
-			<div id="savedSearches" className="saved-views">
-			{
-				order.length
-				? (order.map((view) => {
-					return (<div key={view} className="workflow-div flex-row flex-space" data-search={view}>
-						<i className="icon-menu" />
-						<span className="flex-grow" onClick={this.restoreSearch.bind(this, view)}>{view}</span>
-						<i className="icon-minus-circled pull-right" onClick={this.props.searches.delete.bind(this, view)}></i>
-					</div>)
-				}))
-				: 'There are no saved Searches'
-			}
-			</div>
-		</div>)
-	}
-
+    return (
+        <Dialog title="Saved Searches" onClose={onClose}>
+            <div id="savedSearches" className="saved-views">
+                <SortableList
+                    items={order}
+                    onSortEnd={onSortEnd}
+                    onRestore={restoreSearch}
+                    onDelete={deleteSearch}
+                    useDragHandle
+                />
+            </div>
+        </Dialog>
+    );
 }
+
+export default SavedSearches;

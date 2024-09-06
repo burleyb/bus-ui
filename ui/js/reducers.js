@@ -1,67 +1,42 @@
+import React, { useState, useContext } from 'react';
+import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext is already created
+import EventTrace from './dialogs/eventTrace.jsx';
+import Header from './main/header.jsx';
+import LeftNav from './main/leftNav.jsx';
+import Content from './main/content.jsx';
+import MessageCenter from './main/messageCenter.jsx';
+import DataSourceConnect from './dialogs/dataSourceConnect.jsx';
+import ApiData from './main/apiData.jsx';
 
-import { combineReducers } from 'redux'
+function App() {
+    const { state, dispatch } = useContext(DataContext); // Use context instead of Redux and MobX
+    const [trace, setTrace] = useState();
+    const [addDataSource, setAddDataSource] = useState();
+    const [messageCount, setMessageCount] = useState(0);
+    
+    // Function to handle message count updates
+    const messageLogged = (messageCount) => {
+        setMessageCount(messageCount);
+    };
 
-import * as constants from './constants'
-
-
-const isAuthenticated = (state = false, action) => {
-	return (action.type === 'SET_IS_AUTHENTICATED') || state
+    return (
+        <main id="main">
+            <ApiData />
+            <MessageCenter messageLogged={messageLogged} />
+            {trace && <EventTrace data={trace} onClose={() => setTrace(undefined)} />}
+            <Header settings={state} messageCount={messageCount} />
+            <LeftNav workflows={state.workflows} searches={state.searches} />
+            <Content
+                settings={state}
+                workflows={state.workflows}
+                searches={state.searches}
+                currentSearch={state.currentSearch}
+            />
+            {addDataSource && (
+                <DataSourceConnect onClose={() => setAddDataSource(undefined)} />
+            )}
+        </main>
+    );
 }
 
-
-const hasData = (state = false, action) => {
-	return (action.type === 'SET_HAS_DATA') || state
-}
-
-
-const displayPaused = (state = false, action) => {
-	switch(action.type) {
-		case 'SET_DISPLAY_STATE':
-			return !!action.state
-		break
-
-		default:
-			return state
-		break
-	}
-}
-
-
-const userSettings = (state = { view: 'dashboard', selected: [], timePeriod: { interval: 'hour_6'} }, action, replace) => {
-
-	switch(action.type) {
-		case 'SET_PAGE_VIEW':
-			return Object.assign({}, state, {
-				view: action.view
-			})
-		break
-
-		case 'SAVE_SETTINGS':
-			try {
-				var values = $.extend({}, JSON.parse(decodeURI(document.location.hash.slice(1)) || '{}'), action.settings)
-			} catch(e) {
-				values = {}
-			}
-			delete values.detailsPeriod
-			if (action.replace) {
-				document.location.replace(document.location.href.split('#')[0] + '#' + JSON.stringify(values).replace(/ /g, '%20'))
-			} else {
-				document.location.hash = JSON.stringify(values)
-			}
-			return values
-
-		break
-
-		default:
-			return state
-		break
-	}
-}
-
-
-export default combineReducers(Object.assign({}, constants, {
-	isAuthenticated,
-	hasData,
-	userSettings,
-	displayPaused
-}))
+export default App;

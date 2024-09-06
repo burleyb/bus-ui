@@ -1,121 +1,114 @@
-import React, {Component} from 'react'
-import {inject, observer} from 'mobx-react'
-let refUtil = require("leo-sdk/lib/reference.js");
+import React, { useState, useEffect, useContext } from 'react';
+import { useForm } from 'react-hook-form';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
+import refUtil from 'leo-sdk/lib/reference.js';
+import { DataContext } from '../../../stores/DataContext'; // Assuming React Context is used for global state
+import { useLeoKit } from './useLeoKit'; // Assuming a custom hook for LeoKit dialogs/alerts
+import moment from 'moment';
 
-@inject('dataStore')
-@observer
-class EventResubmit extends React.Component {
-
-	constructor(props) {
-		super(props);
-		this.dataStore = this.props.dataStore;
-
-		this.state = {
-			bots: {},
-			value: this.props.detail.payload,
-			eid: this.props.detail.eid,
-			botId: this.props.detail.id,
-			queue: this.props.detail.event
-		}
-		
-		this.handleChange = this.handleChange.bind(this);
-		
-	}
-
-
-	componentWillMount() {
-
-		var range_count = window.timePeriod.interval.split('_')
-		this.currentRequest = $.get(`api/dashboard/${encodeURIComponent(this.props.detail.event)}?range=${range_count[0]}&count=${range_count[1] || 1}&timestamp=${encodeURIComponent(moment().format())}`, (result) => {
-			this.setState({ bots: result.bots.read })
-		}).fail((result) => {
-			result.call = `api/dashboard/${encodeURIComponent(this.props.detail.event)}?range=${range_count[0]}&count=${range_count[1] || 1}&timestamp=${encodeURIComponent(moment().format())}`
-			window.messageLogModal('Failure get data', 'error', result)
-		})
-
-
-	}
-
-	handleChange(event) {
-		this.setState({value: event.target.value});
-	}
-
-	componentDidMount() {
-
-		LeoKit.modal($('.EventResubmitDialog'),
-			{
-				Resubmit: (formData) => {
-					// console.log("[formData]", formData)
-					// console.log("[botId]", this.state.botId)
-
-					LeoKit.confirm('Resubmit event to queue: "' + this.state.queue + '" by botId:  "'  + this.state.botId + '".', () => {
-
-						let payload = JSON.parse(formData.payload);
-						let queue = this.state.queue;
-						let botId = refUtil.botRef(this.state.botId).id;
-						payload.original_eid = this.props.detail.eid
-
-						let data = {
-							botId: botId,
-							queue: queue,
-							payload: payload
-						};
-						// console.log("[data]", data)
-
-						$.post(window.api + '/cron/save', JSON.stringify(data), (response) => {
-							window.messageLogNotify('Resubmit triggered for ' + this.dataStore.nodes[formData.botId].label, 'info')
-						}).fail((result) => {
-							window.messageLogModal('Failure triggering resubmit for ' + this.dataStore.nodes[formData.botId].label, 'error', result)
-						})
-
-					})
-
-				},
-				cancel: false
-			},
-			'Resubmit Event',
-			this.props.onClose
-		)
-
-	}
-
-
-	componentWillUnmount() {
-		if (this.currentRequest) {
-			this.currentRequest.abort()
-		}
-	}
-
-
-	render() {
-
-		var taStyle = {
-			margin: '5px 0px 15px',
-			width: '750px',
-			height: '255px'
-		}
-		return (<div>
-			<div className="EventResubmitDialog theme-form">
-				<div>
-					<label>Edit Event</label>
-					{ 
-						console.log("[detail]", this.props.detail)
-					}
-					{
-						console.log("[eid]", this.props.detail.eid.toString())
-					}
-					{
-						console.log("[payload]", this.props.detail.payload)
-					}
-					<textarea id="payload" style={taStyle} name="payload" key="payload" value={JSON.stringify(this.state.value, null, 2)} onChange={this.handleChange} />
-					<input type="hidden" id="botId" name="botId" value={this.state.botId} />
-					<input type="hidden" id="queue" name="queue" value={this.state.queue} />
-				</div>
-			</div>
-		</div>)
-
-	}
-
+function fetchBots(event) {
+    const rangeCount = window.timePeriod.interval.split('_');
+    const url = `api/dashboard/${encodeURIComponent(event)}?range=${rangeCount[0]}&count=${rangeCount[1] || 1}&timestamp=${encodeURIComponent(moment().format())}`;
+    return axios.get(url).then((response) => response.data.bots.read);
 }
 
-export default EventResubmit
+function resubmitEvent(data) {
+    return axios.post(`${window.api}/cron/save`, JSON.stringify(data));
+}
+
+function EventResubmit({ detail, onClose }) {
+    const { state } = useContext(DataContext); // Use React Context for global state
+    const { alert, confirm } = useLeoKit(); // Assuming custom hook for modals/alerts
+    const queryClient = useQueryClient();
+
+    const { data: bots = {}, isError } = useQuery(
+        ['bots', detail.event],
+        () => fetchBots(detail.event),
+        {
+            onError: () => alert('Failure to get data', 'error'),
+        }
+    );
+
+    const { register, handleSubmit, setValue, watch } = useForm({
+        defaultValues: {
+            payload: JSON.stringify(detail.payload, null, 2),
+            botId: detail.id,
+            queue: detail.event,
+        },
+    });
+
+    const payloadValue = watch('payload');
+
+    const mutation = useMutation(
+        resubmitEvent,
+        {
+            onSuccess: () => {
+                queryClient.invalidateQueries(['bots']);
+                alert('Resubmit triggered successfully', 'info');
+            },
+            onError: () => {
+                alert('Failure triggering resubmit', 'error');
+            },
+        }
+    );
+
+    const onSubmit = (formData) => {
+        const botId = formData.botId;
+        if (!botId) {
+            alert('No bot selected to resubmit', 'warning');
+            return false;
+        }
+
+        confirm(`Resubmit event to queue: "${formData.queue}" by botId: "${botId}".`, () => {
+            const payload = JSON.parse(formData.payload);
+            payload.original_eid = detail.eid;
+
+            const data = {
+                botId: refUtil.botRef(botId).id,
+                queue: formData.queue,
+                payload,
+            };
+
+            mutation.mutate(data);
+        });
+    };
+
+    const taStyle = {
+        margin: '5px 0px 15px',
+        width: '750px',
+        height: '255px',
+    };
+
+    useEffect(() => {
+        if (isError) {
+            alert('Error fetching bots data', 'error');
+        }
+    }, [isError, alert]);
+
+    return (
+        <form onSubmit={handleSubmit(onSubmit)}>
+            <div className="EventResubmitDialog theme-form">
+                <div>
+                    <label>Edit Event</label>
+                    <textarea
+                        {...register('payload')}
+                        style={taStyle}
+                    />
+                    <input type="hidden" {...register('botId')} />
+                    <input type="hidden" {...register('queue')} />
+                </div>
+                <div className="form-button-bar">
+                    <button type="submit" className="theme-button-primary">
+                        Resubmit
+                    </button>
+                    <button type="button" className="theme-button" onClick={onClose}>
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </form>
+    );
+}
+
+export default EventResubmit;

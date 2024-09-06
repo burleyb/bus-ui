@@ -1,31 +1,19 @@
-import React, {Component} from 'react'
+import React, { useEffect } from 'react';
 
+const Trunk = (props) => {
 
-export default class Trunk extends React.Component {
+    // If you need any logic inside componentDidMount or componentDidUpdate, handle it in useEffect.
+    useEffect(() => {
+        // This acts like componentDidMount and componentDidUpdate
+        // Add any side effects or logic here if needed
 
-	constructor(props) {
-		super(props)
+        // Cleanup (optional) when component unmounts, like componentWillUnmount
+        return () => {
+            // Cleanup logic here if necessary
+        };
+    }, []); // Empty dependency array means this effect runs once on mount and cleanup on unmount.
 
-		this.state = {
-		}
-	}
+    return <g {...props}></g>;
+};
 
-
-	componentDidMount() {
-
-	}
-
-
-	componentDidUpdate() {
-
-
-	}
-
-
-	render() {
-
-		return (<g {...this.props}></g>)
-
-	}
-
-}
+export default Trunk;

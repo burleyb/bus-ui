@@ -1,89 +1,70 @@
-import React, {Component} from 'react';
+import React, { useState } from 'react';
+import Dialog from './dialog';  // Assuming this is the dialog component we created
 
-export default class ManageAccess extends React.Component {
+function ManageAccess({ onClose }) {
+    const [ips, setIps] = useState(['127.0.0.1']);  // Default IP list
+    const [adding, setAdding] = useState(false);     // State for adding new IP
+    const [newIp, setNewIp] = useState('');          // Input value for new IP
 
+    const addIp = () => {
+        setAdding(true);
+        setTimeout(() => {
+            const input = document.querySelector('[name="add"]');
+            if (input) input.focus();  // Focus on the input field
+        }, 0);
+    };
 
-	constructor(props) {
-		super(props)
+    const saveIp = (event) => {
+        const value = event.currentTarget.value.trim();
+        if (value) {
+            setIps((prevIps) => [...prevIps, value]);  // Add the new IP to the list
+        }
+        setNewIp('');  // Clear input after saving
+        setAdding(false);  // Exit adding state
+    };
 
-		this.state = {
-			ips: [
-				'127.0.0.1'
-			]
-		}
-	}
+    const deleteIp = (ipToDelete) => {
+        setIps((prevIps) => prevIps.filter((ip) => ip !== ipToDelete));  // Remove the IP
+    };
 
+    const handleKeyDown = (event) => {
+        if (event.key === 'Enter') {
+            event.currentTarget.blur();  // Trigger blur event to save IP
+        }
+    };
 
-	componentDidMount() {
-
-		LeoKit.modal($('.manageAccess'),
-			{},
-			'Manage Access',
-			this.props.onClose
-		)
-
-	}
-
-
-	add() {
-		this.setState({ adding: true }, () => {
-			$('[name="add"]').focus()
-		})
-	}
-
-
-	save(event) {
-		var value = event.currentTarget.value
-		var ips = this.state.ips
-		if (value) {
-			ips.push(event.currentTarget.value)
-		}
-		this.setState({ adding: false, ips: ips })
-	}
-
-
-	delete(ip) {
-		var ips = this.state.ips
-		ips.splice(ips.indexOf(ip), 1)
-		this.setState({ ips: ips })
-	}
-
-
-	onKeyDown(event) {
-		if (event.keyCode === 13) {
-			event.currentTarget.blur()
-		}
-	}
-
-
-	render() {
-
-		return (<div className="display-none">
-			<div className="manageAccess">
-
-				<div className="saved-views">
-					{
-						this.state.ips.map((ip) => {
-							return (<div key={ip} className="workflow-div flex-row flex-space">
-								<span className="flex-grow">{ip}</span>
-								<i className="icon-minus-circled pull-right" onClick={this.delete.bind(this, ip)} />
-							</div>)
-						})
-					}
-					<div className="workflow-div flex-row flex-space text-left">
-					{
-						this.state.adding
-						? <input type="text" name="add" className="flex-grow theme-form-input" placeholder="ip address" onBlur={this.save.bind(this)} onKeyDown={this.onKeyDown.bind(this)} />
-						: <span className="flex-grow" onClick={this.add.bind(this)}>
-							<i className="icon-plus" /> add
-						</span>
-					}
-					</div>
-				</div>
-
-			</div>
-		</div>)
-
-	}
-
+    return (
+        <Dialog title="Manage Access" onClose={onClose}>
+            <div className="saved-views">
+                {ips.map((ip) => (
+                    <div key={ip} className="workflow-div flex-row flex-space">
+                        <span className="flex-grow">{ip}</span>
+                        <i
+                            className="icon-minus-circled pull-right"
+                            onClick={() => deleteIp(ip)}
+                            style={{ cursor: 'pointer' }}
+                        />
+                    </div>
+                ))}
+                <div className="workflow-div flex-row flex-space text-left">
+                    {adding ? (
+                        <input
+                            type="text"
+                            name="add"
+                            className="flex-grow theme-form-input"
+                            placeholder="IP address"
+                            onBlur={saveIp}
+                            onKeyDown={handleKeyDown}
+                        />
+                    ) : (
+                        <span className="flex-grow" onClick={addIp} style={{ cursor: 'pointer' }}>
+                            <i className="icon-plus" /> Add
+                        </span>
+                    )}
+                </div>
+            </div>
+        </Dialog>
+    );
 }
+
+export default ManageAccess;

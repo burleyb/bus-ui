@@ -1,27 +1,19 @@
+import { useContext } from 'react';
+import { DataContext } from './path/to/DataContext';
 
+// Example of using Context to replace actions
 
 export const setIsAuthenticated = (state) => {
-	return {
-		type: 'SET_IS_AUTHENTICATED',
-		state: state
-	}
-}
-
+    const { dispatch } = useContext(DataContext);
+    dispatch({ type: 'SET_IS_AUTHENTICATED', payload: state });
+};
 
 export const setDisplayState = (state) => {
-	return {
-		type: 'SET_DISPLAY_STATE',
-		state: state
-	}
-}
-
+    const { dispatch } = useContext(DataContext);
+    dispatch({ type: 'SET_DISPLAY_STATE', payload: state });
+};
 
 export const saveSettings = (settings, replace) => {
-	//console.log("saveSettings", settings);
-	//console.log("savesettingsReplace", replace);
-	return {
-		type: 'SAVE_SETTINGS',
-		settings,
-		replace: replace
-	}
-}
+    const { dispatch } = useContext(DataContext);
+    dispatch({ type: 'SAVE_SETTINGS', payload: { settings, replace } });
+};

@@ -1,74 +1,76 @@
-import React, {Component} from 'react';
+import React, { useState, useEffect } from 'react';
+import { SortableContainer, SortableElement, arrayMove } from 'react-sortable-hoc';
+import Dialog from './dialog'; // Assuming you have a reusable Dialog component
 
-import sortable from 'html5sortable'
+// Sortable item
+const SortableItem = SortableElement(({ value, onRestore, onDelete }) => (
+    <div className="workflow-div flex-row flex-space" data-view={value}>
+        <i className="icon-menu" />
+        <span className="flex-grow" onClick={onRestore}>
+            {value}
+        </span>
+        <i className="icon-minus-circled pull-right" onClick={onDelete} />
+    </div>
+));
 
-export default class SavedWorkflows extends React.Component {
-	constructor(props) {
-		super(props)
+// Sortable list
+const SortableList = SortableContainer(({ items, onRestore, onDelete }) => {
+    return (
+        <div>
+            {items.length > 0 ? (
+                items.map((value, index) => (
+                    <SortableItem
+                        key={`item-${value}`}
+                        index={index}
+                        value={value}
+                        onRestore={() => onRestore(value)}
+                        onDelete={() => onDelete(value)}
+                    />
+                ))
+            ) : (
+                <div>There are no saved Workflows</div>
+            )}
+        </div>
+    );
+});
 
-		this.state = {}
-	}
+function SavedWorkflows({ workflows, onClose }) {
+    const [order, setOrder] = useState(workflows.order());
 
+    useEffect(() => {
+        // Update the workflows state if it changes externally
+        setOrder(workflows.order());
+    }, [workflows]);
 
-	componentDidMount() {
+    const onSortEnd = ({ oldIndex, newIndex }) => {
+        const newOrder = arrayMove(order, oldIndex, newIndex);
+        setOrder(newOrder);
+        workflows.order(newOrder); // Persist the new order
+    };
 
-		this.modal = LeoKit.modal($('#savedWorkflows'),
-			{},
-			'Saved Workflows',
-			this.props.onClose
-		)
+    const onRestore = (view) => {
+        workflows.restore(view);
+    };
 
-		sortable('#savedWorkflows', {
-			handle: '.icon-menu',
-			forcePlaceholderSize: true
-		})
+    const onDelete = (view) => {
+        const updatedOrder = order.filter((workflow) => workflow !== view);
+        setOrder(updatedOrder);
+        workflows.delete(view);
+    };
 
-		sortable('#savedWorkflows')[0].addEventListener('sortupdate', (event) => {
-			var order = event.detail.newStartList.map((element) => {
-				return $(element).data('view')
-			})
-			this.props.workflows.order(order)
-		})
-
-	}
-
-
-	componentWillUnmount() {
-
-		sortable('#savedSearches', 'destroy')
-
-	}
-
-
-	onDelete(view) {
-		this.props.workflows.delete(view)
-		setTimeout(() => {
-			LeoKit.center(this.modal)
-		}, 1000)
-	}
-
-
-	render() {
-
-		var savedWorkflows = this.props.workflows.views
-		,   order = this.props.workflows.order()
-
-		return (<div>
-			<div id="savedWorkflows" className="saved-views">
-			{
-				order.length
-				? (order.map((view) => {
-					return (<div key={view} className="workflow-div flex-row flex-space" data-view={view}>
-						<i className="icon-menu" />
-						<span className="flex-grow" onClick={this.props.workflows.restore.bind(this, view)}>{view}</span>
-						{/*<i className={'icon-ok cursor-pointer' + (this.state.defaultView === savedWorkflows[view] ? ' theme-color-success' : ' theme-color-disabled')} title="set as default" onClick={this.setDefaultView.bind(this, view)}></i>*/}
-						<i className="icon-minus-circled pull-right" onClick={this.onDelete.bind(this, view)}></i>
-					</div>)
-				}))
-				: 'There are no saved Workflows'
-			}
-			</div>
-		</div>)
-	}
-
+    return (
+        <Dialog title="Saved Workflows" onClose={onClose}>
+            <div id="savedWorkflows" className="saved-views">
+                <SortableList
+                    items={order}
+                    onSortEnd={onSortEnd}
+                    onRestore={onRestore}
+                    onDelete={onDelete}
+                    useDragHandle
+                />
+            </div>
+        </Dialog>
+    );
 }
+
+export default SavedWorkflows;

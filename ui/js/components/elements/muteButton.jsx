@@ -1,121 +1,113 @@
-import React, {Component} from 'react';
-import {inject, observer} from 'mobx-react'
+import React, { useState, useContext } from 'react';
+import { DataContext } from '../stores/DataContext'; // Assuming you're using a context for dataStore
+import axios from 'axios';
+import moment from 'moment';
 
-@inject('dataStore')
-@observer
-export default class MuteButton extends React.Component {
+const MuteButton = ({ id, mute }) => {
+    const { state, dispatch } = useContext(DataContext); // Replacing MobX with React Context
+    const [showMuteAlarmId, setShowMuteAlarmId] = useState(false);
+    const [paused, setPaused] = useState(mute);
 
-	constructor(props) {
-		super(props);
-		this.state = {}
-		this.dataStore = this.props.dataStore;
-	}
+    const timePeriod = {
+        '15m': { minutes: 15 },
+        '30m': { minutes: 30 },
+        '1hr': { hours: 1 },
+        '2hr': { hours: 2 },
+        '6hr': { hours: 6 },
+        '1d': { days: 1 },
+        '1w': { days: 7 }
+    };
 
+    const toggleMuteAlarm = (showMuteAlarmId, event) => {
+        event.stopPropagation();
+        setShowMuteAlarmId(showMuteAlarmId);
+    };
 
-	toggleMuteAlarm(showMuteAlarmId, event) {
-		event.stopPropagation()
-		this.setState({ showMuteAlarmId: showMuteAlarmId })
-	}
+    const setMute = async (id, event) => {
+        let muteText = event.currentTarget.textContent.trim();
+        let muteValue;
 
-
-	setMute(id, event) {
-		let timePeriod = {'15m':{minutes:15}, '30m':{minutes:30}, '1hr':{hours:1}, '2hr':{hours:2}, '6hr':{hours:6}, '1d':{days:1}, '1w':{days:7}};
-
-		let mute = $(event.currentTarget).text();
-		switch(mute) {
-			case '&#x221e;': case '∞':
-				mute = true;
-			break;
-
-			case 'unmute':
-				mute = false;
-			break;
-		}
-
-        if (mute !== true && mute !== false) {
-			let timeMuted =  timePeriod[mute];
-            mute = Math.floor(moment().add(timeMuted).valueOf());
+        switch (muteText) {
+            case '∞':
+                muteValue = true;
+                break;
+            case 'unmute':
+                muteValue = false;
+                break;
+            default:
+                const timeMuted = timePeriod[muteText];
+                muteValue = timeMuted ? Math.floor(moment().add(timeMuted).valueOf()) : false;
         }
 
-		let data = {
-			"id": id,
-			"health": {mute: mute}
-		};
+        const data = { id, health: { mute: muteValue } };
+        const currentMute = state.nodes?.[id]?.health?.mute ?? false;
 
-
-        let temp = (this.dataStore.nodes && this.dataStore.nodes[id] && this.dataStore.nodes[id].health && this.dataStore.nodes[id].health.mute) ? this.dataStore.nodes[id].health.mute : false;
-        if (this.dataStore.nodes && this.dataStore.nodes[id] && this.dataStore.nodes[id].health && (this.dataStore.nodes[id].health.mute || this.dataStore.nodes[id].health.mute === false)) {
-            if (mute === true && this.dataStore.nodes[id].health.mute === false) {
-                this.dataStore.nodes[id].health.mute = !this.dataStore.nodes[id].health.mute
-            } else if (mute === false && this.dataStore.nodes[id].health.mute === true) {
-                this.dataStore.nodes[id].health.mute = !this.dataStore.nodes[id].health.mute
-            } else {
-                this.dataStore.nodes[id].health.mute = mute;
+        try {
+            // Update local state first
+            if (state.nodes?.[id]?.health) {
+                state.nodes[id].health.mute = muteValue !== undefined ? muteValue : currentMute;
             }
+            setPaused(muteValue);
+
+            // Perform the server request
+            await axios.post('api/cron/saveOverrides', data);
+
+            const message = `${id} ${!muteValue ? 'un-muted' : `muted ${muteValue !== true ? `until ${moment(muteValue).calendar()}` : 'indefinitely'}`}`;
+            window.messageLogNotify(message, 'info');
+            
+            // Trigger a data refresh after mute change
+            dispatch({ type: 'REFRESH_STATS' });
+        } catch (error) {
+            // Revert the local state on failure
+            if (state.nodes?.[id]?.health) {
+                state.nodes[id].health.mute = currentMute;
+            }
+            window.messageLogNotify(`Failed to ${!muteValue ? 'un-mute' : 'mute'} ${id}`, 'error', error);
         }
-		// For the first time ever muted
-        if(this.dataStore.nodes[id].health.mute === undefined) {
-            this.dataStore.nodes[id].health.mute = mute;
-		}
+    };
 
-        $.post('api/cron/saveOverrides', JSON.stringify(data), (response) => {
-            window.messageLogNotify(id + (!mute ? ' un-muted' : (' muted' + (mute !== true ? ' until ' + moment(mute).calendar() : ' indefinitely'))), 'info');
-            this.setState({ paused: mute });
-			this.dataStore.getStats();
-        }).fail((result) => {
-            this.dataStore.nodes[id].health.mute = temp;
-			window.messageLogNotify('Failed to ' + (!mute ? 'un-mute ' : 'mute ') + (id || ''), 'error', result)
-        })
-	}
+    return (
+        <a className="position-relative">
+            <i 
+                className={`${!mute ? 'icon-volume-low' : 'icon-volume-off'} font-15em ${!mute ? 'unMuted' : 'muted'}`}
+                onClick={(event) => toggleMuteAlarm(id, event)}
+            />
+            {showMuteAlarmId === id && (
+                <div className="mute-alarm theme-popup-below-left">
+                    <div className="mask" onClick={(event) => toggleMuteAlarm(false, event)}></div>
 
+                    {mute && (
+                        <header>
+                            <i className="icon-volume-off theme-color-success" />
+                            {mute === true ? <span>Muted Indefinitely</span> : <span>Muted until {moment(mute).calendar()}</span>}
+                        </header>
+                    )}
 
-	render() {
+                    <header>
+                        {mute ? (
+                            <>
+                                Edit mute:
+                                <button type="button" className="theme-button-micro pull-right" onClick={(event) => setMute(id, event)}>unmute</button>
+                            </>
+                        ) : (
+                            'Mute alarm for:'
+                        )}
+                    </header>
 
-		let id = this.props.id;
+                    <div className="times">
+                        {['15m', '30m', '1hr', '2hr', '6hr', '1d', '1w', '∞'].map((duration) => (
+                            <span
+                                key={duration}
+                                className="theme-hover-glow"
+                                dangerouslySetInnerHTML={{ __html: duration }}
+                                onClick={(event) => setMute(id, event)}
+                            ></span>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </a>
+    );
+};
 
-		return (<a className="position-relative">
-			<i className={(!this.props.mute ? 'icon-volume-low' : 'icon-volume-off') + ' font-15em ' + (!this.props.mute ? 'unMuted' : 'muted')} onClick={this.toggleMuteAlarm.bind(this, id)} />
-
-			{
-				this.state.showMuteAlarmId === id
-				? (<div className="mute-alarm theme-popup-below-left">
-					<div className="mask" onClick={this.toggleMuteAlarm.bind(this, false)}></div>
-
-					{
-                        this.props.mute
-						? <header>
-							<i className="icon-volume-off theme-color-success" />
-							{
-                                this.props.mute === true
-								? <span>Muted Indefinitely</span>
-								: <span>Muted until {moment(this.props.mute).calendar()}</span>
-							}
-						</header>
-						: false
-					}
-
-					{
-                        this.props.mute
-						? <header>
-							Edit mute:
-							<button type="button" className="theme-button-micro pull-right" onClick={this.setMute.bind(this, id)}>unmute</button>
-						</header>
-						: <header>Mute alarm for:</header>
-					}
-
-					<div className="times">
-						{
-							['15m', '30m', '1hr', '2hr', '6hr', '1d', '1w', '&#x221e;']	.map((duration) => {
-								return (<span key={duration} className="theme-hover-glow" dangerouslySetInnerHTML={{__html: duration }} onClick={this.setMute.bind(this, id)}></span>)
-							})
-						}
-					</div>
-				</div>)
-				: false
-			}
-
-		</a>)
-
-	}
-
-}
+export default MuteButton;

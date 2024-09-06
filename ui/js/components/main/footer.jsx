@@ -1,29 +1,15 @@
-import React, {Component} from 'react'
-import { connect } from 'react-redux'
+import React, { useContext } from 'react';
+import DetailsPane from './detailsPane.jsx';
+import { DataContext } from '../../../stores/DataContext'; // Assuming React Context for global state
 
-import DetailsPane from './detailsPane.jsx'
+function Footer() {
+    const { state } = useContext(DataContext); // Access global state using Context
 
-
-class Footer extends React.Component {
-	constructor(props) {
-		super(props)
-
-		this.state = {}
-	}
-
-
-	render() {
-		return (
-			<footer className="details-pane">
-				{
-					this.props.userSettings.details
-					? <DetailsPane />
-					: false
-				}
-			</footer>
-		)
-	}
-
+    return (
+        <footer className="details-pane">
+            {state.userSettings.details ? <DetailsPane /> : false}
+        </footer>
+    );
 }
 
-export default connect(store => store)(Footer)
+export default Footer;

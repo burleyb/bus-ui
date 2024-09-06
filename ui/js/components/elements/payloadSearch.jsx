@@ -1,341 +1,294 @@
-import React, { Component } from 'react';
-import { observer, inject } from 'mobx-react';
+import React, { useState, useEffect, useContext } from 'react';
+import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context for global state
 import TimePicker from '../elements/timePicker.jsx';
+import moment from 'moment';
 
-var timeFormat = '/YYYY/MM/DD/HH/mm/';
+const timeFormat = '/YYYY/MM/DD/HH/mm/';
 
-@inject('dataStore')
-@observer
-export default class PayloadSearch extends React.Component {
+const PayloadSearch = (props) => {
+    const { dataStore } = useContext(DataContext); // Replacing MobX with React Context
+    const [state, setState] = useState(() => init(props));
 
-	constructor(props) {
-		super(props);
-		this.dataStore = this.props.dataStore;
-		this.state = this.init(props);
-		this.continueSearch = this.continueSearch.bind(this);
-	}
+    // Initialization function
+    function init(props) {
+        let timestamp = '';
+        let timeFrame = props.timeFrames ? props.timeFrames[0] : '5m';
+        let searchText = '';
 
+        if (props.eventId) {
+            timestamp = searchText = props.eventId;
+            timeFrame = '';
+        } else if (!window.timePeriod?.begin || props.forceNow) {
+            timeFrame = !props.timeFrames || props.timeFrames.includes('5m') ? '5m' : props.timeFrames[0];
+            if (props.lastWrite) {
+                let lastWrite = Date.now() - props.lastWrite;
+                timestamp = determineTimestamp(lastWrite, timeFormat, props.lastWrite);
+                timeFrame = determineTimeFrame(lastWrite);
+            }
+        } else {
+            timestamp = 'z' + moment.utc(window.timePeriod.startTimestamp).format(timeFormat) + moment(window.timePeriod.startTimestamp).valueOf();
+            timeFrame = '';
+        }
 
-	init(props) {
-		let timestamp = '';
-		let timeFrame = props.timeFrames ? props.timeFrames[0] : '5m';
-		let searchText = '';
+        return {
+            serverId: props.serverId,
+            timestamp,
+            timeFrame,
+            events: false,
+            eventIndex: -1,
+            isSearching: true,
+            searchText,
+            searchEndTime: undefined,
+            searchedEventsCount: 0,
+            searchAttempts: 0,
+        };
+    }
 
-		if (props.eventId) {
-			timestamp = searchText = props.eventId;
-			timeFrame = '';
-		} else if (!window.timePeriod.begin || this.props.forceNow) { //now
-			timestamp = '';
-			timeFrame = (!props.timeFrames || props.timeFrames.indexOf('5m') !== -1 ? '5m' : props.timeFrames[0]);
-			if (props.lastWrite) {
-				let lastWrite = (Date.now() - props.lastWrite);
-				if (lastWrite > (7 * 60 * 60 * 1000)) {
-					timestamp = 'z' + moment.utc(props.lastWrite).format(timeFormat) + moment.utc();
-				} else if (lastWrite > (24 * 60 * 60 * 1000)) {
-					timeFrame = '1w';
-				} else if (lastWrite > (6 * 60 * 60 * 1000)) {
-					timeFrame = '1d';
-				} else if (lastWrite > (60 * 60 * 1000)) {
-					timeFrame = '6h';
-				} else if (lastWrite > (5 * 60 * 1000)) {
-					timeFrame = '1h';
-				}
-			}
-		} else {
-			timestamp = 'z' + moment.utc(window.timePeriod.startTimestamp).format(timeFormat) + moment(window.timePeriod.startTimestamp).valueOf();
-			timeFrame = '';
-		}
+    // Helper to determine timestamp based on time difference
+    const determineTimestamp = (lastWrite, format, lastWriteTime) => {
+        if (lastWrite > 7 * 60 * 60 * 1000) {
+            return 'z' + moment.utc(lastWriteTime).format(format) + moment.utc();
+        }
+        return '';
+    };
 
-		return {
-			serverId: props.serverId,
-			timestamp: timestamp,
-			timeFrame: timeFrame,
-			events: false,
-			eventIndex: -1,
-			isSearching: true,
-			searchText: searchText,
-			searchEndTime: undefined,
-			searchedEventsCount: 0,
-			searchAttempts: 0
-		}
-	}
+    // Helper to determine time frame based on time difference
+    const determineTimeFrame = (lastWrite) => {
+        if (lastWrite > 24 * 60 * 60 * 1000) return '1w';
+        if (lastWrite > 6 * 60 * 60 * 1000) return '1d';
+        if (lastWrite > 60 * 60 * 1000) return '6h';
+        if (lastWrite > 5 * 60 * 1000) return '1h';
+        return '';
+    };
 
+    useEffect(() => {
+        startPayloadSearch();
+    }, []);
 
-	componentDidMount() {
-		this.startPayloadSearch();
-	}
+    useEffect(() => {
+        if (props.serverId !== state.serverId) {
+            setState(init(props));
+            startPayloadSearch();
+        }
+    }, [props.serverId]);
 
+    const startPayloadSearch = () => {
+        if (props.serverId) {
+            setState((prevState) => ({
+                ...prevState,
+                events: false,
+                searchedEventsCount: 0,
+                eventIndex: -1,
+                isSearching: true,
+                resumptionToken: undefined,
+                searchAttempts: 0,
+                returnedEventsCount: 0,
+            }));
+            returnEvents([]);
+            let resumptionToken = state.timestamp || '';
+            if (state.timeFrame === 'all') {
+                resumptionToken = '';
+            } else {
+                const startTime = moment.utc().subtract(state.timeFrame.split(/[^\d]/)[0], state.timeFrame.slice(-1));
+                resumptionToken = 'z' + startTime.format(timeFormat) + startTime;
+            }
+            runPayloadSearch(props.serverId, state.searchText, resumptionToken);
+        }
+    };
 
-	componentWillReceiveProps(props) {
-		if (props.serverId !== this.state.serverId) {
-			this.setState(this.init(props), this.startPayloadSearch);
-		}
-	}
+    const runPayloadSearch = (serverId, searchText, resumptionToken, agg) => {
+        const getSearchText = searchText === resumptionToken || searchText.match(/^z\/\d{4}\//) ? '' : searchText;
 
+        fetch(`api/search/${encodeURIComponent(serverId)}/${encodeURIComponent(resumptionToken)}/${encodeURIComponent(getSearchText)}${agg ? `?agg=${encodeURIComponent(JSON.stringify(agg || {}))}` : ''}`)
+            .then((response) => response.json())
+            .then((result) => {
+                const events = (state.events || []).concat(result.results);
+                const searchedEventsCount = (state.searchedEventsCount || 0) + result.count;
+                const returnedEventsCount = (state.returnedEventsCount || 0) + result.results.length;
+                const searchAttempts = state.searchAttempts + 1;
+                if (searchAttempts >= 6) {
+                    setState({
+                        events,
+                        searchedEventsCount,
+                        resumptionToken: result.resumptionToken || false,
+                        isSearching: false,
+                        searchAttempts: 0,
+                        returnedEventsCount: 0,
+                        agg: result.agg,
+                    });
+                    returnEvents(events);
+                } else if (returnedEventsCount < 30) {
+                    setState({
+                        events,
+                        searchedEventsCount,
+                        resumptionToken: result.resumptionToken || false,
+                        isSearching: !!result.resumptionToken,
+                        searchEndTime: result.last_time,
+                        searchAttempts,
+                        returnedEventsCount,
+                        agg: result.agg,
+                    });
+                    if (result.resumptionToken) {
+                        runPayloadSearch(serverId, searchText, result.resumptionToken, result.agg);
+                    }
+                    returnEvents(events);
+                } else {
+                    setState({
+                        events,
+                        searchedEventsCount,
+                        searchEndTime: result.last_time,
+                        isSearching: false,
+                        resumptionToken: result.resumptionToken || false,
+                        searchAttempts: 0,
+                        returnedEventsCount: 0,
+                        agg: result.agg,
+                    });
+                    returnEvents(events);
+                }
+            })
+            .catch((error) => {
+                console.error('Error fetching events:', error);
+            });
+    };
 
-	componentWillUnmount() {
-		if (this.currentRequest) {
-			this.currentRequest.abort();
-		}
-	}
+    const returnEvents = (events) => {
+        let status;
+        if (state.resumptionToken || state.isSearching) {
+            status = (
+                <div>
+                    {state.searchEndTime && `Looked through ${state.searchedEventsCount} events until ${moment(state.searchEndTime).format('YYYY-MM-DD HH:mm:ss')} `}
+                    {state.isSearching ? (
+                        <span>
+                            {state.searchEndTime ? ' and ' : ''}
+                            searching <span className="theme-spinner-tiny margin-30" />
+                        </span>
+                    ) : (
+                        state.resumptionToken && (
+                            <button type="button" className="theme-button" onClick={resumeSearch}>
+                                Continue
+                            </button>
+                        )
+                    )}
+                </div>
+            );
+        } else if (events.length) {
+            status = <div>No more events found</div>;
+        } else if (props.lastWrite) {
+            status = (
+                <div>
+                    <button type="button" className="theme-button" onClick={findRecent}>
+                        Find most recent events
+                    </button>
+                </div>
+            );
+        } else {
+            status = <div>No events found</div>;
+        }
 
+        props.returnEvents && props.returnEvents(events, status);
+    };
 
-	selectTimeFrame(timeFrame) {
-		this.setState({
-			timeFrame: timeFrame,
-			searchEndTime: moment(),
-			timestamp: undefined
-		}, () => {
-			this.startPayloadSearch()
-		})
-	}
+    const selectTimeFrame = (timeFrame) => {
+        setState((prevState) => ({
+            ...prevState,
+            timeFrame,
+            searchEndTime: moment(),
+            timestamp: undefined,
+        }));
+        startPayloadSearch();
+    };
 
+    const customTimeFrame = (customTime) => {
+        const customTimeFormatted = moment.utc(customTime, 'MM/DD/YYYY h:mm A');
+        setState((prevState) => ({
+            ...prevState,
+            timestamp: 'z' + customTimeFormatted.format(timeFormat) + customTimeFormatted.valueOf(),
+            searchEndTime: moment.utc(customTimeFormatted),
+            timeFrame: '',
+        }));
+        startPayloadSearch();
+    };
 
-	customTimeFrame(customTime) {
-		customTime = moment.utc(customTime, 'MM/DD/YYYY h:mm A')
-		this.setState({
-			timestamp: 'z' + customTime.format(timeFormat) + customTime.valueOf(),
-			searchEndTime: moment.utc(customTime),
-			timeFrame: ''
-		}, () => {
-			this.startPayloadSearch()
-		})
-	}
+    const saveSearchText = (event) => {
+        setState((prevState) => ({ ...prevState, searchText: event.currentTarget.value }));
+    };
 
+    const clearPayloadSearch = () => {
+        setState({
+            resumptionToken: undefined,
+            events: false,
+            eventIndex: -1,
+            isSearching: true,
+            searchText: '',
+            searchEndTime: '',
+        });
+        returnEvents(false);
+        startPayloadSearch();
+    };
 
-	saveSearchText(event) {
-		this.setState({ searchText: event.currentTarget.value })
-	}
+    const runPayloadSearchOnEnter = (event) => {
+        if (event.keyCode === 13) {
+            event.preventDefault();
+            const searchText = event.currentTarget.value.trim();
+            if (searchText.match(/(z\/.*?)(?:$|\s)/g)) {
+                const token = searchText.match(/(z\/.*?)(?:$|\s)/g)[0].replace(/\s/g, '');
+                setState((prevState) => ({
+                    ...prevState,
+                    timestamp: token,
+                    timeFrame: '',
+                }));
+                startPayloadSearch();
+            } else {
+                setState((prevState) => ({ ...prevState, searchText: event.currentTarget.value }));
+                startPayloadSearch();
+            }
+        }
+    };
 
+    const resumeSearch = () => {
+        setState((prevState) => ({ ...prevState, isSearching: true, searchAttempts: 0, returnedEventsCount: 0 }));
+        runPayloadSearch(props.serverId, state.searchText, state.resumptionToken, state.agg);
+    };
 
-	clearPayloadSearch() {
-		this.setState({
-			resumptionToken: undefined,
-			events: false,
-			eventIndex: -1,
-			isSearching: true,
-			searchText: '',
-			searchEndTime: ''
-		}, () => {
-			this.returnEvents(false)
-			this.startPayloadSearch()
-		})
-	}
+    const findRecent = () => {
+        const timestamp = moment.utc(props.lastWrite).subtract(5, 'minutes');
+        const customTimeFrame = timestamp.format();
+        setState((prevState) => ({
+            ...prevState,
+            customTimeFrame,
+            timeFrame: '',
+            timestamp: 'z' + timestamp.format(timeFormat) + timestamp.valueOf(),
+        }));
+        startPayloadSearch();
+    };
 
+    return (
+        <div className="timeframe-search-bar">
+            {!props.hideSearch && (
+                <div className="left-side">
+                    <input
+                        name="search"
+                        placeholder="search"
+                        value={state.searchText}
+                        onChange={saveSearchText}
+                        onKeyDown={runPayloadSearchOnEnter}
+                        onBlur={runPayloadSearchOnEnter}
+                        autoComplete="off"
+                    />
+                    {state.searchText && <i className="icon-cancel clear-search-text" onClick={clearPayloadSearch} />}
+                </div>
+            )}
+            <div className="right-side">
+                <TimePicker
+                    timeFrames={props.timeFrames}
+                    active={state.timeFrame}
+                    customTimeFrame={state.customTimeFrame}
+                    onClick={selectTimeFrame}
+                    datePicker={customTimeFrame}
+                />
+            </div>
+        </div>
+    );
+};
 
-	runPayloadSearchOnEnter(event) {
-		if (event.keyCode == 13) {
-			event.preventDefault()
-			var searchText = event.currentTarget.value.trim()
-			if (searchText.match(/(z\/.*?)(?:$|\s)/g)) {
-				let token = searchText.match(/(z\/.*?)(?:$|\s)/g)[0];
-				token = token.replace(/\s/g, '');
-				this.setState({
-					timestamp: token,
-					timeFrame: ''
-				}, () => {
-					this.startPayloadSearch()
-				})
-			} else {
-				this.setState({ searchText: event.currentTarget.value }, () => {
-					this.startPayloadSearch()
-				})
-			}
-		}
-	}
-
-
-	startPayloadSearch() {
-		if (this.props.serverId) {
-			this.setState({ events: false, searchedEventsCount: 0, eventIndex: -1, isSearching: true, resumptionToken: undefined, searchAttempts: 0, returnedEventsCount: 0 }, () => {
-				this.returnEvents([])
-			})
-			if (this.state.timestamp) {
-				var resumptionToken = this.state.timestamp
-				if (resumptionToken.match(/^z\/\d{4}(\/\d{2}){4}\/\d{13}-\d{1,8}$/)) {
-					if (resumptionToken.slice(-1) == '0') {
-						resumptionToken = resumptionToken.slice(0, -1)
-					} else {
-						resumptionToken = resumptionToken.slice(0, -1) + (resumptionToken.slice(-1) - 1)
-					}
-				}
-			} else if (this.state.timeFrame == 'all') {
-				var resumptionToken = ''
-			} else {
-				var startTime = moment.utc().subtract(this.state.timeFrame.split(/[^\d]/)[0], this.state.timeFrame.slice(-1));
-				var resumptionToken = 'z' + startTime.format('/YYYY/MM/DD/HH/mm/') + startTime
-			}
-			this.runPayloadSearch(this.props.serverId, this.state.searchText, resumptionToken)
-		}
-	}
-
-
-	runPayloadSearch(serverId, searchText, resumptionToken, agg) {
-		var getSearchText = (searchText === resumptionToken || searchText.match(/^z\/\d{4}\//)) ? '' : searchText;
-
-		if (searchText.match(/(^z\/.*?)(?:$|\s)/g)) {
-			let token = searchText.match(/(^z\/.*?)(?:$|\s)/g)[0];
-			getSearchText = searchText.replace(token, '')
-		}
-
-		
-		if (resumptionToken.match(/^z\/\d{4}-/)) {
-			let startTime = moment.utc(resumptionToken.replace(/^z\//, ""));
-			if (!startTime.isValid()){
-				window.messageLogNotify('Invalid ISO 8601 date', 'error', resumptionToken.replace(/^z\//, ""));
-				this.setState({
-					isSearching: false,
-				});
-				return;
-			}
-			resumptionToken = 'z' + startTime.format('/YYYY/MM/DD/HH/mm/') + startTime;
-		}
-		
-
-		this.currentRequest = $.get('api/search/' + encodeURIComponent(serverId) + '/' + encodeURIComponent(resumptionToken) + '/' + encodeURIComponent(getSearchText) + (agg ? `?agg=${encodeURIComponent(JSON.stringify(agg || {}))}` : ""), (result) => {
-			var events = (this.state.events || []).concat(result.results)
-			var searchedEventsCount = (this.state.searchedEventsCount || 0) + result.count;
-			var returnedEventsCount = (this.state.returnedEventsCount || 0) + result.results.length;
-			var searchAttempts = this.state.searchAttempts + 1
-			if (searchAttempts >= 6) {
-				this.setState({
-					events: events,
-					searchedEventsCount: searchedEventsCount,
-					resumptionToken: result.resumptionToken || false,
-					isSearching: false,
-					searchAttempts: 0,
-					returnedEventsCount: 0,
-					agg: result.agg,
-				}, () => {
-					this.returnEvents(events)
-				});
-			} else if (returnedEventsCount < 30) {
-				this.setState({
-					events: events,
-					searchedEventsCount: searchedEventsCount,
-					resumptionToken: result.resumptionToken || false,
-					isSearching: !!result.resumptionToken,
-					searchEndTime: result.last_time,
-					searchAttempts: searchAttempts,
-					returnedEventsCount: returnedEventsCount,
-					agg: result.agg
-				}, () => {
-					if (result.resumptionToken) {
-						this.runPayloadSearch(serverId, searchText, result.resumptionToken, result.agg)
-					}
-					this.returnEvents(events)
-				});
-			} else {
-				this.setState({
-					events: events,
-					searchedEventsCount: searchedEventsCount,
-					searchEndTime: result.last_time,
-					isSearching: false,
-					resumptionToken: result.resumptionToken || false,
-					searchAttempts: 0,
-					returnedEventsCount: 0,
-					agg: result.agg
-				}, () => {
-					this.returnEvents(events)
-				});
-			}
-
-		}).fail((result, status) => {
-			if (result.responseText === 'invalid filter expression') {
-				window.messageLogNotify('Invalid Filter Expression', 'error', result);
-			} else if (status !== "abort" && status !== "canceled") {
-				result.call = 'api/search/' + encodeURIComponent(serverId) + '/' + encodeURIComponent(resumptionToken) + '/' + encodeURIComponent(getSearchText);
-				window.messageLogNotify('Failure searching events on "' + this.dataStore.nodes[this.props.serverId].label + '"', 'error', result);
-			}
-		}).always(() => {
-			this.currentRequest = null;
-		})
-	}
-
-
-	continueSearch() {
-		if (this.state.resumptionToken && !this.state.isSearching) {
-			this.resumeSearch()
-		}
-	}
-
-
-	resumeSearch() {
-		this.setState({ isSearching: true, searchAttempts: 0, returnedEventsCount: 0 }, () => {
-			this.returnEvents()
-		})
-		this.runPayloadSearch(this.props.serverId, this.state.searchText, this.state.resumptionToken, this.state.agg)
-	}
-
-
-	findRecent() {
-		var timestamp = moment.utc(this.props.lastWrite).subtract(5, 'minutes')
-			, customTimeFrame = timestamp.format()//'YYYY-MM-DDTHH:MM:SS')
-		timestamp = 'z' + timestamp.format(timeFormat) + timestamp.valueOf()
-		this.setState({ customTimeFrame: customTimeFrame, timeFrame: '', timestamp: timestamp }, this.startPayloadSearch)
-	}
-
-
-	returnEvents(events) {
-
-		var status = ((this.state.resumptionToken || this.state.isSearching)
-			? <div>{
-				this.state.searchEndTime
-					? 'Looked through ' + this.state.searchedEventsCount + ' events until ' + moment(this.state.searchEndTime).format('YYYY-MM-DD HH:mm:ss') + ' '
-					: ''
-			}
-				{
-					this.state.isSearching
-						? (<span>
-							{(this.state.searchEndTime ? ' and ' : '')}
-							searching <span className="theme-spinner-tiny margin-30" />
-						</span>)
-						: (
-							this.state.resumptionToken
-								? <button type="button" className="theme-button" onClick={this.resumeSearch.bind(this)}>Continue</button>
-								: false
-						)
-				}
-			</div>
-			: (
-				events.length
-					? <div>No more events found</div>
-					: (
-						this.props.lastWrite
-							? <div>
-								<button type="button" className="theme-button" onClick={this.findRecent.bind(this)}>Find most recent events</button>
-							</div>
-							: <div>No events found</div>
-					)
-			)
-		);
-
-		this.props.returnEvents && this.props.returnEvents(events, status);
-	}
-
-
-	render() {
-
-		return (<div className="timeframe-search-bar">
-			{
-				this.props.hideSearch
-					? <div className="left-side"></div>
-					: (<div className="left-side">
-						<input name="search" placeholder="search" value={this.state.searchText} onChange={this.saveSearchText.bind(this)} onKeyDown={this.runPayloadSearchOnEnter.bind(this)} onBlur={this.runPayloadSearchOnEnter.bind(this)} autoComplete="off" />
-						{
-							this.state.searchText
-								? <i className="icon-cancel clear-search-text" onClick={this.clearPayloadSearch.bind(this)} />
-								: false
-						}
-					</div>)
-			}
-			<div className="right-side">
-
-				<TimePicker timeFrames={this.props.timeFrames} active={this.state.timeFrame} customTimeFrame={this.state.customTimeFrame} onClick={this.selectTimeFrame.bind(this)} datePicker={this.customTimeFrame.bind(this)} />
-
-			</div>
-		</div>)
-
-	}
-
-}
+export default PayloadSearch;

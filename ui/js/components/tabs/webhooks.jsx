@@ -1,128 +1,160 @@
-import React, { Component } from 'react'
-import {observer, inject} from 'mobx-react'
+import React, { useState, useEffect, useContext } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
+import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext is used for global state
 
-@inject('dataStore')
-@observer
-class Webhooks extends React.Component {
+const fetchWebhooks = async (nodeId) => {
+  const { data } = await axios.get(`/api/system/${nodeId}/webhooks`);
+  return data;
+};
 
+const saveWebhooks = async ({ nodeId, webhooks }) => {
+  const response = await axios.post(`/api/system/${nodeId}`, { webhooks });
+  return response.data;
+};
 
-	constructor(props) {
-		super(props);
-		this.dataStore = this.props.dataStore;
+const runWebhook = async (webhookId) => {
+  const response = await axios.post(`/api/system/${webhookId}`, { executeNow: true });
+  return response.data;
+};
 
-		this.state = {
-			webhooks: []
-		}
-	}
+function Webhooks({ nodeData }) {
+  const { state } = useContext(DataContext); // Accessing global state from DataContext
+  const queryClient = useQueryClient();
+  const [webhooks, setWebhooks] = useState([]);
 
+  // Fetch webhooks on mount
+  const { data, isLoading, refetch } = useQuery(
+    ['webhooks', nodeData.id],
+    () => fetchWebhooks(nodeData.id),
+    {
+      onSuccess: (data) => {
+        setWebhooks(data?.webhooks || []);
+      },
+    }
+  );
 
-	componentWillMount() {
-		this.refresh()
-	}
+  // Mutation to save webhook settings
+  const mutation = useMutation(saveWebhooks, {
+    onSuccess: () => {
+      queryClient.invalidateQueries(['webhooks', nodeData.id]);
+      window.fetchData();
+    },
+    onError: (error) => {
+      window.messageLogModal(`Failure saving webhooks for ${nodeData.label}`, 'error', error);
+    },
+  });
 
+  // Mutation to run webhook
+  const runWebhookMutation = useMutation(runWebhook, {
+    onSuccess: (response, { webhookId }) => {
+      window.messageLogNotify(`Webhook run triggered on ${state.nodes[webhookId]?.label}`);
+    },
+    onError: (error, { webhookId }) => {
+      window.messageLogModal(
+        `Failure triggering webhook run on ${state.nodes[webhookId]?.label}`,
+        'error',
+        error
+      );
+    },
+  });
 
-	componentWillUnmount() {
-		clearTimeout(this.refreshTimeout)
-	}
+  // Function to add a new webhook
+  const addWebhook = () => {
+    window.createBot({
+      source: null,
+      onSave: (response) => {
+        setWebhooks((prevWebhooks) => [...prevWebhooks, response.refId]);
+        mutation.mutate({ nodeId: nodeData.id, webhooks: [...webhooks, response.refId] });
+      },
+      group: 'webhook',
+      system: {
+        id: nodeData.id,
+        label: nodeData.label,
+        type: 'webhook',
+      },
+    });
+  };
 
+  // Function to run webhook
+  const runNow = (webhookId) => {
+    runWebhookMutation.mutate({ webhookId });
+  };
 
-	refresh() {
-		this.setState({ webhooks: (this.dataStore.nodes[this.props.nodeData.id] || []).webhooks || [] }, () => {
-			this.refreshTimeout = setTimeout(this.refresh.bind(this), 1000)
-		})
-	}
+  useEffect(() => {
+    const interval = setInterval(refetch, 1000); // Refresh every 1 second
+    return () => clearInterval(interval);
+  }, [refetch]);
 
+  if (isLoading) {
+    return <div className="theme-spinner-large"></div>;
+  }
 
-	addWebhook() {
-		window.createBot({
-			source: null,
-			onSave: this.onSave.bind(this),
-			group: 'webhook',
-			system: {
-				id: this.props.nodeData.id,
-				label: this.props.nodeData.label,
-				type: 'webhook'
-			}
-		})
-	}
-
-
-	onSave(response) {
-		var webhooks = this.state.webhooks
-		webhooks.push(response.refId)
-		$.post(window.api + '/system/' + ((this.props.nodeData || {}).id || ''), JSON.stringify({ webhooks: webhooks}), (response) => {
-			//console.log('System response', response)
-			this.setState({ webhooks: webhooks })
-			window.fetchData()
-		})
-	}
-
-
-	runNow(webhookId) {
-		$.post(window.api + '/system/' + webhookId, JSON.stringify({ executeNow: true }), (response) => {
-			window.messageLogNotify('Webhook run triggered on ' + this.dataStore.nodes[webhookId].label)
-		}).fail((result) => {
-			window.messageLogModal('Failure triggering webhook run on bot ' + this.dataStore.nodes[botId].label, 'error', result)
-		})
-	}
-
-
-	render() {
-
-		return (<div>
-
-			<div className="theme-table-fixed-header">
-				<table>
-					<thead>
-						<tr>
-							<th>Name</th>
-							<th>Frequency</th>
-							<th>Last Run</th>
-							<th>Last Log</th>
-							<th></th>
-						</tr>
-					</thead>
-					<tbody>
-						{
-							this.state.webhooks.length
-							? this.state.webhooks.map((webhookId, index) => {
-								var webhook = this.dataStore.nodes[webhookId] || {}
-								//console.log('webhooks', webhooks, webhookId)
-								return (<tr key={webhookId}>
-									<td>
-										<a onClick={() => {
-											window.subNodeSettings({
-												id: webhookId,
-												label: webhook.label,
-												type: webhook.type,
-												server_id: webhook.id
-											}, true)
-										}}>{webhook.label}</a>
-									</td>
-									<td>{webhook.frequency}</td>
-									<td>{webhook.last_run && webhook.last_run.end ? moment(webhook.last_run.end).format() : ' - '}</td>
-									<td>{((webhook.logs || {}).errors || '').toString()}</td>
-									<td className="text-center">
-										<button type="button" className="theme-button" onClick={this.runNow.bind(this, webhook.id)}>Run Now</button>
-									</td>
-								</tr>)
-							})
-							: false
-						}
-						<tr>
-							<td colSpan="5">
-								<button type="button" className="theme-button" onClick={this.addWebhook.bind(this)}>
-									<i className="icon-plus"></i> Add Webhook
-								</button>
-							</td>
-						</tr>
-					</tbody>
-				</table>
-			</div>
-
-		</div>)
-	}
-
+  return (
+    <div>
+      <div className="theme-table-fixed-header">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Frequency</th>
+              <th>Last Run</th>
+              <th>Last Log</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {webhooks.length > 0 ? (
+              webhooks.map((webhookId, index) => {
+                const webhook = state.nodes[webhookId] || {};
+                return (
+                  <tr key={webhookId}>
+                    <td>
+                      <a
+                        onClick={() => {
+                          window.subNodeSettings({
+                            id: webhookId,
+                            label: webhook.label,
+                            type: webhook.type,
+                            server_id: webhook.id,
+                          }, true);
+                        }}
+                      >
+                        {webhook.label}
+                      </a>
+                    </td>
+                    <td>{webhook.frequency}</td>
+                    <td>{webhook.last_run?.end ? moment(webhook.last_run.end).format() : ' - '}</td>
+                    <td>{(webhook.logs?.errors || '').toString()}</td>
+                    <td className="text-center">
+                      <button
+                        type="button"
+                        className="theme-button"
+                        onClick={() => runNow(webhook.id)}
+                      >
+                        Run Now
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
+            ) : (
+              <tr>
+                <td colSpan="5" className="text-center">No Webhooks</td>
+              </tr>
+            )}
+            <tr>
+              <td colSpan="5">
+                <button type="button" className="theme-button" onClick={addWebhook}>
+                  <i className="icon-plus"></i> Add Webhook
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
-export default Webhooks
+export default Webhooks;

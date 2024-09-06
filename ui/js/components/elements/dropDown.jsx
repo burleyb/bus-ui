@@ -1,32 +1,23 @@
-import React from 'react';
-import {observer, inject} from 'mobx-react';
+import React, { useContext } from 'react';
+import { DataContext } from '../../../stores/DataContext'; // Assuming usage of React Context for state management
 
-@inject('dataStore')
-@observer
-export default class DropDown extends React.Component {
-    constructor(props) {
-        super(props);
-        this.dataStore = this.props.dataStore;
-    }
+const DropDown = () => {
+    const { state, dispatch } = useContext(DataContext); // Using React Context to manage global state
 
-    handleChange = (e) => {
-        this.dataStore.sdkPick = e.target.value;
+    const handleChange = (e) => {
+        dispatch({ type: 'SET_SDK_PICK', payload: e.target.value });
     };
 
-    render() {
-        return (
-            <div>
-                Pick a Langauge...
-                <br/>
-                <select
-                    name={'picking'}
-                    id={'picking'}
-                    onChange={this.handleChange}
-                >
-                    <option value="node">NodeJs</option>
-                    <option value="php">PHP</option>
-                </select>
-            </div>
-        )
-    };
+    return (
+        <div>
+            Pick a Language...
+            <br />
+            <select name="picking" id="picking" onChange={handleChange}>
+                <option value="node">NodeJs</option>
+                <option value="php">PHP</option>
+            </select>
+        </div>
+    );
 };
+
+export default DropDown;

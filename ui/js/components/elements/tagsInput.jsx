@@ -1,142 +1,113 @@
-import React from 'react';
-import {observer, inject} from 'mobx-react';
+import React, { useState, useEffect, useContext } from 'react';
+import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context for global state
+import axios from 'axios'; // Replacing jQuery's $.post with Axios
 
-@inject('dataStore')
-@observer
-export default class TagsInput extends React.Component {
-	constructor(props) {
-		super(props);
-        this.dataStore = this.props.dataStore;
+const TagsInput = (props) => {
+    const { topicInfo } = useContext(DataContext); // Replacing MobX inject with React Context
+    const [tags, setTags] = useState((props.value || props.defaultValue || '').toString().split(','));
+    const [tag, setTag] = useState('');
 
-        this.state = {
-			tags: (props.value || props.defaultValue || '').toString().split(','),
-			tag: ''
-		}
-	}
-
-    componentWillReceiveProps(nextProps){
-		let bool = (nextProps.alerts) || false;
-		if (bool) {
-			let obj = nextProps.tags && nextProps.tags.tags || {};
-			let tags = [];
-			Object.keys(obj).map((tag) => {
-				if (obj[tag].indexOf(nextProps.arn) > -1) {
-					tags.push(tag);
-				}
-			});
-            this.setState({
-                tags: tags
-            });
-		}
-    }
-
-	onClick(event) {
-		$(event.currentTarget).find('input[type="text"]').focus()
-	}
-
-
-	addTag(tag) {
-        let bool = (this.props.alerts) || false;
-        if (bool) {
-            let tags = this.state.tags
-            tags = tags.concat(tag.split(',').filter(t => t.trim()))
-            let body = Object.assign({}, {"delete": false, "addedTag": tag}, this.props.tags);
-            $.post(`api/sns_save/tags/${this.props.arn}`, JSON.stringify(body), (response) => {
-                if (this.dataStore.topicInfo && this.dataStore.topicInfo.tags) {
-                    this.dataStore.topicInfo.tags.tags = response;
-                }
-                this.setState({ tags: tags, tag: '' })
-            }).fail((result) => {
-                window.messageLogModal('Unable to update tags', 'error', result)
-            });
-        } else {
-            if (tag !== '') {
-                var tags = this.state.tags;
-                tags = tags.concat(tag.split(',').filter(t => t.trim()));
-                this.setState({ tags: tags, tag: '' })
-            }
+    useEffect(() => {
+        if (props.alerts) {
+            const obj = props.tags?.tags || {};
+            const newTags = Object.keys(obj).filter(tagKey => obj[tagKey].includes(props.arn));
+            setTags(newTags);
         }
-	}
+    }, [props.alerts, props.tags, props.arn]);
 
+    const addTag = (newTag) => {
+        if (newTag === '') return;
 
-	onChange(event) {
-		var tag = event.currentTarget.value
-		if (tag.indexOf(',') !== -1) {
-			this.addTag(tag)
-		} else {
-			this.setState({ tag: tag }, () => {
-				this.props.onChange && this.props.onChange()
-			})
-		}
-	}
+        const bool = props.alerts || false;
+        const newTags = tags.concat(newTag.split(',').filter(t => t.trim()));
 
-
-	onKeyDown(event) {
-		if (event.keyCode === 13) {
-			this.addTag(event.currentTarget.value)
-		}
-	}
-
-
-	onBlur(event) {
-		this.addTag(event.currentTarget.value)
-	}
-
-
-    removeTag(index, event) {
-        let bool = (this.props.alerts) || false;
         if (bool) {
-            let tags = this.state.tags;
-            tags.splice(index, 1);
-            let body = Object.assign({"delete": true, "tagsToKeep": tags}, this.props.tags);
-            $.post(`api/sns_save/tags/${this.props.arn}`, JSON.stringify(body), (response) => {
-            	if (this.dataStore.topicInfo && this.dataStore.topicInfo.tags) {
-                    this.dataStore.topicInfo.tags.tags = response;
-                }
-                this.setState({ tags: tags })
-            }).fail((result) => {
-                window.messageLogModal('Unable to update tags', 'error', result)
-            });
+            const body = { ...props.tags, delete: false, addedTag: newTag };
+            axios.post(`api/sns_save/tags/${props.arn}`, JSON.stringify(body))
+                .then(response => {
+                    if (topicInfo && topicInfo.tags) {
+                        topicInfo.tags.tags = response.data;
+                    }
+                    setTags(newTags);
+                    setTag('');
+                })
+                .catch(err => {
+                    window.messageLogModal('Unable to update tags', 'error', err);
+                });
         } else {
-            let inputTag = $(event.currentTarget).closest('div').next();
-            let tags = this.state.tags;
-            tags.splice(index, 1)
-            this.setState({ tags: tags }, () => {
-                inputTag.focus()
-                this.props.onChange && this.props.onChange()
-            })
+            setTags(newTags);
+            setTag('');
         }
-    }
+    };
 
+    const removeTag = (index) => {
+        const bool = props.alerts || false;
+        const updatedTags = tags.filter((_, i) => i !== index);
 
-	render() {
+        if (bool) {
+            const body = { ...props.tags, delete: true, tagsToKeep: updatedTags };
+            axios.post(`api/sns_save/tags/${props.arn}`, JSON.stringify(body))
+                .then(response => {
+                    if (topicInfo && topicInfo.tags) {
+                        topicInfo.tags.tags = response.data;
+                    }
+                    setTags(updatedTags);
+                })
+                .catch(err => {
+                    window.messageLogModal('Unable to update tags', 'error', err);
+                });
+        } else {
+            setTags(updatedTags);
+        }
+    };
 
-		var props = this.props
+    const handleInputChange = (e) => {
+        const newTag = e.target.value;
+        if (newTag.includes(',')) {
+            addTag(newTag);
+        } else {
+            setTag(newTag);
+            props.onChange && props.onChange();
+        }
+    };
 
-		return (<div className="theme-tags" title={props.title} onClick={this.onClick.bind(this)}>
-			<input type="hidden" name={this.props.name} value={this.state.tags.join(',') || ''} readOnly="true" />
-			<div className="flex-row">
-				<div>
-				{
-					this.state.tags
-					? this.state.tags.map((tag, index) => {
-						return (tag !== ''
-							? (<span key={index}>
-								{tag}
-								<i className="icon-cancel" onClick={this.removeTag.bind(this, index)} />
-							</span>)
-							: false
-						)
-					})
-					: false
-				}
-				</div>
-				{
-					!props.readOnly
-					? <input type="text" placeholder={props.placeholder || 'type new tag'} value={this.state.tag || ''} onChange={this.onChange.bind(this)} onKeyDown={this.onKeyDown.bind(this)} onBlur={this.onBlur.bind(this)} />
-					: false
-				}
-			</div>
-		</div>)
-	}
-}
+    const handleKeyDown = (e) => {
+        if (e.keyCode === 13) {
+            addTag(e.target.value);
+        }
+    };
+
+    const handleBlur = (e) => {
+        addTag(e.target.value);
+    };
+
+    return (
+        <div className="theme-tags" title={props.title} onClick={() => document.querySelector('input[type="text"]').focus()}>
+            <input type="hidden" name={props.name} value={tags.join(',') || ''} readOnly />
+            <div className="flex-row">
+                <div>
+                    {tags.map((tagItem, index) => (
+                        tagItem && (
+                            <span key={index}>
+                                {tagItem}
+                                <i className="icon-cancel" onClick={() => removeTag(index)} />
+                            </span>
+                        )
+                    ))}
+                </div>
+                {!props.readOnly && (
+                    <input
+                        type="text"
+                        placeholder={props.placeholder || 'type new tag'}
+                        value={tag}
+                        onChange={handleInputChange}
+                        onKeyDown={handleKeyDown}
+                        onBlur={handleBlur}
+                    />
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default TagsInput;

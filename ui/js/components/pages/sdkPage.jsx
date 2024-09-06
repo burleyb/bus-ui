@@ -1,38 +1,29 @@
-import React from 'react'
-import {observer, inject} from 'mobx-react'
-import DropDown from '../elements/dropDown.jsx'
+import React, { useContext } from 'react';
+import DropDown from '../elements/dropDown.jsx';
 import Nodejs from '../sdkLangs/nodejs.jsx';
 import Php from '../sdkLangs/php.jsx';
+import { DataContext } from '../../../stores/DataContext'; // Assuming React Context for global state
 
-@inject('dataStore')
-@observer
-export default class sdkPage extends React.Component {
+const SdkPage = () => {
+    const { state } = useContext(DataContext); // Using React Context for state management
 
-    constructor(props) {
-        super(props);
-        this.dataStore = this.props.dataStore;
-    }
-
-    renderLang() {
-        switch (this.dataStore.sdkPick) {
+    const renderLang = () => {
+        switch (state.sdkPick) {
             case 'node':
-                return <Nodejs/>;
-
+                return <Nodejs />;
             case 'php':
-                return <Php/>;
-
+                return <Php />;
             default:
                 return false;
         }
     };
 
-    render() {
-        console.log('Datastore: ', this.dataStore);
-        return (
-            <div>
-                <DropDown/>
-                {this.renderLang()}
-            </div>
-        )
-    }
-}
+    return (
+        <div>
+            <DropDown />
+            {renderLang()}
+        </div>
+    );
+};
+
+export default SdkPage;

@@ -1,68 +1,65 @@
-import React, {Component} from 'react';
+import React, { useState } from 'react';
 
-export default class ComboBox extends React.Component {
+const ComboBox = ({ label, placeholder, icon, name }) => {
+    const [text, setText] = useState('');
+    const [active, setActive] = useState(false);
 
-	constructor(props) {
-		super(props)
+    const onFocus = () => {
+        setActive(true);
+        console.log('focus');
+    };
 
-		this.state = {
-			text: ''
-		}
-	}
+    const onBlur = () => {
+        setTimeout(() => {
+            setActive(false);
+            console.log('blur');
+        }, 100);
+    };
 
+    const onChange = (event) => {
+        setText(event.currentTarget.value);
+    };
 
-	onFocus() {
-		this.setState({ active: true })
-		console.log('focus')
-	}
+    const onSelect = () => {
+        // Selection logic can go here
+        console.log('selected');
+    };
 
+    return (
+        <div className="theme-form-row theme-required">
+            <label>{label}</label>
+            <input
+                placeholder={placeholder || ''}
+                className={`theme-combo-box${active ? ' active' : ''}`}
+                value={text || ''}
+                onClick={onFocus}
+                onBlur={onBlur}
+                onChange={onChange}
+            />
+            <ul>
+                <li onClick={onSelect}>
+                    <label>Add New</label>
+                    <div>
+                        <img src={icon} alt="icon" />
+                        {text ? (
+                            <span>
+                                {text}
+                                <img className="pull-right" src={`${window.leostaticcdn}images/icons/enter.png`} alt="enter" />
+                            </span>
+                        ) : (
+                            <span>Type to name a new {name}...</span>
+                        )}
+                    </div>
+                </li>
+                <li onClick={onSelect}>
+                    <label>Select Existing</label>
+                    <div>
+                        <img src={icon} alt="icon" /> No matches
+                    </div>
+                </li>
+            </ul>
+        </div>
+    );
+};
 
-	onBlur() {
-		setTimeout(() => {
-			this.setState({ active: false })
-			console.log('blur')
-		}, 100)
-	}
-
-
-	onChange(event) {
-		this.setState({ text: event.currentTarget.value })
-	}
-
-
-	onSelect() {
-
-	}
-
-
-	render() {
-
-		return (<div className="theme-form-row theme-required">
-			<label>{this.props.label}</label>
-			<input placeholder={this.props.placeholder || ''} className={'theme-combo-box' + (this.state.active ? ' active' : '')} value={this.state.text || ''} onClick={this.onFocus.bind(this)} onBlur={this.onBlur.bind(this)} onChange={this.onChange.bind(this)} />
-			<ul>
-				<li onClick={this.onSelect.bind(this)}>
-					<label>Add New</label>
-					<div>
-						<img src={this.props.icon} />
-						{
-							this.state.text
-							? <span>
-								{this.state.text}
-								<img className="pull-right" src={window.leostaticcdn + 'images/icons/enter.png'} />
-							</span>
-							: <span>Type to name a new {this.props.name}...</span>
-						}
-					</div>
-				</li>
-				<li onClick={this.onSelect.bind(this)}>
-					<label>Select Existing</label>
-					<div>
-						<img src={this.props.icon} /> No matches
-					</div>
-				</li>
-			</ul>
-		</div>)
-	}
-
-}
+export default ComboBox;
