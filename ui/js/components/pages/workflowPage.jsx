@@ -4,7 +4,7 @@ import Tree from '../elements/tree.jsx';
 import TimePeriod from '../elements/timePeriod.jsx';
 import Dialog from '../dialogs/dialog.jsx';
 import Footer from '../main/footer.jsx';
-import { DataContext } from '../../../stores/DataContext'; // Assuming usage of React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const NodeView = () => {
     const { state, dispatch } = useContext(DataContext); // Using React Context for global state management

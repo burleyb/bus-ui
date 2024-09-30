@@ -1,5 +1,5 @@
 import React, { useContext, useState, useEffect } from 'react';
-import { DataContext } from '../../stores/DataContext'; // Assuming you are using React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 export function noSourceMessage(state, dataStore) {
     let noDataMessage = false;

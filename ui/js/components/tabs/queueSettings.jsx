@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 import TagsInput from '../elements/tagsInput.jsx';
-import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext is properly set up
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const QueueSettings = ({ nodeData, setDirtyState }) => {
   const { nodes } = useContext(DataContext); // Replacing MobX's dataStore with useContext

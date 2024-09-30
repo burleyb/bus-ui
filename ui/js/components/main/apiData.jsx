@@ -1,7 +1,7 @@
 import React, { useContext, useEffect } from 'react';
 import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
-import { DataContext } from '../../../stores/DataContext'; // Assuming Context API for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming Context API for global state
 
 function ApiData() {
     const { state, dispatch } = useContext(DataContext); // Use Context for global state management

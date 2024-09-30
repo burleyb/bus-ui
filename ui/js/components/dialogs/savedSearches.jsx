@@ -1,51 +1,57 @@
 import React, { useState, useEffect } from 'react';
-import { SortableContainer, SortableElement, arrayMove } from 'react-sortable-hoc';
-import Dialog from './dialog'; // Assuming you have a reusable Dialog component
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import { arrayMove, SortableContext, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import Dialog from './dialog.jsx'; // Assuming you have a reusable Dialog component
 
-const SortableItem = SortableElement(({ value, onRestore, onDelete }) => (
-    <div className="workflow-div flex-row flex-space" data-search={value}>
-        <i className="icon-menu" />
-        <span className="flex-grow" onClick={onRestore}>
-            {value}
-        </span>
-        <i className="icon-minus-circled pull-right" onClick={onDelete} />
-    </div>
-));
+// SortableItem component
+const SortableItem = ({ id, value, onRestore, onDelete }) => {
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
-const SortableList = SortableContainer(({ items, onRestore, onDelete }) => {
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        cursor: 'grab'
+    };
+
     return (
-        <div>
-            {items.length > 0 ? (
-                items.map((value, index) => (
-                    <SortableItem
-                        key={`item-${value}`}
-                        index={index}
-                        value={value}
-                        onRestore={() => onRestore(value)}
-                        onDelete={() => onDelete(value)}
-                    />
-                ))
-            ) : (
-                <div>There are no saved Searches</div>
-            )}
+        <div
+            ref={setNodeRef}
+            style={style}
+            className="workflow-div flex-row flex-space"
+            data-search={value}
+            {...attributes}
+            {...listeners}
+        >
+            <i className="icon-menu" />
+            <span className="flex-grow" onClick={onRestore}>
+                {value}
+            </span>
+            <i className="icon-minus-circled pull-right" onClick={onDelete} />
         </div>
     );
-});
+};
 
+// Main component for SavedSearches
 function SavedSearches({ searches, onClose }) {
     const [savedSearches, setSavedSearches] = useState(searches.views);
     const [order, setOrder] = useState(searches.order());
 
     useEffect(() => {
-        // Optionally, load saved searches if necessary
         setSavedSearches(searches.views);
         setOrder(searches.order());
     }, [searches]);
 
-    const onSortEnd = ({ oldIndex, newIndex }) => {
-        const newOrder = arrayMove(order, oldIndex, newIndex);
-        setOrder(newOrder);
-        searches.order(newOrder); // Update the order in the parent component/context
+    const handleDragEnd = (event) => {
+        const { active, over } = event;
+        if (active.id !== over.id) {
+            const oldIndex = order.indexOf(active.id);
+            const newIndex = order.indexOf(over.id);
+            const newOrder = arrayMove(order, oldIndex, newIndex);
+            setOrder(newOrder);
+            searches.order(newOrder); // Update the order in the parent component/context
+        }
     };
 
     const restoreSearch = (search) => {
@@ -61,13 +67,27 @@ function SavedSearches({ searches, onClose }) {
     return (
         <Dialog title="Saved Searches" onClose={onClose}>
             <div id="savedSearches" className="saved-views">
-                <SortableList
-                    items={order}
-                    onSortEnd={onSortEnd}
-                    onRestore={restoreSearch}
-                    onDelete={deleteSearch}
-                    useDragHandle
-                />
+                <DndContext
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                    modifiers={[restrictToVerticalAxis]}
+                >
+                    <SortableContext items={order}>
+                        {order.length > 0 ? (
+                            order.map((value) => (
+                                <SortableItem
+                                    key={value}
+                                    id={value}
+                                    value={value}
+                                    onRestore={() => restoreSearch(value)}
+                                    onDelete={() => deleteSearch(value)}
+                                />
+                            ))
+                        ) : (
+                            <div>There are no saved Searches</div>
+                        )}
+                    </SortableContext>
+                </DndContext>
             </div>
         </Dialog>
     );

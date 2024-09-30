@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { DataContext } from '../../../stores/DataContext'; // Assuming usage of React Context for state management
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const DropDown = () => {
     const { state, dispatch } = useContext(DataContext); // Using React Context to manage global state

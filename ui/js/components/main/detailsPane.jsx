@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { DataContext } from '../../../stores/DataContext'; // Assuming Context API for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import TimePeriod from '../elements/timePeriod.jsx';
 import TimeSlider from '../elements/timeSlider.jsx';
 import NodeCharts from '../elements/nodeCharts.jsx';

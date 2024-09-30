@@ -4,8 +4,8 @@ import axios from 'axios';
 import moment from 'moment';
 import numeral from 'numeral';
 import Tree from '../elements/tree.jsx'; // Assuming Tree component exists
-import { DataContext } from '../../../stores/DataContext'; // Use React Context for state management
-import { useLeoKit } from './useLeoKit'; // Assuming a custom hook for dialog/alert management
+import { DataContext } from '../../stores/DataContext.jsx'; // Use React Context for state management
+import { useLeoKit } from './LeoKit.jsx'; // Assuming a custom hook for dialog/alert management
 
 // Fetch trace data based on the event ID
 const fetchTraceData = async (id) => {

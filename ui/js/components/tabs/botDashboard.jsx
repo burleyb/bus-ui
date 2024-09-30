@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import NodeChart from '../elements/nodeChart.jsx';
 import NodeCharts from '../elements/nodeCharts.jsx';
 import TimePicker from '../elements/timePicker.jsx';
-import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import moment from 'moment';
 
 const timePeriods = { 'minute_15': '15m', 'hour': '1h', 'hour_6': '6h', 'day': '1d', 'week': '1w' };

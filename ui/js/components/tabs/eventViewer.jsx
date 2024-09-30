@@ -10,7 +10,8 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import ToggleSwitch from '../elements/toggleSwitch.jsx';
 import DiffLegend from '../elements/diffLegend.jsx';
-import { DataContext } from '../../../stores/DataContext';
+import { DataContext } from '../../stores/DataContext.jsx';
+import { diffJson, jsonDiff, canonicalize } from 'diff/lib/diff/json';
 
 const timeFormat = '/YYYY/MM/DD/HH/mm/';
 
@@ -223,7 +224,6 @@ export default EventViewer;
 
 // Helper function for diffing old and new payloads
 function getOldNewDiff(oldData, newData) {
-  const { diffJson, jsonDiff, canonicalize } = require('diff/lib/diff/json');
   jsonDiff.castInput = function (value) {
     const { undefinedReplacement, stringifyReplacer = (k, v) => (typeof v === 'undefined' ? undefinedReplacement : v) } = this.options;
     return typeof value === 'string' ? value : JSON.stringify(canonicalize(value, null, null, stringifyReplacer), stringifyReplacer, '    ');

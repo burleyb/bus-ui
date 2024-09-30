@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
-import CodeMirror from 'codemirror'; // Importing CodeMirror directly
-import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext for MobX store
+import CodeMirror from '@uiw/react-codemirror'; // Importing CodeMirror directly
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import PayloadSearch from '../elements/payloadSearch.jsx';
 import axios from 'axios';
 import moment from 'moment';

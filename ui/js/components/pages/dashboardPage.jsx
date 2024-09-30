@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { DataContext } from '../../../stores/DataContext'; // Assuming use of React Context
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming use of React Context
 import axios from 'axios';
-import LeoKit from 'leo-kit';
+import { LeoKit } from '../dialogs/LeoKit.jsx';
 import TagsInput from '../elements/tagsInput.jsx';
 import NodeSearch from '../elements/nodeSearch.jsx';
 import MuteButton from '../elements/muteButton.jsx';
 import moment from 'moment';
 import numeral from 'numeral';
-import humanize from '../../../../lib/humanize.js';
+import humanize from '../utils/humanize.js';
 
 function DashboardView() {
     const { state, dispatch } = useContext(DataContext); // Assuming React Context for global state

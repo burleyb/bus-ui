@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useContext } from 'react';
 import moment from 'moment';
-import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const TimePeriod = (props) => {
     const { changeTimePeriod, getStats } = useContext(DataContext); // Using React Context instead of Redux

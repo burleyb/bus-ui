@@ -3,7 +3,7 @@ import axios from 'axios';
 import NodeIcon from '../elements/nodeIcon.jsx';
 import moment from 'moment';
 import _ from 'lodash';
-import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext for state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const Checksum = ({ nodeData }) => {
     const { state } = useContext(DataContext); // Use React Context instead of MobX

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming you're using React Context for global state
 import axios from 'axios'; // Replacing jQuery's $.post with Axios
 
 const TagsInput = (props) => {

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import TagsInput from '../elements/tagsInput.jsx';
-import { useLeoKit } from './useLeoKit';
+import { LeoKit } from './LeoKit.jsx';
 
 function DataSourceConnect({ onClose }) {
-    const { alert } = useLeoKit(); // Using useLeoKit to control dialogs
+    const { alert } = LeoKit(); // Using useLeoKit to control dialogs
     const [step, setStep] = useState(0);
     const [queueTags, setQueueTags] = useState([]);
     const { control, handleSubmit, formState: { errors }, setValue } = useForm(); // Initializing react-hook-form
@@ -47,7 +47,7 @@ function DataSourceConnect({ onClose }) {
         setStep((prevStep) => prevStep - 1);
     };
 
-    return null; // Render nothing since modal is handled by useLeoKit's alert
+    return null; // Render nothing since modal is handled by LeoKit's alert
 }
 
 const DataSourceForm = ({ step, control, errors, queueTags, setQueueTags, setValue }) => {

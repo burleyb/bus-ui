@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { DataContext } from '../../stores/DataContext'; // Assuming you have a React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import NodeChart from '../elements/nodeChart.jsx';
 
 const NodeCharts = ({ nodeType, className, data, lastRead, interval, showHeader, botId, queueId }) => {

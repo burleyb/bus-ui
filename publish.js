@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-module.exports = function(buildDir, newCloudformation, done) {
+module.exports = function(buildDir, newCloudformation) {
 	// Show pages uses the leo-cli lambda template which uses nodejs12.x runtime, so override it
 	newCloudformation.Resources.ShowPages.Properties.Runtime = "nodejs20.x";
 
@@ -47,6 +47,5 @@ module.exports = function(buildDir, newCloudformation, done) {
 	fs.writeFileSync(file, output);
 	fs.writeFileSync(localfile, output);
 
-	done();
 };
 

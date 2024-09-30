@@ -2,7 +2,7 @@ import React, { useContext } from 'react';
 import DropDown from '../elements/dropDown.jsx';
 import Nodejs from '../sdkLangs/nodejs.jsx';
 import Php from '../sdkLangs/php.jsx';
-import { DataContext } from '../../../stores/DataContext'; // Assuming React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const SdkPage = () => {
     const { state } = useContext(DataContext); // Using React Context for state management

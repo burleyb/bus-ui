@@ -1,38 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { SortableContainer, SortableElement, arrayMove } from 'react-sortable-hoc';
-import Dialog from './dialog'; // Assuming you have a reusable Dialog component
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import { SortableContext, useSortable, arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
+import Dialog from './dialog.jsx'; // Assuming you have a reusable Dialog component
 
-// Sortable item
-const SortableItem = SortableElement(({ value, onRestore, onDelete }) => (
-    <div className="workflow-div flex-row flex-space" data-view={value}>
-        <i className="icon-menu" />
-        <span className="flex-grow" onClick={onRestore}>
-            {value}
-        </span>
-        <i className="icon-minus-circled pull-right" onClick={onDelete} />
-    </div>
-));
+// Sortable item component using dnd-kit
+const SortableItem = ({ id, value, onRestore, onDelete }) => {
+    const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
 
-// Sortable list
-const SortableList = SortableContainer(({ items, onRestore, onDelete }) => {
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        cursor: 'grab',
+    };
+
     return (
-        <div>
-            {items.length > 0 ? (
-                items.map((value, index) => (
-                    <SortableItem
-                        key={`item-${value}`}
-                        index={index}
-                        value={value}
-                        onRestore={() => onRestore(value)}
-                        onDelete={() => onDelete(value)}
-                    />
-                ))
-            ) : (
-                <div>There are no saved Workflows</div>
-            )}
+        <div
+            ref={setNodeRef}
+            style={style}
+            className="workflow-div flex-row flex-space"
+            data-view={value}
+            {...attributes}
+            {...listeners}
+        >
+            <i className="icon-menu" />
+            <span className="flex-grow" onClick={onRestore}>
+                {value}
+            </span>
+            <i className="icon-minus-circled pull-right" onClick={onDelete} />
         </div>
     );
-});
+};
 
 function SavedWorkflows({ workflows, onClose }) {
     const [order, setOrder] = useState(workflows.order());
@@ -42,10 +41,15 @@ function SavedWorkflows({ workflows, onClose }) {
         setOrder(workflows.order());
     }, [workflows]);
 
-    const onSortEnd = ({ oldIndex, newIndex }) => {
-        const newOrder = arrayMove(order, oldIndex, newIndex);
-        setOrder(newOrder);
-        workflows.order(newOrder); // Persist the new order
+    const handleDragEnd = (event) => {
+        const { active, over } = event;
+        if (active.id !== over.id) {
+            const oldIndex = order.indexOf(active.id);
+            const newIndex = order.indexOf(over.id);
+            const newOrder = arrayMove(order, oldIndex, newIndex);
+            setOrder(newOrder);
+            workflows.order(newOrder); // Persist the new order
+        }
     };
 
     const onRestore = (view) => {
@@ -61,13 +65,27 @@ function SavedWorkflows({ workflows, onClose }) {
     return (
         <Dialog title="Saved Workflows" onClose={onClose}>
             <div id="savedWorkflows" className="saved-views">
-                <SortableList
-                    items={order}
-                    onSortEnd={onSortEnd}
-                    onRestore={onRestore}
-                    onDelete={onDelete}
-                    useDragHandle
-                />
+                <DndContext
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                    modifiers={[restrictToVerticalAxis]}
+                >
+                    <SortableContext items={order}>
+                        {order.length > 0 ? (
+                            order.map((value) => (
+                                <SortableItem
+                                    key={value}
+                                    id={value}
+                                    value={value}
+                                    onRestore={() => onRestore(value)}
+                                    onDelete={() => onDelete(value)}
+                                />
+                            ))
+                        ) : (
+                            <div>There are no saved Workflows</div>
+                        )}
+                    </SortableContext>
+                </DndContext>
             </div>
         </Dialog>
     );

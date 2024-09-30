@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { DataContext } from '../../../stores/DataContext'; // Assuming React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming React Context for global state
 
 function LeftNav({ workflows, searches, userSettings }) {
     const { state, dispatch } = useContext(DataContext); // Use React Context for global state management

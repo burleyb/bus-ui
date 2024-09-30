@@ -1,17 +1,13 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import CodeMirror from 'codemirror'; // Assuming CodeMirror is correctly imported
-import { DataContext } from '../../../stores/DataContext'; // Import the context
-import 'codemirror/mode/javascript/javascript';
-import 'codemirror/addon/lint/lint';
-import 'codemirror/addon/fold/foldgutter';
-import 'codemirror/addon/fold/foldcode';
-import 'codemirror/addon/fold/brace-fold';
-import 'codemirror/addon/fold/foldgutter.css';
-import 'codemirror/lib/codemirror.css';
-import 'codemirror/theme/eclipse.css';
+import CodeMirror from '@uiw/react-codemirror'; // Assuming CodeMirror is correctly imported
+import '@codemirror/lang-javascript';
+import '@codemirror/lint';
+import '@codemirror/view';
+import '@codemirror/fold';
+
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const QueueSchema = ({ nodeData }) => {
-  const { queueInfo } = useContext(DataContext); // Use context instead of MobX
   const [version, setVersion] = useState('');
   const [defaults, setDefaults] = useState({});
   const [settingsId, setSettingsId] = useState(nodeData?.id || '');

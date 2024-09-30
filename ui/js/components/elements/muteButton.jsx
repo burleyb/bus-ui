@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { DataContext } from '../stores/DataContext'; // Assuming you're using a context for dataStore
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import axios from 'axios';
 import moment from 'moment';
 

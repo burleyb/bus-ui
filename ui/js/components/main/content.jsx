@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { DataContext } from '../../../stores/DataContext'; // Assuming Context API for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming Context API for global state
 import DashboardPage from '../pages/dashboardPage.jsx';
 import CatalogPage from '../pages/catalogPage.jsx';
 import WorkflowPage from '../pages/workflowPage.jsx';

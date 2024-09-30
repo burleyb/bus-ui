@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext is used for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const fetchWebhooks = async (nodeId) => {
   const { data } = await axios.get(`/api/system/${nodeId}/webhooks`);

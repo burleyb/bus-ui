@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import Dialog from './dialog';  // Assuming this is the dialog component we created
+import Dialog from './dialog.jsx';  // Assuming this is the dialog component we created
 
 function ManageAccess({ onClose }) {
     const [ips, setIps] = useState(['127.0.0.1']);  // Default IP list

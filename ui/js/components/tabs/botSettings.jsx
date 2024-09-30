@@ -3,10 +3,10 @@ import axios from 'axios';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import DynamicForm from '../elements/dynamicForm.jsx';
 import NodeIcon from '../elements/nodeIcon.jsx';
-import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext is used for global state
-import Dialog from './Dialog'; // Assuming Dialog component for modals
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
+import Dialog from '../dialogs/dialog.jsx'; // Assuming Dialog component for modals
 import moment from 'moment';
-import refUtil from 'leo-sdk/lib/reference.js';
+import refUtil from '../utils/reference.js';
 
 const systems = {
   'Elastic Search': {

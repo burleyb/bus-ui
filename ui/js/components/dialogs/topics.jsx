@@ -2,8 +2,8 @@ import React, { useState, useContext } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import TagsInput from '../elements/tagsInput.jsx';
-import { DataContext } from '../../../stores/DataContext'; // Assuming DataContext for state
-import Dialog from './dialog'; // Assuming you have a Dialog component
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
+import Dialog from './dialog.jsx'; // Assuming you have a Dialog component
 
 // Function to fetch SNS data
 const fetchSNSData = async () => {

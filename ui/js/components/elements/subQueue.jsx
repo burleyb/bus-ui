@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import NodeSearch from '../elements/nodeSearch.jsx';
-import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context
-import refUtil from 'leo-sdk/lib/reference';
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
+import refUtil from '../utils/reference';
 
 const QueueSelector = (props) => {
     const { dataStore } = useContext(DataContext); // Replacing MobX inject with React Context

@@ -1,7 +1,37 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { DataContext } from '../../../stores/DataContext'; // Assuming React Context for state management
-import Dialog from './dialog'; // Assuming this is the reusable Dialog component
-import config from '../../../config'; // Assuming config is available for registry
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming React Context for state management
+import Dialog from './dialog.jsx'; // Assuming this is the reusable Dialog component
+
+import CodeEditor from "../tabs/codeEditor.jsx"
+import CodeOverrides from "../tabs/codeOverrides.jsx"
+import Logs from "../tabs/logs.jsx"
+import BotSettings from "../tabs/botSettings.jsx"
+import BotDashboard from "../tabs/botDashboard.jsx"
+import QueueDashboard from "../tabs/queueDashboard.jsx"
+import EventViewer from "../tabs/eventViewer.jsx"
+import QueueSettings from "../tabs/queueSettings.jsx"
+import Checksum from "../tabs/checksum.jsx"
+import Cron from "../tabs/cron.jsx"
+import Webhooks from "../tabs/webhooks.jsx"
+import SystemSettings from "../tabs/systemSettings.jsx"
+import QueueSchema from "../tabs/queueSchema.jsx"
+
+const tabs = {
+	CodeEditor: CodeEditor,
+	CodeOverrides: CodeOverrides,
+	Logs: Logs,
+	BotSettings: BotSettings,
+	BotDashboard: BotDashboard,
+	QueueDashboard: QueueDashboard,
+	EventViewer: EventViewer,
+	QueueSettings: QueueSettings,
+	Checksum: Checksum,
+	Cron: Cron,
+	Webhooks: Webhooks,
+	SystemSettings: SystemSettings,
+	QueueSchema: QueueSchema
+}
+
 
 function NodeSettings({ data, onClose }) {
     const { state } = useContext(DataContext);
@@ -17,15 +47,15 @@ function NodeSettings({ data, onClose }) {
     const initializeTabs = () => {
         switch (data.type) {
             case 'Bot':
-                setTabs(config.registry.tabs.bot || {});
+                setTabs(tabs || {});
                 setNodeData((prevNodeData) => ({
                     ...prevNodeData,
-                    settings: config.registry.systems[data.system?.toLowerCase()] || {}
+                    settings: [data.system?.toLowerCase()] || {}
                 }));
                 setIsReady(true);
                 break;
             case 'EventQueue':
-                setTabs(config.registry.tabs.queue || {});
+                setTabs(tabs || {});
                 setIsReady(true);
                 break;
             default:
@@ -59,10 +89,10 @@ function NodeSettings({ data, onClose }) {
                             <div key={label} className={(tabIndex === index ? 'active' : '') + ' height-1-1'}>
                                 {tabIndex === index ? (
                                     config.registry.tabs[tabs[label]] ? (
-                                        <config.registry.tabs[tabs[label]]
-                                            nodeData={nodeData}
-                                            onClose={onClose}
-                                        />
+                                        React.createElement(tabs[label], {
+                                            nodeData: nodeData,
+                                            onClose: onClose
+                                        })
                                     ) : (
                                         `Tab "${tabs[label]}" not configured`
                                     )

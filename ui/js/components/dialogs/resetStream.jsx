@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import NodeSearch from '../elements/nodeSearch.jsx';
-import refUtil from "leo-sdk/lib/reference.js";
+import refUtil from "../utils/reference.js";
 import axios from 'axios';
 import moment from 'moment';
-import Dialog from './dialog'; // Assuming you have a reusable Dialog component
+import Dialog from './dialog.jsx'; // Assuming you have a reusable Dialog component
 
 function ResetStream({ source, forceRun, links, nodeId, label, onClose }) {
     const [checkpoint, setCheckpoint] = useState('z' + moment.utc().format('/YYYY/MM/DD/HH/mm/ss/'));

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import TimePicker from '../elements/timePicker.jsx';
 import moment from 'moment';
 

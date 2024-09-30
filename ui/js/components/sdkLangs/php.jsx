@@ -1,36 +1,35 @@
-import React from 'react'
-import {observer, inject} from 'mobx-react'
+import React, { useContext } from 'react';
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
+import { CodeMirror } from '@uiw/react-codemirror';
+import { php } from '@codemirror/lang-php'; // Uncomment this if the PHP language module is available
 
-import CodeMirror from '@uiw/react-codemirror';
-// import { php } from '@codemirror/lang-php';
+export default function Php() {
+    const { state } = useContext(DataContext); // Use context instead of MobX
 
-@inject('dataStore')
-@observer
-export default class Php extends React.Component {
+    const code = `$config = [
+        "enableLogging" => false,
+        "debug" => false,
+        "kinesis"  => "${state.sdkConfig.kinesis}",
+        "firehose" => "${state.sdkConfig.firehose}",
+        "s3" => "${state.sdkConfig.s3}"
+    ];`;
 
-    constructor(props) {
-        super(props);
-        this.dataStore = this.props.dataStore;
-    }
-
-    render() {
-        let options = {
-            lineNumbers: true,
-        };
-        let code = `$config = [\n\t"enableLogging" => false,\n\t"debug" => false,\n\t"kinesis"  => "${this.dataStore.sdkConfig.kinesis}",\n\t"firehose" => "${this.dataStore.sdkConfig.firehose}",\n\t"s3" => "${this.dataStore.sdkConfig.s3}"\n];`
-
-        return (
-            !code
-                ? <div className="theme-spinner-large" />
-                : (
-                    <div>
-                        <h1>PHP SDK</h1>
-                        <div style={{width: '1000px'}}>
-                            <CodeMirror value={code} options={options} />
-                        </div>
-                    </div>
-                )
+    return (
+        !code ? (
+            <div className="theme-spinner-large" />
+        ) : (
+            <div>
+                <h1>PHP SDK</h1>
+                <div style={{ width: '1000px' }}>
+                    <CodeMirror
+                        value={code}
+                        extensions={[php()]} // Ensure you import the php extension from CodeMirror if available
+                        height="400px"
+                        theme="light"
+                        readOnly={true} // Assuming it's read-only
+                    />
+                </div>
+            </div>
         )
-
-    }
+    );
 }

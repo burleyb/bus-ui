@@ -2,9 +2,9 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
-import refUtil from 'leo-sdk/lib/reference.js';
-import { DataContext } from '../../../stores/DataContext'; // Assuming React Context is used for global state
-import { useLeoKit } from './useLeoKit';
+import refUtil from '../utils/reference.js';
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
+import { useLeoKit } from './LeoKit.jsx';
 import moment from 'moment';
 
 function fetchBots(event) {

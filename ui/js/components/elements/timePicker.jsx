@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Datetime from 'react-datetime';
-import "react-datetime/css/react-datetime.css";
+// import "react-datetime/css/react-datetime.css";
 import moment from 'moment';
 
 const TimePicker = ({ timeFrames = ['15m', '1hr', '6hr', '1d', '1w'], customTimeFrame, onClick, active, datePicker, now, onRefresh }) => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { useDialog } from '../../../stores/DialogContext';
+import { useDialog } from '../../stores/DialogContext.jsx';
 
 const Dialog = ({ content, title, buttons, onClose, id }) => {
     const { closeDialog } = useDialog();

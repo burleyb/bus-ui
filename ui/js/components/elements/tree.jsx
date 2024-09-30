@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useContext } from 'react';
 import * as d3 from 'd3';
-import { DataContext } from '../../../stores/DataContext'; // Assuming React Context for global state
-import Trunk from './Trunk.jsx'; // Assuming a custom component
-import NoSource from './NoSource.jsx'; // Assuming a custom component
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
+import Trunk from './trunk.jsx'; // Assuming a custom component
+import NoSource from './noSource.jsx'; // Assuming a custom component
 
 const Tree = ({ root, source, onCollapse, onNodeClick, onNodeDblClick, getParents, getKids, treeButtonsRight, hideLinkBelow }) => {
     const { state } = useContext(DataContext); // Using React Context for state management

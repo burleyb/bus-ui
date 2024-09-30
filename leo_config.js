@@ -9,8 +9,10 @@ module.exports = {
         leosdk: leosdk.resources || leosdk,
         Resources: process.env.Resources || leosdk.resources,
 		CognitoId: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac",
-			basePath: "botmon/",
-			basehref: "botmon/",
+		cognito_region: 'us-east-1',
+		region: 'us-east-1',
+		basePath: "botmon/",
+		basehref: "botmon/",
     },
     PROD: {
         ui: {

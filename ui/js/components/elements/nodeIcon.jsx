@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { DataContext } from '../../stores/DataContext'; // Assuming you are using React Context for dataStore
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 function getImages(node, dataStore, overwrites) {
     if (!node) return '';

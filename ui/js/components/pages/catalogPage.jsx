@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { DataContext } from '../../stores/DataContext'; // Assuming React Context for state management
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import NodeSearch from '../elements/nodeSearch.jsx';
 import NodeIcon from '../elements/nodeIcon.jsx';
 import NoSource from '../elements/noSource.jsx';
 import TimePeriod from '../elements/timePeriod.jsx';
 import numeral from 'numeral';
 import moment from 'moment';
-import humanize from '../../../../lib/humanize.js';
+import humanize from '../utils/humanize.js';
 
 function ListView({ searches, userSettings }) {
     const { state, dispatch } = useContext(DataContext); // Assuming use of React Context

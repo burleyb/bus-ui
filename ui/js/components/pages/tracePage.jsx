@@ -1,6 +1,6 @@
 import React, { useContext, useState, useEffect } from 'react';
 import EventViewer from '../tabs/eventViewer.jsx';
-import { DataContext } from '../../../stores/DataContext'; // Assuming usage of React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const TraceViewer = () => {
     const { state, dispatch } = useContext(DataContext); // Using React Context for state management

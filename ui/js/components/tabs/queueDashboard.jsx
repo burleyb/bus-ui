@@ -6,7 +6,7 @@ import NodeCharts from '../elements/nodeCharts.jsx';
 import NodeChart from '../elements/nodeChart.jsx';
 import NodeIcon from '../elements/nodeIcon.jsx';
 import TimePicker from '../elements/timePicker.jsx';
-import { DataContext } from '../../../stores/DataContext';
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const timePeriods = { 'minute_15': '15m', 'hour': '1h', 'hour_6': '6h', 'day': '1d', 'week': '1w' };
 

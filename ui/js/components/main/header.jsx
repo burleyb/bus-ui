@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { DataContext } from '../../../stores/DataContext'; // Assuming React Context is used for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming React Context is used for global state
 import Dialog from '../dialogs/dialog.jsx';
 import ManageAccess from '../dialogs/manageAccess.jsx';
 import MessageList from '../dialogs/messageList.jsx';

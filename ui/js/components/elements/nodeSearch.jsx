@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import NodeIcon from '../elements/nodeIcon.jsx';
 
 const NodeSearch = ({ value, nodeType, placeholder, searchText, searchResults, upAndDown, onChange, name, className, icon, showArchived }) => {

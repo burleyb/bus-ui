@@ -1,34 +1,35 @@
-import React from 'react';
-import {observer, inject} from 'mobx-react';
-import CodeMirror from '@uiw/react-codemirror';
+import React, { useContext } from 'react';
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
+import { CodeMirror } from '@uiw/react-codemirror';
+import { javascript } from '@codemirror/lang-javascript';
 
-@inject('dataStore')
-@observer
-export default class Nodejs extends React.Component {
+export default function Nodejs() {
+    const { state } = useContext(DataContext); // Use context instead of MobX
 
-    constructor(props) {
-        super(props);
-        this.dataStore = this.props.dataStore;
-    }
+    // Defining code string and using sdkConfig from state
+    const code = `var leo = require("leo-sdk")({
+        kinesis: "${state.sdkConfig.kinesis}",
+        firehose: "${state.sdkConfig.firehose}",
+        s3: "${state.sdkConfig.s3}",
+        region: "${state.sdkConfig.region}"
+    });`;
 
-    render() {
-        let options = {
-            lineNumbers: true,
-        };
-        let code = `var leo = require("leo-sdk")({\n\tkinesis: "${this.dataStore.sdkConfig.kinesis}",\n\tfirehose: "${this.dataStore.sdkConfig.firehose}",\n\ts3: "${this.dataStore.sdkConfig.s3}",\n\tregion: "${this.dataStore.sdkConfig.region}"\n});`
-
-        return (
-            !code
-                ? <div className="theme-spinner-large" />
-                : (
-                    <div>
-                        <h1>NodeJS SDK</h1>
-                        <div style={{width: '1000px'}}>
-                            <CodeMirror value={code} options={options} />
-                        </div>
-                    </div>
-                )
+    return (
+        !code ? (
+            <div className="theme-spinner-large" />
+        ) : (
+            <div>
+                <h1>NodeJS SDK</h1>
+                <div style={{ width: '1000px' }}>
+                    <CodeMirror
+                        value={code}
+                        extensions={[javascript()]} // Modern way to add language mode
+                        height="400px"
+                        theme="light" // You can also change this to dark if needed
+                        readOnly={true} // Assuming the code is read-only
+                    />
+                </div>
+            </div>
         )
-
-    }
+    );
 }

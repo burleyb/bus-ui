@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useContext, useRef } from 'react';
-import { DataContext } from '../../stores/DataContext'; // Assuming you're using React Context for global state
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import moment from 'moment';
 import * as d3 from 'd3';
 import c3 from 'c3';
-import 'c3/c3.css'; // Assuming you have C3.js for charting
+// import 'c3/c3.css'; // Assuming you have C3.js for charting
 
 const TIME_FORMAT = "YYYY-MM-DD HH:mm";
 

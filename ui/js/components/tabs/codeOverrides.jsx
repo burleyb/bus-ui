@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import JSONPretty from 'react-json-pretty';
 import axios from 'axios';
 import { useQueryClient } from '@tanstack/react-query';
-import { DataContext } from '../../../stores/DataContext'; // Correct DataContext import
+import { DataContext } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 
 const StyledMainDiv = styled.div`
 	height: 75%;

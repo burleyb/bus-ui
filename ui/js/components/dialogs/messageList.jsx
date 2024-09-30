@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import Dialog from './dialog'; // Assuming this is the reusable Dialog component
+import Dialog from './dialog.jsx'; // Assuming this is the reusable Dialog component
 import moment from 'moment';
 
 function MessageList({ onClose, messageDeleted }) {
