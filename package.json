@@ -94,11 +94,11 @@
 		"html5sortable": "^0.14.0",
 		"jsonpath": "^1.1.1",
 		"later": "^1.2.0",
-		"leo-auth": "file:../smartshyp-deps/leo-auth",
-		"leo-aws": "file:../smartshyp-deps/leo-aws",
-		"leo-config": "file:../smartshyp-deps/leo-config",
+		"leo-auth": "file:../leo-auth",
+		"leo-aws": "file:../leo-aws",
+		"leo-config": "file:../leo-config",
 		"leo-logger": "^1.0.1",
-		"leo-sdk": "file:../smartshyp-deps/leo-sdk",
+		"leo-sdk": "file:../leo-sdk",
 		"less-loader": "^12.2.0",
 		"mobx": "^6.13.1",
 		"mobx-react": "^9.1.1",
@@ -123,10 +123,10 @@
 		"webpack-dev-middleware": "^7.3.0"
 	},
 	"overrides": {
-		"leo-auth": "file:../smartshyp-deps/leo-auth",
-		"leo-sdk": "file:../smartshyp-deps/leo-sdk",
-		"leo-aws": "file:../smartshyp-deps/leo-aws",
-		"leo-cron": "file:../smartshyp-deps/leo-cron"
+		"leo-auth": "file:../leo-auth",
+		"leo-sdk": "file:../leo-sdk",
+		"leo-aws": "file:../leo-aws",
+		"leo-cron": "file:../leo-cron"
 	},
 	"devDependencies": {
 		"@babel/core": "^7.25.2",
