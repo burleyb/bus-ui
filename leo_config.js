@@ -11,6 +11,7 @@ module.exports = {
 		CognitoId: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac",
 		cognito_region: 'us-east-1',
 		region: 'us-east-1',
+		profile: 'stealthoms',
 		basePath: "botmon/",
 		basehref: "botmon/",
     },
@@ -38,7 +39,7 @@ module.exports = {
     },    
     _local: {
         leoaws: {
-            profile: 'default',
+            profile: 'stealthoms',
             region: leosdk.region || leosdk.Region || (leosdk.resources && leosdk.resources.Region) || 'us-east-1'
         }
     }
