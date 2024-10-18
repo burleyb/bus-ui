@@ -12,14 +12,12 @@ module.exports = {
   "rules": {
     "eol-last": ["error", "always"],
     "no-console": 0,
-    "indent": [
-      "error",
-      "tab"
-    ],
     "linebreak-style": [
       "error",
       "unix"
     ],
+    "no-unused-vars": "off",
+    "no-useless-escape": "off",
     "semi": [
       "error",
       "always"

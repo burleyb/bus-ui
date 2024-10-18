@@ -1,10 +1,10 @@
 'use strict';
 
 import { CloudFormationClient, ListStackResourcesCommand } from "@aws-sdk/client-cloudformation";
-import request from "leo-sdk/auth/request";
+import request from "leo-auth";
 import config from "leo-sdk/leoConfigure";
 import "moment-round";
-import { handler as resourceHandler } from "leo-sdk/wrappers/resource";
+const resourceHandler = require("leo-sdk/wrappers/resource");
 
 export const handler = resourceHandler(async (event, context, callback) => {
   await request.authorize(event, {
@@ -19,7 +19,7 @@ export const handler = resourceHandler(async (event, context, callback) => {
 
   try {
     const data = await cloudformation.send(new ListStackResourcesCommand({
-      StackName: config.stacks && config.stacks.Leo || "Leo"
+      StackName: config?.Resources?.Leo || "Leo"
     }));
 
     if (data.NextToken) {
