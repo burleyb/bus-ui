@@ -81,12 +81,12 @@ export const DataProvider = ({ children }) => {
   const fetcher = (url) => axios.get(url).then((res) => res.data);
 
   // Queries to fetch initial data using TanStack Query
-  const { data: configData, refetch: refetchConfig } = useQuery({
-    queryKey: ['config'], 
-    queryFn: () => fetcher(`${api}api/accessConfig`), 
-    refetchInterval: 30000,
-    onSuccess: (data) => setConfig(data)
-  });
+  // const { data: configData, refetch: refetchConfig } = useQuery({
+  //   queryKey: ['config'], 
+  //   queryFn: () => fetcher(`${api}api/accessConfig`), 
+  //   refetchInterval: 30000,
+  //   onSuccess: (data) => setConfig(data)
+  // });
 
   const { data: eventSettingsData, refetch: refetchEventSettings } = useQuery({
     queryKey: ['eventSettings'],  
@@ -506,7 +506,7 @@ export const DataProvider = ({ children }) => {
           fetchChecksums,
           fetchDashboard,
           fetchStats,
-          refetchConfig,
+          // refetchConfig,
           refetchEventSettings,
           refetchSdkConfig,
           refetchSettings

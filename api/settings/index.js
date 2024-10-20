@@ -6,6 +6,7 @@ var dynamodb = leo.aws.dynamodb;
 
 var SETTINGS_TABLE = leo.configuration.resources.LeoSettings;
 exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, callback) => {
+	let isBase64Encoded = false;
 	await request.authorize(event, {
 		lrn: 'lrn:leo:botmon:::',
 		action: "settings",
@@ -26,7 +27,16 @@ exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, ca
 					}
 				}
 			}
-			callback(null, ret);
+            const responseHeaders = {
+                'Access-Control-Allow-Credentials': true,
+                'Access-Control-Allow-Origin': '*',
+            };
+            callback(undefined, {
+                body: ret,
+                headers: responseHeaders,
+                isBase64Encoded,
+                statusCode: 200,
+            });
 		}
 	});
 });

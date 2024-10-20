@@ -74,6 +74,7 @@
 			],
 			"showPagesEnv": {
 				"Resources": {
+					"Leo": "${Leo}",
 					"CognitoId": "${CognitoId}",
 					"Region": "${AWS::Region}",
 					"CustomJS": "${CustomJS}"
@@ -101,7 +102,7 @@
 		"@aws-sdk/client-cognito-identity": "^3.670.0",
 		"@aws-sdk/client-firehose": "^3.670.0",
 		"@aws-sdk/client-kinesis": "^3.670.0",
-		"@aws-sdk/client-s3": "^3.645.0",
+		"@aws-sdk/client-s3": "^3.675.0",
 		"@aws-sdk/client-secrets-manager": "^3.675.0",
 		"@aws-sdk/credential-providers": "^3.670.0",
 		"@aws-sdk/lib-dynamodb": "^3.674.0",

@@ -8,7 +8,7 @@ const resourceHandler = require("leo-sdk/wrappers/resource");
 
 export const handler = resourceHandler(async (event, context, callback) => {
   await request.authorize(event, {
-    lrn: 'lrn:leo:botmon:::accessConfig',
+    lrn: 'lrn:leo:botmon:::sdkConfig',
     action: "get",
     botmon: {}
   });
@@ -19,7 +19,7 @@ export const handler = resourceHandler(async (event, context, callback) => {
 
   try {
     const data = await cloudformation.send(new ListStackResourcesCommand({
-      StackName: config?.Resources?.Leo || "Leo"
+      StackName: config?.Resources?.Leo || "StealthOMS-Dev-RStreamsPlatformBusC9D77D07-1KCXGEYO6Z6ZM"
     }));
 
     if (data.NextToken) {
@@ -35,12 +35,26 @@ export const handler = resourceHandler(async (event, context, callback) => {
       return acc;
     }, {});
 
-    callback(null, {
-      kinesis: resources.KinesisStream.id,
-      s3: resources.S3Bus.id,
-      firehose: resources.FirehoseStream.id,
+    let isBase64Encoded = false;
+    const responseHeaders = {
+      'Access-Control-Allow-Credentials': true,
+      'Access-Control-Allow-Origin': '*',
+    };
+
+    const ret = {
+      kinesis: resources?.LeoKinesisStream?.id,
+      s3: resources?.LeoS3Bus?.id,
+      firehose: resources?.LeoFirehoseStream?.id,
       region: config.aws.region
+    };    
+
+    callback(undefined, {
+        body: ret,
+        headers: responseHeaders,
+        isBase64Encoded,
+        statusCode: 200,
     });
+
   } catch (err) {
     callback(err);
   }
