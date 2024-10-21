@@ -1,28 +1,22 @@
-import React, { useState, useEffect, useContext } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import moment from 'moment';
-
+import React, { useContext, useEffect, useState } from 'react';
+import { useData } from '../stores/DataContext'; // Assuming DataContext is already defined
 import EventTrace from './dialogs/eventTrace.jsx';
 import Header from './main/header.jsx';
 import LeftNav from './main/leftNav.jsx';
 import Content from './main/content.jsx';
 import MessageCenter from './main/messageCenter.jsx';
 import DataSourceConnect from './dialogs/dataSourceConnect.jsx';
+import moment from 'moment';
 
-import Dialog from './dialogs/dialog.jsx';
-import LeoKit from './dialogs/LeoKit.jsx'; // Updated to use the new LeoKit component
-import { useData } from '../stores/DataContext.jsx'; // Assuming DataContext is used for global state management
-
-// Extend string prototype for capitalization (if necessary)
+// Utility functions preserved as global helpers
 String.prototype.capitalize = function(lower) {
   return (lower ? this.toLowerCase() : this).replace(/(?:^|\s|\.)\S/g, f => f.toUpperCase());
 };
 
-// Math precision functions (if necessary)
-['round', 'floor', 'ceil'].forEach(function(funcName) {
+['round', 'floor', 'ceil'].forEach((funcName) => {
   if (!Math['_' + funcName]) {
     Math['_' + funcName] = Math[funcName];
-    Math[funcName] = function(number, precision) {
+    Math[funcName] = (number, precision) => {
       precision = Math.abs(parseInt(precision)) || 0;
       const coefficient = Math.pow(10, precision);
       return Math['_' + funcName](number * coefficient) / coefficient;
@@ -30,19 +24,32 @@ String.prototype.capitalize = function(lower) {
   }
 });
 
-function App() {
-  const state = useData(); 
+// Main App Component
+const App = () => {
+  const { 
+    changeAllStateValues, 
+    setSettings, 
+    nodeTree, 
+    setNodeTree, 
+    workflows, 
+    searches, 
+    messageLogNotify,
+    toggleBetaFeatures, 
+    toggleAdminFeatures 
+  } = useData();
 
-  const [trace, setTrace] = useState(undefined);
+  const [state, setState] = useState(loadSettings());
+  const [trace, setTrace] = useState(null);
   const [addDataSource, setAddDataSource] = useState(false);
-  const [messageCount, setMessageCount] = useState(0);
-  const [currentSearch, setCurrentSearch] = useState(null);
+  const [messageCount, setMessageCount] = useState(
+    JSON.parse(sessionStorage.getItem('messageQueue') || '[]').length
+  );
 
-  // Load settings from URL hash or localStorage
-  const loadSettings = () => {
+  // Load Settings (replacing the class-based method)
+  function loadSettings() {
     let hash = decodeURI(document.location.hash.slice(1)) || '';
 
-    if (!hash) {
+    if (hash === '') {
       const viewId = localStorage.getItem('default-view');
       if (viewId) {
         document.location.hash = JSON.parse(localStorage.getItem(viewId)) || '{}';
@@ -52,141 +59,109 @@ function App() {
 
     let values;
     try {
-      values = JSON.parse(decodeURI(hash) || '{}');
+      values = JSON.parse(decodeURI(hash || '') || '{}');
     } catch (e) {
-      LeoKit.notify('Invalid Request', 'warning', e); // Use LeoKit for notifications
+      const msg = 'Invalid Request';
+      messageLogNotify ? messageLogNotify(msg, 'warning', e) : alert(msg);
       values = {};
     }
 
-    state.refetchSettings();
-    
-  };
+    let me = nodeTree || { left: { collapsed: [] }, right: { collapsed: [] } };
 
-  // Handle message logging
-  const messageLogged = (count) => {
-    setMessageCount(count);
-  };
+    me.selected = values.selected || [];
 
-  // Use useEffect to handle hashchange and initial load
+    changeAllStateValues(
+      values.selected,
+      values.timePeriod,
+      values.view,
+      values.offset,
+      values.node,
+      me.zoom,
+      values.details
+    );
+    setSettings(values);
+
+    me.toggle_stats = values.stats || { all: true };
+    me.zoom = values.zoom || 1;
+
+    // Set zoom status
+    setNodeTree((prev) => ({
+      ...prev,
+      zoom: me.zoom,
+      left: { collapsed: values.collapsed ? values.collapsed.left || [] : [] },
+      right: { collapsed: values.collapsed ? values.collapsed.right || [] : [] },
+      offsetDistance: values.offset || [0, 0],
+      root: me.root || values.node,
+    }));
+
+    if (values.timePeriod && values.timePeriod.begin && !values.timePeriod.end) {
+      const interval = (values.timePeriod.interval || 'hour_6').split('_');
+      values.timePeriod.end = moment(values.timePeriod.begin)
+        .add(parseInt(interval[1]) || 1, interval[0])
+        .format('Y-MM-DD h:mm:ss');
+    }
+
+    return {
+      details: values.details && values.selected && values.selected.length > 0,
+      view: values.view || 'dashboard',
+      list: values.list || 'bots',
+      sort: values.sort || { index: 0, direction: 'asc' },
+      selected: values.selected || [],
+      node: values.node || '',
+      stats: values.stats || { all: true },
+      timePeriod: values.timePeriod || { interval: 'hour_6' },
+    };
+  }
+
+  // Component Did Mount & Did Update
   useEffect(() => {
     const handleHashChange = () => {
-      loadSettings();
+      const newState = loadSettings();
+      setState(newState);
+      if (newState.view === 'node') {
+        nodeTree.updateDiagram(newState.node || null, true);
+      }
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    handleHashChange();
+    handleHashChange(); // Trigger on mount
 
     return () => {
       window.removeEventListener('hashchange', handleHashChange);
     };
-  }, []);
+  }, [nodeTree]);
 
-  // Function to handle workflow management using LeoKit Dialogs
-  const workflows = {
-    order: (order) => {
-      if (order) {
-        localStorage.setItem('saved-views-order', JSON.stringify(order));
-      }
-      return JSON.parse(localStorage.getItem('saved-views-order')) || Object.keys(JSON.parse(localStorage.getItem('saved-views')) || {}).sort();
-    },
-    views: JSON.parse(localStorage.getItem('saved-views', '{}')) || {},
-    restore: (view) => {
-      const viewId = workflows.views[view];
-      document.location.hash = JSON.parse(localStorage.getItem(viewId));
-      state.fetchStats(); 
-    },
-    delete: (view) => {
-      LeoKit.confirm(`Delete view "${view}"?`, () => {
-        const savedViews = workflows.views;
-        const viewId = savedViews[view];
-        localStorage.removeItem(viewId);
-        delete savedViews[view];
-        localStorage.setItem('saved-views', JSON.stringify(savedViews));
-        workflows.order(workflows.order().filter(v => v !== view));
-      });
-    },
-    save: () => {
-      const defaultValue = (state.nodes[state.userSettings?.node] || {}).label || '';
-      LeoKit.prompt('Save Workflow', 'Enter workflow name', defaultValue, (form) => {
-        if (!form.prompt_value) {
-          LeoKit.alert('Name is required', 'warning');
-          return false;
-        }
+  // Utility functions for App actions
+  const messageLogged = (count) => setMessageCount(count);
 
-        const savedViews = workflows.views;
-        const viewId = `saved-view-${Date.now()}${Math.random()}`;
-        localStorage.setItem(viewId, JSON.stringify(document.location.hash));
-        savedViews[form.prompt_value] = viewId;
-        localStorage.setItem('saved-views', JSON.stringify(savedViews));
-        workflows.order([...workflows.order(), form.prompt_value]);
-        LeoKit.notify(`Saved View "${form.prompt_value}"`);
-      });
-    },
+  const handleStartTrace = (traceData) => {
+    setTrace(undefined); // Reset trace
+    setTrace(traceData); // Set new trace
   };
 
-  // Function to handle searches similarly
-  const searches = {
-    current: {
-      archive: false,
-      bot: [],
-      show: ['queue', 'bot', 'system'],
-      sort: { direction: 'asc', index: 0 },
-      statuses: ['!archived'],
-      system: [],
-      text: '',
-    },
-    order: (order) => {
-      if (order) {
-        localStorage.setItem('saved-searches-order', JSON.stringify(order));
-      }
-      return JSON.parse(localStorage.getItem('saved-searches-order')) || Object.keys(JSON.parse(localStorage.getItem('saved-searches')) || {}).sort();
-    },
-    views: JSON.parse(localStorage.getItem('saved-searches')) || {},
-    restore: (view) => {
-      state.changeView('dashboard');
-      const viewId = searches.views[view];
-      setCurrentSearch(JSON.parse(localStorage.getItem(viewId)));
-    },
-    delete: (view) => {
-      LeoKit.confirm(`Delete search "${view}"?`, () => {
-        const savedViews = searches.views;
-        const viewId = savedViews[view];
-        localStorage.removeItem(viewId);
-        delete savedViews[view];
-        searches.order(searches.order().filter(v => v !== view));
-      });
-    },
-    save: () => {
-      LeoKit.prompt('Save Search', 'Enter search name', (form) => {
-        if (!form.prompt_value) {
-          LeoKit.alert('Name is required', 'warning');
-          return false;
-        }
-
-        const savedViews = searches.views;
-        const viewId = `saved-search-${Date.now()}${Math.random()}`;
-        localStorage.setItem(viewId, JSON.stringify(searches.current));
-        savedViews[form.prompt_value] = viewId;
-        localStorage.setItem('saved-searches', JSON.stringify(savedViews));
-        searches.order([...searches.order(), form.prompt_value]);
-        LeoKit.notify(`Saved Search "${form.prompt_value}"`);
-      });
-    },
-  };
+  const handleAddDataSource = () => setAddDataSource(true);
 
   return (
-    <div id="main">
+    <main id="main">
+
       <MessageCenter messageLogged={messageLogged} />
 
       {trace && <EventTrace data={trace} onClose={() => setTrace(undefined)} />}
 
       <Header settings={state} messageCount={messageCount} />
+
       <LeftNav workflows={workflows} searches={searches} />
-      <Content settings={state} workflows={workflows} searches={searches} currentSearch={currentSearch} />
+
+      <Content
+        settings={state}
+        workflows={workflows}
+        searches={searches}
+        currentSearch={state.currentSearch}
+      />
 
       {addDataSource && <DataSourceConnect onClose={() => setAddDataSource(false)} />}
-    </div>
+    </main>
   );
-}
+};
 
 export default App;

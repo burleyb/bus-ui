@@ -5,8 +5,16 @@ var dynamodb = leo.aws.dynamodb;
 var util = require("leo-sdk/lib/reference.js");
 
 var TABLE = leo.configuration.resources.LeoEvent;
+
+const responseHeaders = {
+	'Access-Control-Allow-Credentials': true,
+	'Access-Control-Allow-Origin': '*',
+};
+let isBase64Encoded = false;
+
 exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, callback) => {
 	var ref = util.ref(event.params.path.event, "queue");
+
 	if (ref) {
 		var id = ref.id;
 		await request.authorize(event, {
@@ -32,7 +40,14 @@ function scan(callback) {
 	}, {
 		method: "scan"
 	}).then(function (data) {
-		callback(null, data.Items.map(fixQueue));
+
+		callback(null, {
+			body: data.Items.map(fixQueue),
+			headers: responseHeaders,
+			isBase64Encoded,
+			statusCode: 200,
+		});
+
 	}).catch(callback).finally();
 }
 
@@ -43,9 +58,19 @@ function get(id, callback) {
 		if (err) {
 			callback(err, queue);
 		} else {
-			callback(null, fixQueue(queue || {
-				event: id
-			}, id))
+
+			let ret = fixQueue(queue || {
+					event: id
+				}, id)
+
+			callback(null, {
+				body: ret,
+				headers: responseHeaders,
+				isBase64Encoded,
+				statusCode: 200,
+			});
+
+			callback(null, )
 		}
 	});
 }

@@ -10,6 +10,25 @@ const DataContext = createContext({hasData: false});
 
 export const DataProvider = ({ children }) => {
   const queryClient = useQueryClient();
+  // Helper functions to manage searches
+  const loadInitialSearches = () => ({
+    views: JSON.parse(localStorage.getItem('saved-searches')) || {},
+    order: JSON.parse(localStorage.getItem('saved-searches-order')) || [],
+    current: {
+      archive: false,
+      bot: [],
+      show: ['queue', 'bot', 'system'],
+      sort: { direction: 'asc', index: 0 },
+      statuses: ['!archived'],
+      system: [],
+      text: '',
+    },
+  });
+  const loadInitialWorkflows = () => ({
+    views: JSON.parse(localStorage.getItem('saved-views')) || {},
+    order: JSON.parse(localStorage.getItem('saved-views-order')) || [],
+  });
+
 
   // All state variables converted from MobX observables
   const [action, setAction] = useState({});
@@ -55,6 +74,10 @@ export const DataProvider = ({ children }) => {
   const [updatingStats, setUpdatingStats] = useState(false);
   const [messageQueue, setMessageQueue] = useState([]);
   const [currentMessage, setCurrentMessage] = useState(null);
+  const [nodeTree, setNodeTree] = useState(null);
+  const [workflows, setWorkflows] = useState(loadInitialWorkflows());
+  const [searches, setSearches] = useState(loadInitialSearches());
+
 
   const [urlObj, setUrlObj] = useState({
     timePeriod: { interval: 'minute_15' },
@@ -91,14 +114,14 @@ export const DataProvider = ({ children }) => {
   const { data: eventSettingsData, refetch: refetchEventSettings } = useQuery({
     queryKey: ['eventSettings'],  
     queryFn: () => fetcher(`${api}api/eventSettings`),
-    refetchInterval: 30000,
+    refetchInterval: 300000,
     onSuccess: (data) => setEventSettings(data)
   });
 
   const { data: sdkConfigData, refetch: refetchSdkConfig } = useQuery({
     queryKey: ['sdkConfig'], 
     queryFn: () => fetcher(`${api}api/sdkConfig`), 
-    refetchInterval: 30000,
+    refetchInterval: 300000,
     onSuccess: (data) => setSdkConfig(data),
   });
 
@@ -404,6 +427,86 @@ export const DataProvider = ({ children }) => {
       }
   };
 
+  // Helper functions to manage workflows
+
+  const saveWorkflow = (name, data) => {
+    const id = `saved-view-${Date.now()}-${Math.random()}`;
+    const newViews = { ...workflows.views, [name]: id };
+
+    localStorage.setItem(id, JSON.stringify(data));
+    localStorage.setItem('saved-views', JSON.stringify(newViews));
+    setWorkflows({
+      ...workflows,
+      views: newViews,
+      order: [...workflows.order, name],
+    });
+  };
+
+  const deleteWorkflow = (name) => {
+    const viewId = workflows.views[name];
+    const newViews = { ...workflows.views };
+    delete newViews[name];
+
+    localStorage.removeItem(viewId);
+    localStorage.setItem('saved-views', JSON.stringify(newViews));
+
+    const newOrder = workflows.order.filter((view) => view !== name);
+    localStorage.setItem('saved-views-order', JSON.stringify(newOrder));
+
+    setWorkflows({
+      ...workflows,
+      views: newViews,
+      order: newOrder,
+    });
+  };
+
+  const restoreWorkflow = (name) => {
+    const viewId = workflows.views[name];
+    const savedData = JSON.parse(localStorage.getItem(viewId) || '{}');
+    return savedData;
+  };
+
+
+
+  const saveSearch = (name, data) => {
+    const id = `saved-search-${Date.now()}-${Math.random()}`;
+    const newViews = { ...searches.views, [name]: id };
+
+    localStorage.setItem(id, JSON.stringify(data));
+    localStorage.setItem('saved-searches', JSON.stringify(newViews));
+    setSearches({
+      ...searches,
+      views: newViews,
+      order: [...searches.order, name],
+    });
+  };
+
+  const deleteSearch = (name) => {
+    const viewId = searches.views[name];
+    const newViews = { ...searches.views };
+    delete newViews[name];
+
+    localStorage.removeItem(viewId);
+    localStorage.setItem('saved-searches', JSON.stringify(newViews));
+
+    const newOrder = searches.order.filter((view) => view !== name);
+    localStorage.setItem('saved-searches-order', JSON.stringify(newOrder));
+
+    setSearches({
+      ...searches,
+      views: newViews,
+      order: newOrder,
+    });
+  };
+
+  const restoreSearch = (name) => {
+    const viewId = searches.views[name];
+    const savedData = JSON.parse(localStorage.getItem(viewId) || '{}');
+    setSearches((prev) => ({
+      ...prev,
+      current: savedData,
+    }));
+  };
 
     return (
       <DataContext.Provider
@@ -431,6 +534,7 @@ export const DataProvider = ({ children }) => {
           logSettings,
           logs,
           nodes,
+          nodeTree,
           messageLog,
           messageNotify,
           messageLogNotify,
@@ -467,6 +571,7 @@ export const DataProvider = ({ children }) => {
           setLogSettings,
           setLogs,
           setNodes,
+          setNodeTree,
           setQueues,
           setRangeCount,
           setRefreshDashboard,
@@ -509,7 +614,15 @@ export const DataProvider = ({ children }) => {
           // refetchConfig,
           refetchEventSettings,
           refetchSdkConfig,
-          refetchSettings
+          refetchSettings,
+          workflows,
+          saveWorkflow,
+          deleteWorkflow,
+          restoreWorkflow,
+          searches,
+          saveSearch,
+          deleteSearch,
+          restoreSearch,
         }}
       >
         {children}

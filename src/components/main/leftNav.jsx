@@ -23,8 +23,8 @@ function LeftNav({ workflows, searches, userSettings }) {
         state.resetState(); // Assuming resetState is part of the context or handled elsewhere
     };
 
-    const savedWorkflows = workflows.order();
-    const savedSearches = searches.order();
+    // const savedWorkflows = workflows.order();
+    // const savedSearches = searches.order();
 
     return (
         <div className={`left-nav${showMenu ? ' active' : ''}`} onClick={toggleMenu}>
