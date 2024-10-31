@@ -24,28 +24,67 @@ String.prototype.capitalize = function(lower) {
   }
 });
 
+String.prototype.htmlEncode = function() {
+  const div = document.createElement('div');
+  div.textContent = this;
+  return div.innerHTML;
+};
+
+const useResponsiveFont = () => {
+  useEffect(() => {
+    const responsiveFont = () => {
+      // Your original function logic without jQuery
+      if (!document.hidden) {
+        const elements = document.querySelectorAll('.responsive-font');
+        
+        elements.forEach((element) => {
+          element.style.overflow = 'auto';
+          element.style.fontSize = '';
+
+          // Decrease font size until content fits the parent width
+          while (element.scrollWidth > element.parentElement.clientWidth) {
+            const currentFontSize = parseInt(window.getComputedStyle(element).fontSize);
+            element.style.fontSize = `${currentFontSize - 1}px`;
+          }
+
+          element.style.overflow = '';
+        });
+      }
+    };
+
+    // Add event listener on mount
+    window.addEventListener('resize', responsiveFont);
+
+    // Initial call to set font size correctly
+    responsiveFont();
+
+    // Cleanup on unmount
+    return () => {
+      window.removeEventListener('resize', responsiveFont);
+    };
+  }, []); // Empty dependency array ensures it runs once
+};
+
+
 // Main App Component
 const App = () => {
   const { 
     changeAllStateValues, 
     setSettings, 
+    settings, 
     nodeTree, 
     setNodeTree, 
     workflows, 
     searches, 
     messageLogNotify,
-    toggleBetaFeatures, 
-    toggleAdminFeatures 
   } = useData();
 
-  const [state, setState] = useState(loadSettings());
   const [trace, setTrace] = useState(null);
   const [addDataSource, setAddDataSource] = useState(false);
   const [messageCount, setMessageCount] = useState(
     JSON.parse(sessionStorage.getItem('messageQueue') || '[]').length
   );
 
-  // Load Settings (replacing the class-based method)
   function loadSettings() {
     let hash = decodeURI(document.location.hash.slice(1)) || '';
 
@@ -113,23 +152,23 @@ const App = () => {
     };
   }
 
-  // Component Did Mount & Did Update
   useEffect(() => {
     const handleHashChange = () => {
       const newState = loadSettings();
-      setState(newState);
+      if(settings) {
+        setSettings(newState);
+      }
       if (newState.view === 'node') {
         nodeTree.updateDiagram(newState.node || null, true);
       }
     };
 
     window.addEventListener('hashchange', handleHashChange);
-    handleHashChange(); // Trigger on mount
 
     return () => {
       window.removeEventListener('hashchange', handleHashChange);
     };
-  }, [nodeTree]);
+  }, []);
 
   // Utility functions for App actions
   const messageLogged = (count) => setMessageCount(count);
@@ -148,15 +187,11 @@ const App = () => {
 
       {trace && <EventTrace data={trace} onClose={() => setTrace(undefined)} />}
 
-      <Header settings={state} messageCount={messageCount} />
+      <Header messageCount={messageCount} />
 
-      <LeftNav workflows={workflows} searches={searches} />
+      <LeftNav workflows={workflows} searches={searches} userSettings={settings} />
 
       <Content
-        settings={state}
-        workflows={workflows}
-        searches={searches}
-        currentSearch={state.currentSearch}
       />
 
       {addDataSource && <DataSourceConnect onClose={() => setAddDataSource(false)} />}

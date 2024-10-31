@@ -5,6 +5,8 @@ import _ from 'lodash';
 import moment from 'moment';
 import numeral from 'numeral';
 import refUtil from '../components/utils/reference.js';
+import LEOCognito from '../components/utils/leoCognito';
+import leoConfig from 'leo-config';
 
 const DataContext = createContext({hasData: false});
 
@@ -28,7 +30,6 @@ export const DataProvider = ({ children }) => {
     views: JSON.parse(localStorage.getItem('saved-views')) || {},
     order: JSON.parse(localStorage.getItem('saved-views-order')) || [],
   });
-
 
   // All state variables converted from MobX observables
   const [action, setAction] = useState({});
@@ -73,7 +74,9 @@ export const DataProvider = ({ children }) => {
   const [templates, setTemplates] = useState(null);
   const [updatingStats, setUpdatingStats] = useState(false);
   const [messageQueue, setMessageQueue] = useState([]);
-  const [currentMessage, setCurrentMessage] = useState(null);
+  const [betaFeatures, setBetaFeatures] = useState(null);
+  const [adminFeatures, setAdminFeatures] = useState(null);
+  const [currentMessage, setCurrentMessage] = useState(null); 
   const [nodeTree, setNodeTree] = useState(null);
   const [workflows, setWorkflows] = useState(loadInitialWorkflows());
   const [searches, setSearches] = useState(loadInitialSearches());
@@ -97,8 +100,12 @@ export const DataProvider = ({ children }) => {
   };
   const [timePeriod, setTimePeriod] = useState(defaultTimePeriod);
 
-  // Utility function for updating state values
-  const updateUrlObj = (updates) => setUrlObj((prev) => ({ ...prev, ...updates }));
+
+
+
+  const updateUrlObj = useCallback((updates) => {
+    setUrlObj((prev) => ({ ...prev, ...updates }));
+  }, []);
 
   // Fetcher function for Axios
   const fetcher = (url) => axios.get(url).then((res) => res.data);
@@ -115,6 +122,7 @@ export const DataProvider = ({ children }) => {
     queryKey: ['eventSettings'],  
     queryFn: () => fetcher(`${api}api/eventSettings`),
     refetchInterval: 300000,
+    enabled: !!authenticated,
     onSuccess: (data) => setEventSettings(data)
   });
 
@@ -122,6 +130,7 @@ export const DataProvider = ({ children }) => {
     queryKey: ['sdkConfig'], 
     queryFn: () => fetcher(`${api}api/sdkConfig`), 
     refetchInterval: 300000,
+    enabled: !!authenticated,
     onSuccess: (data) => setSdkConfig(data),
   });
 
@@ -129,6 +138,7 @@ export const DataProvider = ({ children }) => {
     queryKey: ['settings'], 
     queryFn: () => fetcher(`${api}api/settings`), 
     refetchInterval: 30000,
+    enabled: !!authenticated,
     onSuccess: (data) => setSettings(data),
   });
 
@@ -136,18 +146,15 @@ export const DataProvider = ({ children }) => {
     queryKey: ['stats', urlObj, timePeriod], 
     queryFn: () => fetchStats(),
     refetchInterval: 30000, 
+    enabled: !!authenticated,
     onSuccess: (data) => setStats(data),
   });
 
   // Action functions to modify URL object and various states
   const changeView = (view) => updateUrlObj({ view });
   const changeSelected = (selected) => updateUrlObj({ selected: [selected] });
-  const changeTimePeriod = (begin, end, interval) =>
-    updateUrlObj({ timePeriod: { begin, end, interval } });
-
-  const changeNode = (nodeId, view, offset) =>
-    updateUrlObj({ node: nodeId, selected: [nodeId], view, offset });
-
+  const changeTimePeriod = (begin, end, interval) => updateUrlObj({ timePeriod: { begin, end, interval } });
+  const changeNode = (nodeId, view, offset) => updateUrlObj({ node: nodeId, selected: [nodeId], view, offset });
   const changeDetailsBool = (bool) => updateUrlObj({ details: bool });
 
   const resetState = () =>
@@ -508,6 +515,58 @@ export const DataProvider = ({ children }) => {
     }));
   };
 
+    // Define functions to enable or disable features
+    const enableBetaFeatures = (enable) => {
+      if (enable) {
+        localStorage.setItem('enableBetaFeatures', enable);
+      } else {
+        localStorage.removeItem('enableBetaFeatures');
+      }
+      return `Refresh the page to ${enable ? 'show' : 'hide'} Beta Features`;
+    };
+  
+    const enableAdminFeatures = (enable) => {
+      if (enable) {
+        localStorage.setItem('enableAdminFeatures', enable);
+      } else {
+        localStorage.removeItem('enableAdminFeatures');
+      }
+      return `Refresh the page to ${enable ? 'show' : 'hide'} Admin Features`;
+    };
+  
+    // Attach functions to window for console access
+    window.enableBetaFeatures = enableBetaFeatures;
+    window.enableAdminFeatures = enableAdminFeatures;
+
+    useEffect(() => {
+
+      // Initialize LEOCognito
+      if (LEOCognito) {
+          LEOCognito.start(
+              leoConfig.cognitoId || 'us-east-1:9535887a-ea1a-42c0-92e8-c8e770f6543c',
+              () => { 
+                  if(leoConfig.IdentityId) {
+                      return { 
+                          identiityId: leoConfig.IdentityId,
+                      };
+                  } else {
+                      return false;
+                  }      
+              },
+              {
+                  apiUri: "api/",
+                  region: leoConfig.region || 'us-east-1',
+                  cognito_region: leoConfig.cognito_region || 'us-east-1',
+              },
+              function (data) {
+                  console.log("LEOCognito initialized", data);
+                  setAuthenticated(data);
+              }
+          );
+      }
+
+  }, []);
+
     return (
       <DataContext.Provider
         value={{
@@ -634,7 +693,7 @@ export const DataProvider = ({ children }) => {
     const context = useContext(DataContext);
   
     if (context === null) {
-      throw new Error('useDialog must be used within a DialogProvider');
+      throw new Error('useData must be used within a DataProvider');
     }
   
     return context;

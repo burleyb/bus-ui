@@ -1,5 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { useData } from '../../stores/DataContext.jsx'; // Assuming React Context for global state
+import { LeoKit } from '../dialogs/LeoKit.jsx';
 
 function LeftNav({ workflows, searches, userSettings }) {
     const state = useData(); 
@@ -20,11 +21,11 @@ function LeftNav({ workflows, searches, userSettings }) {
 
     // Reset DataStore state
     const resetDataStoreState = () => {
-        state.resetState(); // Assuming resetState is part of the context or handled elsewhere
+        state.resetState(); // Assuming resetState is part of the context or handled elsewhetoggleViewre
     };
 
-    // const savedWorkflows = workflows.order();
-    // const savedSearches = searches.order();
+    const savedWorkflows = workflows;
+    const savedSearches = searches;
 
     return (
         <div className={`left-nav${showMenu ? ' active' : ''}`} onClick={toggleMenu}>
@@ -48,7 +49,45 @@ function LeftNav({ workflows, searches, userSettings }) {
                 onMouseEnter={() => setHover('node')}
                 onMouseLeave={() => setHover(undefined)}
             >
-                {/* Render workflow details here */}
+                <span onClick={this.toggleView.bind(this, 'node')}>
+					<i className="icon-flow-branch" />
+				</span>
+				<div className={'pop-out' + (this.state.hover === 'node' ? ' hover' : '')}>
+					<header>
+						{
+							savedWorkflows.length > 0 ? 
+                            <i className="icon-cog pull-right"  /> 
+                            : false
+						}
+						Saved Workflows
+					</header>
+					<ul className="workflow-links">
+						{
+							savedWorkflows.map((view) => {
+								return (<li key={view}>
+									<a onClick={workflows.restore.bind(this, view)}>{view}</a>
+								</li>);
+							})
+						}
+						{
+							!savedWorkflows.length
+							? <li>
+								<em>There are no saved Workflows</em>
+							</li>
+							: false
+						}
+						{
+                            //this.dataStore.urlObj.view === 'node'
+                            userSettings.view === 'node'
+                                ? <li>
+								<a onClick={workflows.save}>
+									<i className="icon-bookmark" /> Save this Workflow View
+								</a>
+							</li>
+							: false
+						}
+					</ul>
+				</div>
             </div>
 
             <div className={userSettings?.view === 'trace' ? 'active' : ''}>

@@ -17,9 +17,11 @@ export const handler = resourceHandler(async (event, context, callback) => {
     region: config._meta.region
   });
 
+  console.log("[config]", config);
+  
   try {
     const data = await cloudformation.send(new ListStackResourcesCommand({
-      StackName: config?.Resources?.Leo || "StealthOMS-Dev-RStreamsPlatformBusC9D77D07-1KCXGEYO6Z6ZM"
+      StackName: config?.Resources?.Leo 
     }));
 
     if (data.NextToken) {

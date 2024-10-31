@@ -1,5 +1,5 @@
 // Import necessary modules
-import { CognitoIdentityClient, GetCredentialsForIdentityCommand } from '@aws-sdk/client-cognito-identity';
+import { CognitoIdentityClient, GetIdCommand, GetCredentialsForIdentityCommand } from '@aws-sdk/client-cognito-identity';
 import axios from 'axios';
 import CryptoJS from 'crypto-js';
 
@@ -15,7 +15,47 @@ const LEOCognito = {
 };
 
 LEOCognito.start = function (poolId, getToken, opts, callback) {
+
+  console.log("[poolId]", poolId);
+
   const identityClient = new CognitoIdentityClient({ region: typeof poolId === 'string' ? poolId.split(/:/)[0] : poolId.Region });
+  console.log("[identityClient]", identityClient);
+
+  const getCognitoIdentityId = async () => {
+    try {
+      const getIdCommand = new GetIdCommand({
+        IdentityPoolId: poolId,
+      });
+  
+      const identityResponse = await identityClient.send(getIdCommand);
+      const identityId = identityResponse.IdentityId;
+  
+      console.log("Cognito Identity ID:", identityId);
+      return {
+        IdentityId: identityId
+      };
+    } catch (error) {
+      console.error("Error getting Cognito Identity ID:", error);
+    }
+  };
+  
+  // Function to get temporary AWS credentials using the Cognito Identity ID
+  const getTemporaryCredentials = async (identityId) => {
+    try {
+      const getCredentialsCommand = new GetCredentialsForIdentityCommand({
+        IdentityId: identityId,
+      });
+  
+      const credentialsResponse = await identityClient.send(getCredentialsCommand);
+      const { Credentials } = credentialsResponse;
+  
+      console.log("Temporary AWS Credentials:", Credentials);
+      return Credentials;
+    } catch (error) {
+      console.error("Error getting temporary credentials:", error);
+    }
+  };
+
 
   const loadTokens = async (callback) => {
     if (callback) LEOCognito.pendingRequests.push(callback);
@@ -23,13 +63,22 @@ LEOCognito.start = function (poolId, getToken, opts, callback) {
     if (!LEOCognito.isFetchingToken) {
       LEOCognito.isFetchingToken = true;
       
+      let credentials;
       if (getToken) {
-        const credentials = await getToken();
-        const command = new GetCredentialsForIdentityCommand({
-          IdentityId: credentials.IdentityId,
-          Logins: credentials.Logins,
-        });
+        credentials = await getToken();
+      } 
+      if(!credentials) {
+        credentials = await getCognitoIdentityId();
+      }
+      console.log("[credentials]", credentials);
+
+      const command = new GetCredentialsForIdentityCommand({
+        IdentityId: credentials?.IdentityId ?? "",
+      });
+
+      try {
         const response = await identityClient.send(command);
+        console.log("[response]", response);
         
         LEOCognito.credentials = {
           accessKeyId: response.Credentials.AccessKeyId,
@@ -43,7 +92,10 @@ LEOCognito.start = function (poolId, getToken, opts, callback) {
           const pendingRequest = LEOCognito.pendingRequests.shift();
           pendingRequest();
         }
+      } catch(err) {
+        console.log("[err]", err);
       }
+      
     }
   };
 
@@ -80,7 +132,7 @@ LEOCognito.start = function (poolId, getToken, opts, callback) {
     return config;
   });
 
-  if (callback) callback();
+  if (callback) callback(LEOCognito);
 };
 
 function signRequest(region, credentials, config, datetime) {

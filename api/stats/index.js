@@ -40,6 +40,7 @@ exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, ca
     }
 
     stats(event, (err, data) => {
+
         let stats = (data || {}).stats;
         if (stats) {
             let responseBody = JSON.stringify(stats);
