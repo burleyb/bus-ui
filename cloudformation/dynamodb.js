@@ -31,6 +31,7 @@ module.exports = {
                         "KeyType": "RANGE"
                     }
                 ],
+                "BillingMode": "PAY_PER_REQUEST",
                 "ProvisionedThroughput": {
                     "ReadCapacityUnits": 20,
                     "WriteCapacityUnits": 20
