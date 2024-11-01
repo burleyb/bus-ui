@@ -32,10 +32,6 @@ module.exports = {
                     }
                 ],
                 "BillingMode": "PAY_PER_REQUEST",
-                "ProvisionedThroughput": {
-                    "ReadCapacityUnits": 20,
-                    "WriteCapacityUnits": 20
-                },
                 "GlobalSecondaryIndexes": [
                     {
                         "IndexName": "period-time-index",
@@ -54,10 +50,6 @@ module.exports = {
                             "NonKeyAttributes": [
                                 "current"
                             ]
-                        },
-                        "ProvisionedThroughput": {
-                            "ReadCapacityUnits": "20",
-                            "WriteCapacityUnits": "20"
                         }
                     }
                 ],
