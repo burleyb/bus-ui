@@ -1,6 +1,6 @@
 {
 	"name": "botmon",
-	"version": "3.0.4",
+	"version": "3.0.5",
 	"description": "",
 	"main": "app.js",
 	"scripts": {
@@ -16,10 +16,10 @@
 			"type": "microservice",
 			"subtype": "react",
 			"role": "ApiRole",
-			"name": "Leo_Botmon",
+			"name": "symmatiq.com/botmon",
 			"display-name": "Bot Monitoring",
 			"root": "botmon",
-			"runtime": "nodejs20.x",
+			"runtime": "nodejs22.x",
 			"parallelCompile": 10,
 			"stacks": [
 				"leosdk",
@@ -74,13 +74,10 @@
 	"author": "",
 	"license": "ISC",
 	"dependencies": {
-		"@aws-sdk/node-http-handler": "^3.370.0",
-		"@babel/plugin-proposal-class-properties": "^7.18.6",
-		"@babel/plugin-transform-react-jsx": "^7.25.2",
-		"@babel/plugin-transform-runtime": "^7.24.7",
 		"@emotion/react": "^11.13.0",
 		"@emotion/styled": "^11.13.0",
 		"@mui/material": "^5.16.6",
+		"@reduxjs/toolkit": "^2.5.0",
 		"@uiw/react-codemirror": "^4.23.0",
 		"async": "^3.2.5",
 		"child_process": "^1.0.2",
@@ -94,11 +91,11 @@
 		"html5sortable": "^0.14.0",
 		"jsonpath": "^1.1.1",
 		"later": "^1.2.0",
-		"leo-auth": "file:../smartshyp-deps/leo-auth",
-		"leo-aws": "file:../smartshyp-deps/leo-aws",
-		"leo-config": "file:../smartshyp-deps/leo-config",
-		"leo-logger": "^1.0.1",
-		"leo-sdk": "file:../smartshyp-deps/leo-sdk",
+		"leo-auth": "file:../leo-auth",
+		"leo-aws": "file:../leo-aws",
+		"leo-config": "file:../leo-config",
+		"leo-logger": "file:../leo-logger",
+		"leo-sdk": "file:../leo-sdk",
 		"less-loader": "^12.2.0",
 		"mobx": "^6.13.1",
 		"mobx-react": "^9.1.1",
@@ -123,17 +120,22 @@
 		"webpack-dev-middleware": "^7.3.0"
 	},
 	"overrides": {
-		"leo-auth": "file:../smartshyp-deps/leo-auth",
-		"leo-sdk": "file:../smartshyp-deps/leo-sdk",
-		"leo-aws": "file:../smartshyp-deps/leo-aws",
-		"leo-cron": "file:../smartshyp-deps/leo-cron"
+		"leo-auth": "file:../leo-auth",
+		"leo-sdk": "file:../leo-sdk",
+		"leo-aws": "file:../leo-aws",
+		"leo-cron": "file:../leo-cron"
 	},
 	"devDependencies": {
 		"@babel/core": "^7.25.2",
+		"@babel/plugin-proposal-class-properties": "^7.18.6",
 		"@babel/plugin-proposal-decorators": "^7.24.7",
 		"@babel/plugin-proposal-export-namespace-from": "^7.18.9",
 		"@babel/plugin-proposal-function-bind": "^7.24.7",
+		"@babel/plugin-syntax-jsx": "^7.25.9",
+		"@babel/plugin-transform-export-namespace-from": "^7.25.9",
 		"@babel/plugin-transform-modules-commonjs": "^7.24.8",
+		"@babel/plugin-transform-react-jsx": "^7.25.2",
+		"@babel/plugin-transform-runtime": "^7.24.7",
 		"@babel/preset-env": "^7.25.3",
 		"@babel/preset-react": "^7.24.7",
 		"@babel/types": "^7.25.0",
@@ -161,6 +163,7 @@
 		"@aws-sdk/credential-providers": "^3.621.0",
 		"@aws-sdk/lib-dynamodb": "^3.621.0",
 		"@aws-sdk/lib-storage": "^3.621.0",
+		"@aws-sdk/node-http-handler": "^3.370.0",
 		"@aws-sdk/util-utf8-browser": "^3.259.0"
 	}
 }

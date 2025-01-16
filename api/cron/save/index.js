@@ -188,10 +188,11 @@ function save(id, doc, callback) {
 		if (oldData) {
 			delete oldData.instances;
 		}
-		dynamodb.docClient.update(params, function(err, result) {
+		dynamodb.update(params, function(err, result) {
 			if (err) {
 				callback(err);
 			} else {
+				console.log("[result]", JSON.stringify(result, null, 2));
 				var done = callback;
 				var data = result.Attributes;
 				var stream = leo.load(BOT_ID, LOG_DESTINATION);
@@ -206,10 +207,6 @@ function save(id, doc, callback) {
 							old: oldData,
 							new: newData,
 							diff: diffs,
-							user: {
-								identity_id: user.identity_id,
-								user_id: user.context && user.context.user_id
-							}
 						});
 					}
 					if (!err) {
@@ -269,7 +266,7 @@ function save(id, doc, callback) {
 						ExpressionAttributeValues: attributes,
 						"ReturnConsumedCapacity": 'TOTAL'
 					};
-					dynamodb.docClient.update(params, function(err, data) {
+					dynamodb.update(params, function(err, data) {
 						console.log(err, data);
 						callback(null, {
 							refId: refId

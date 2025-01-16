@@ -62,7 +62,7 @@ function save(ref, doc, callback) {
 	}
 
 	console.log(JSON.stringify(params, null, 2))
-	dynamodb.docClient.update(params, function (err, result) {
+	dynamodb.update(params, function (err, result) {
 		if (err) {
 			callback(err);
 		} else {

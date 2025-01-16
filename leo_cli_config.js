@@ -10,32 +10,19 @@ module.exports = {
 			region: 'us-east-1'
 		},
 		public: true,
-		staticAssets: "s3://smartshyp-tracking-prod-trackings3bucket-1qozxsymkq9zv/leo_botmon"
+		staticAssets: "s3://symmatiq.com/botmon"
 	}
 	],
 	deploy: {
-		DEV_OLD: {
-			stack: 'botmon-dev-old',
-			region: 'us-east-1',
-			parameters: {
-				CognitoId: 'us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac',
-				leoauth: 'LeoPlatformV2-Auth-1X7Q0AF7Z7REV',
-				leosdk: 'LeoPlatformV2-Bus-WJHM1F32629G',
-		        LeoBus: "LeoPlatformV2-Bus-WJHM1F32629G",
-		        LeoAuth: "LeoPlatformV2-Auth-1X7Q0AF7Z7REV",
-		        CustomJS: "",
-		        Logins: ""
-			}
-		},
 		DEV: {
 			stack: 'botmon-dev',
 			region: 'us-east-1',
 			parameters: {
-				CognitoId: 'us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac',
-				leoauth: 'LeoPlatformV2-Auth-1X7Q0AF7Z7REV',
-				leosdk: 'LeoDevV2-Bus',
-		        LeoBus: "LeoDevV2-Bus",
-		        LeoAuth: "LeoPlatformV2-Auth-1X7Q0AF7Z7REV",
+				CognitoId: 'us-east-1:3e9094d3-afc1-407c-a548-533e22f44c34',
+				leoauth: 'leo-auth-stack-dev',
+				leosdk: 'RstreamsDEV',
+		        LeoBus: "RstreamsDEV",
+		        LeoAuth: "leo-auth-stack-dev",
 		        CustomJS: "",
 		        Logins: ""
 			}

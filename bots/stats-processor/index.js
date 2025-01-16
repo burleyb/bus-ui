@@ -5,7 +5,8 @@ let dynamodb = leo.aws.dynamodb;
 var refUtil = require("leo-sdk/lib/reference.js");
 
 var statsBuckets = require("../../lib/stats-buckets").data;
-let STATS_TABLE = require("leo-config").Resources.LeoStats;
+const leoConfig = require("leo-config")
+let STATS_TABLE = leoConfig.Resources.LeoStats
 
 exports.handler = require("leo-sdk/wrappers/cron")(async (event, context, callback) => {
 	leo.offload({

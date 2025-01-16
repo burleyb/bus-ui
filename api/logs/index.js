@@ -19,7 +19,7 @@ const dynamodb = new DynamoDBClient({
   region: leoConfigRegion
 });
 
-export const handler = leo.wrap(async (event, context, callback) => {
+exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, callback) => {
   const limit = 50;
   const lambda = event.params.path.lambda;
   const bot_id = ref(event.params.path.id, "bot").id;

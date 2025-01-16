@@ -7,14 +7,14 @@ module.exports = {
     _global: {
         leoauth: leoauth.resources || leoauth,
         leosdk: leosdk.resources || leosdk,
-        Resources: process.env.Resources || leosdk.resources,
+        Resources: process.env.Resources && JSON.parse(process.env.Resources) || leosdk.resources,
 		CognitoId: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac",
 			basePath: "botmon/",
 			basehref: "botmon/",
     },
     PROD: {
         ui: {
-            staticAssets: "https://d1duc0za9qk2vm.cloudfront.net/leo_botmon",
+            staticAssets: "https://s3.us-east-1.amazonaws.com/symmatiq.com/botmon",
             cognito: {
                 id: "us-east-1:76a899db-012a-452d-a06c-939362ed05b1"
             },
@@ -23,11 +23,11 @@ module.exports = {
     },
     DEV: {
         ui: {
-            staticAssets: "https://d1duc0za9qk2vm.cloudfront.net/leo_botmon",
+            staticAssets: "https://s3.us-east-1.amazonaws.com/symmatiq.com/botmon",
             cognito: {
-                id: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac"
+                id: "us-east-1:3e9094d3-afc1-407c-a548-533e22f44c34"
             },
-			CognitoId: "us-east-1:4c8ea47e-afff-4d1c-9bfe-8226783364ac",
+			CognitoId: "us-east-1:3e9094d3-afc1-407c-a548-533e22f44c34",
 			Region: "us-east-1",
 			CustomJS: "",
 			basePath: "botmon/",

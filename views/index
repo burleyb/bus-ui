@@ -8,8 +8,8 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
 	<title>EventBus</title>
     <base href="${leo.baseHref}" />
-	<link rel="icon" href="${leo.static.uri}images/icons/leo.png" type="image/png" />
-	<link rel="shortcut icon" href="${leo.static.uri}images/icons/leo.png" type="image/png" />
+	<link rel="icon" href="${leo.static.uri}images/icons/symmatiq.svg" type="image/svg+xml" />
+	<link rel="shortcut icon" href="${leo.static.uri}images/icons/symmatiq.svg" type="image/svg+xml" />
 
 	<link href="//fonts.googleapis.com/css?family=Lato&amp;subset=latin,latin-ext" rel="stylesheet" type="text/css" />
 

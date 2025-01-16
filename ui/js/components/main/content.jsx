@@ -100,26 +100,21 @@ class Content extends React.Component {
 						LeoKit.close(this.createDialog)
 						this.setState({ createNode: false })
 					},
-					/*
 					Checksum: () => {
 						window.createBot({ source: null, group: 'checksum', system: { type: 'checksum' } })
 						LeoKit.close(this.createDialog)
 						this.setState({ createNode: false })
 					},
-					*/
-					/*
 					Cron: () => {
 						window.createBot({ source: null, group: 'cron', system: { type: 'cron' } })
 						LeoKit.close(this.createDialog)
 						this.setState({ createNode: false })
 					},
-					*/
-					/*
 					Webhook: () => {
 						window.createBot({ source: null, group: 'webhook', system: { type: 'webhook' } })
 						LeoKit.close(this.createDialog)
 						this.setState({ createNode: false })
-					},*/
+					},
 					System: () => {
 						window.createSystem({})
 						LeoKit.close(this.createDialog)

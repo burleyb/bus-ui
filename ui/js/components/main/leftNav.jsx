@@ -47,7 +47,7 @@ class LeftNav extends React.Component {
 			<div className="mask" />
 
 			<div className="page-logo" onClick={this.resetDataStoreState.bind(this)}>
-				<a href="#"><img src="https://smartshyp-public.s3.amazonaws.com/SS-White-Icon.png" /></a>
+				<a href="#"><img src={window.leostaticcdn + 'images/icons/symmatiq.svg'} /></a>
 			</div>
 
 			<div className={!this.props.userSettings.view || this.props.userSettings.view === 'dashboard' ? 'active' : ''} onClick={this.toggleView.bind(this, 'dashboard')}>

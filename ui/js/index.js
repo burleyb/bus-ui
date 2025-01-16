@@ -1,23 +1,10 @@
-import React, {
-	Component
-} from 'react';
-import {
-	Provider,
-	connect
-} from 'react-redux';
-import {
-	createStore,
-	applyMiddleware
-} from 'redux';
-import thunkMiddleware from 'redux-thunk';
-//import createLogger from 'redux-logger';
+import React, { Component } from 'react';
+import { Provider, connect } from 'react-redux';
+import { configureStore } from '@reduxjs/toolkit'; // Change this import
+import thunk from 'redux-thunk'; // Change this import
 import rootReducer from './reducers.js';
-
-//import watcher from 'leo-sdk/ui/watcher.js';
-
 import moment from 'moment';
 import momenttz from 'moment-timezone';
-//var config = require('leo-sdk/leoConfigure.js');
 
 window.registry = {
 	tabs: {},
@@ -55,14 +42,13 @@ var preloadedState = {
 };
 */
 
-var store = createStore(
-	rootReducer,
-	//preloadedState,
-	applyMiddleware(
-		thunkMiddleware,
-		//loggerMiddleware
-	)
-);
+const store = configureStore({
+    reducer: rootReducer,
+    middleware: (getDefaultMiddleware) =>
+        getDefaultMiddleware({
+            serializableCheck: false // Add this if you're using non-serializable values
+        })
+});
 
 //window.store = store
 
