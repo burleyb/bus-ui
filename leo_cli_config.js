@@ -18,7 +18,7 @@ module.exports = {
 			stack: 'botmon-dev',
 			region: 'us-east-1',
 			parameters: {
-				CognitoId: 'us-east-1:3e9094d3-afc1-407c-a548-533e22f44c34',
+				CognitoId: 'us-east-1:3425a7c9-40c1-4aa0-b7c7-62e28e353b9e',
 				leoauth: 'leo-auth-stack-dev',
 				leosdk: 'RstreamsDEV',
 		        LeoBus: "RstreamsDEV",
