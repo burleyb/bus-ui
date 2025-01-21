@@ -21,7 +21,7 @@ config.registry.tabs = Object.assign({
 	Cron: require("../tabs/cron.jsx").default,
 	Webhooks: require("../tabs/webhooks.jsx").default,
 	SystemSettings: require("../tabs/systemSettings.jsx").default,
-	QueueSchema: require("../tabs/queueSchema.jsx").default,
+	// QueueSchema: require("../tabs/queueSchema.jsx").default,
 }, config.registry.tabs);
 
 
