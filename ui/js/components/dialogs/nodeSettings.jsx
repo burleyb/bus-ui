@@ -484,6 +484,51 @@ class Settings extends React.Component {
 										<i className="icon-logout"></i>
 									</a>
 									: false }
+									{
+										this.dataStore.cronInfo && nodeId == this.dataStore.cronInfo.id && leoAws && this.dataStore.cronInfo.lambdaName && leoAws.region ?
+											<a className="bot-aws-link" onClick={() => { window.open(`https://${leoAws.region}.console.aws.amazon.com/lambda/home?region=${leoAws.region}#/functions/${this.dataStore.cronInfo.lambdaName}`) }}>lambda<img className="bot-aws-img" title={this.dataStore.cronInfo.lambdaName} src={window.leostaticcdn + 'images/aws/lambda.png'} /></a>
+
+											: false
+									}
+									{
+										(() => {
+											// Get the repoUrl.  Depending on version of serverless-leo it may be in 1 of 3 spots. top level repoUrl, repo: tag, or in settings 
+											let repoUrl = this.dataStore.cronInfo && (
+												this.dataStore.cronInfo.repoUrl ||
+												(
+													this.dataStore.cronInfo.tags &&
+													(this.dataStore.cronInfo.tags.split(",").find(t => t.match(/^repo:/)) || "").replace(/^repo:/, "")
+												) ||
+												(
+													this.dataStore.cronInfo.lambda &&
+													this.dataStore.cronInfo.lambda.settings &&
+													this.dataStore.cronInfo.lambda.settings[0] &&
+													this.dataStore.cronInfo.lambda.settings[0].repoUrl
+												)
+											);
+											// TODO: try and infer a repo: tag based off the other settings
+											// We also only want to show this for bots. we don't want to link this for queues or systems
+											if (repoUrl && this.props.data.type === 'bot') {
+												if (!repoUrl.match(/^https?:\/\//)) {
+													repoUrl = "https://" + repoUrl;
+												}
+												let url = new URL(repoUrl);
+												let hostname = url.hostname;
+												let hostnamesImages = {
+													"github.com": "github-mark.png",
+													"bitbucket.org": "bitbucket-mark.png",
+													"gitlab.com": "gitlab-mark.png",
+													"git": "git.png"
+												};
+												let image = hostnamesImages[hostname] || hostnamesImages.git;
+
+												return <a className="bot-repo-link" onClick={() => { window.open(repoUrl) }}><img className="bot-repo-img" title={hostname} src={window.leostaticcdn + 'images/icons/' + image} /></a>
+											} else {
+												return false
+											}
+										})()
+
+									}
 								</div>
 								{
 									(this.dataStore.cronInfo && nodeId == this.dataStore.cronInfo.id && this.dataStore.cronInfo.scheduledTrigger && this.dataStore.cronInfo.scheduledTrigger > Date.now()) ? <span className="bot-invoke-backoff">Backoff Until: {moment(this.dataStore.cronInfo.scheduledTrigger).format("MMM D, Y h:mm:ss a")}</span> : false
