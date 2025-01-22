@@ -9,7 +9,7 @@ var CRON_TABLE = leo.configuration.resources.LeoCron;
 var SETTINGS_TABLE = leo.configuration.resources.LeoSettings;
 
 exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, callback) => {
-	var ref = util.ref(event.params && event.params.path && event.params.path.id, "bot");
+	var ref = util.ref(event?.params?.path?.id, "bot");
 	dynamodb.batchGetHashkey(SETTINGS_TABLE, "id", ["lambda_templates", "botmon_files"], async function (err, settings) {
 		if (err) {
 			callback(err);

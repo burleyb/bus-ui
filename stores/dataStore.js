@@ -4,7 +4,6 @@ import _ from 'lodash';
 import moment from 'moment';
 import refUtil from "leo-sdk/lib/reference.js";
 import zlib from './zlib';
-import buffer from './buffer';
 
 export default class DataStore {
 

@@ -9,13 +9,17 @@ const leoConfig = require("leo-config")
 let STATS_TABLE = leoConfig.Resources.LeoStats
 
 exports.handler = require("leo-sdk/wrappers/cron")(async (event, context, callback) => {
+	console.log("[event]", event);
+
 	leo.offload({
 		debug: event.debug,
 		id: event.botId,
 		queue: event.source,
 		batch: event.batch,
 		loops: Number.POSITIVE_INFINITY,
-		transform: (payload, event, done) => {
+		transform: (payload, evnt, done) => {
+			console.log("[payload]", payload);
+			console.log("[evnt]", evnt);
 			go(payload, done);
 		}
 	}, (err) => {
@@ -38,7 +42,9 @@ let groups = {
 
 function go(allEvents, callback) {
 	let statsList = [];
+	console.log("all Events", allEvents);
 	allEvents.map(e => {
+		console.log("Processing event", e.eid);
 
 		e.payload.id = refUtil.botRefId(e.payload.id);
 		if (e.payload.to) {
@@ -64,6 +70,7 @@ function go(allEvents, callback) {
 			}));
 		}
 	});
+	console.log("stats event", statsList);
 	var startEid = allEvents[0].eid;
 	console.log("Last timestamp is ", moment().format("YYYY-MM-DD HH:mm:ss"));
 	var stats = {};
@@ -151,6 +158,7 @@ function go(allEvents, callback) {
 				if (obj.modified) {
 					delete obj.modified;
 					obj.start_eid = startEid;
+					console.log("[Writing]", obj);
 					batchWrite.put(obj);
 				}
 			}
