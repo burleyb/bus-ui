@@ -21,9 +21,10 @@ exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, ca
 		});
 		response = JSON.parse(data.Body.toString());
 	} catch (err) {
-		if (err.code !== "NoSuchKey") {
-			error = new Error(`Unable to get schema for: ${queue}`);
-		}
+		// if (err.code !== "NoSuchKey") {
+		// 	error = new Error(`Unable to get schema for: ${queue}`);
+		// }
+		error = null
 	}
 
 	callback(error, response)

@@ -21,7 +21,7 @@ config.registry.tabs = Object.assign({
 	Cron: require("../tabs/cron.jsx").default,
 	Webhooks: require("../tabs/webhooks.jsx").default,
 	SystemSettings: require("../tabs/systemSettings.jsx").default,
-	// QueueSchema: require("../tabs/queueSchema.jsx").default,
+	QueueSchema: require("../tabs/queueSchema.jsx").default,
 }, config.registry.tabs);
 
 
@@ -43,7 +43,7 @@ class Settings extends React.Component {
 
 		AWSBot: {
 			Dashboard: 'BotDashboard',
-			// Code: 'CodeEditor', //'Mapper',
+			Code: 'CodeEditor', //'Mapper',
 			Code: 'CodeOverrides',
 			Logs: 'Logs',
 			Settings: 'BotSettings'
