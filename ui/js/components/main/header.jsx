@@ -85,7 +85,7 @@ class Header extends React.Component {
 
 			<div className="page-logo-wrapper">
 				<div className="page-logo theme-dropdown-left">
-					<a href="#"><img src="https://app.lablpx.com/assets/img/pl/lablpx.com/logo-white-full-left.svg" /></a>
+					<a href="#"><img src="https://s3.us-east-1.amazonaws.com/symmatiq.com/botmon/3.0.5.1737605560655/images/icons/symmatiq.svg" /></a>
 				</div>
 
 				<div className="page-title">
