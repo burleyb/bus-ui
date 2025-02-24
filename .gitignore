@@ -5,6 +5,7 @@ node_modules/
 
 *\build.js
 dist/
+build/
 
 package-lock.json
 cloudformation.json
