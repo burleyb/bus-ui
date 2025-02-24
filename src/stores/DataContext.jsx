@@ -27,7 +27,7 @@ export const DataProvider = ({ children }) => {
     },
   });
   const loadInitialWorkflows = () => ({
-    views: JSON.parse(localStorage.getItem('saved-views')) || {},
+    views: JSON.parse(localStorage.getItem('saved-views')) || [],
     order: JSON.parse(localStorage.getItem('saved-views-order')) || [],
   });
 
@@ -62,6 +62,7 @@ export const DataProvider = ({ children }) => {
   const [savedSettings, setSavedSettings] = useState(null);
   const [sdkConfig, setSdkConfig] = useState({});
   const [sdkPick, setSdkPick] = useState('node');
+  const [selectedNodeId, setSelectedNodeId] = useState(null);
   const [settings, setSettings] = useState(null);
   const [subNodeSettings, setSubNodeSettings] = useState(null);
   const [sortBy, setSortBy] = useState('');
@@ -93,8 +94,6 @@ export const DataProvider = ({ children }) => {
   const [systemTypes, setSystemTypes] = useState(null);
   const [systems, setSystems] = useState([]);
   const [api, setApi] = useState('http://localhost:8080/botmon/');
-  const defaultServers = ['webshipshipment', 'external.dhlftp', 'external.fraudapp', 'Webship_shipment'];
-  const [servers, setServers] = useState(defaultServers);
   const defaultTimePeriod = {
     endFormatted: () => {}
   };
@@ -109,14 +108,6 @@ export const DataProvider = ({ children }) => {
 
   // Fetcher function for Axios
   const fetcher = (url) => axios.get(url).then((res) => res.data);
-
-  // Queries to fetch initial data using TanStack Query
-  // const { data: configData, refetch: refetchConfig } = useQuery({
-  //   queryKey: ['config'], 
-  //   queryFn: () => fetcher(`${api}api/accessConfig`), 
-  //   refetchInterval: 30000,
-  //   onSuccess: (data) => setConfig(data)
-  // });
 
   const { data: eventSettingsData, refetch: refetchEventSettings } = useQuery({
     queryKey: ['eventSettings'],  
@@ -142,16 +133,39 @@ export const DataProvider = ({ children }) => {
     onSuccess: (data) => setSettings(data),
   });
 
-  const { data: statsData, refetch: refetchStats } = useQuery({
+  const { data: statsData, refetch: refetchStats, isSuccess: isStatsSuccess, isError: isStatsError, error: statsError } = useQuery({
     queryKey: ['stats', urlObj, timePeriod], 
-    queryFn: () => fetchStats(),
+    queryFn: async () => {
+      console.log('Fetching stats...'); // Debug log
+      try {
+          const result = await fetchStats();
+          console.log('Stats fetch result:', result); // Debug log
+          return result;
+      } catch (err) {
+          console.error('Error in fetchStats:', err);
+          throw err;
+      }
+    },
     refetchInterval: 30000, 
     enabled: !!authenticated,
-    onSuccess: (data) => setStats(data),
+    onError: (error) => {
+      console.error("Query error:", error);
+    },
+    onSettled: (data, error) => {
+      console.log("Stats query settled. Data:", data, "Error:", error);
+    }
   });
 
+  useEffect(() => {
+    if (isStatsSuccess && statsData) {
+        console.log("[stats]", statsData);
+        setStats(statsData);
+        setHasData(true);
+    }
+}, [isStatsSuccess, statsData]);
+
   // Action functions to modify URL object and various states
-  const changeView = (view) => updateUrlObj({ view });
+  const changeView = (view) => { console.log("view", view); updateUrlObj({ view }); };
   const changeSelected = (selected) => updateUrlObj({ selected: [selected] });
   const changeTimePeriod = (begin, end, interval) => updateUrlObj({ timePeriod: { begin, end, interval } });
   const changeNode = (nodeId, view, offset) => updateUrlObj({ node: nodeId, selected: [nodeId], view, offset });
@@ -252,6 +266,7 @@ export const DataProvider = ({ children }) => {
     const timestamp = timePeriod?.endFormatted();
 
     const { data } = await axios.get(`${api}api/stats_v2?range=${range[0]}&count=${range[1] || 1}&timestamp=${timestamp}`);
+    console.log("[fetchStats]", data);
 
     const thisnodes = { ...data.nodes.bot, ...data.nodes.queue, ...data.nodes.system };
 
@@ -285,6 +300,7 @@ export const DataProvider = ({ children }) => {
     // Process each node and determine if they are orphaned
     for (let id in thisnodes) {
       postProcess(thisnodes[id]);
+      console.log("thisnodes[id]", thisnodes[id]);
       let isOrphan = !['system'].includes(thisnodes[id].type);
 
       Object.keys(thisnodes[id].link_to?.children || {}).forEach((childId) => {
@@ -304,7 +320,7 @@ export const DataProvider = ({ children }) => {
       thisnodes[id].isOrphan = isOrphan;
     }
 
-    return { thisnodes, data };
+    return { data: thisnodes };
   };
   
     const updateStatsDashboard = (botList, nodeList) => {
@@ -543,7 +559,7 @@ export const DataProvider = ({ children }) => {
       // Initialize LEOCognito
       if (LEOCognito) {
           LEOCognito.start(
-              leoConfig.cognitoId || 'us-east-1:9535887a-ea1a-42c0-92e8-c8e770f6543c',
+              leoConfig.cognitoId || 'us-east-1:3425a7c9-40c1-4aa0-b7c7-62e28e353b9e',
               () => { 
                   if(leoConfig.IdentityId) {
                       return { 
@@ -674,6 +690,8 @@ export const DataProvider = ({ children }) => {
           refetchEventSettings,
           refetchSdkConfig,
           refetchSettings,
+          selectedNodeId,
+          setSelectedNodeId,
           workflows,
           saveWorkflow,
           deleteWorkflow,

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 import { useData } from '../../stores/DataContext.jsx'; // Assuming DataContext for global state
 import moment from 'moment';
-import MessageCenter from '../main/messageCenter.jsx'; // Assuming you have a Dialog component
+import MessageCenter from '../Layout/MessageCenter.jsx'; // Assuming you have a Dialog component
 
 const fetchWebhooks = async (nodeId) => {
   const { data } = await axios.get(`/api/system/${nodeId}/webhooks`);

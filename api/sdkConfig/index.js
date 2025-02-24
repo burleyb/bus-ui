@@ -1,8 +1,8 @@
 'use strict';
 
+import config from "leo-sdk/leoConfigure";
 import { CloudFormationClient, ListStackResourcesCommand } from "@aws-sdk/client-cloudformation";
 import request from "leo-auth";
-import config from "leo-sdk/leoConfigure";
 import "moment-round";
 const resourceHandler = require("leo-sdk/wrappers/resource");
 
@@ -17,7 +17,7 @@ export const handler = resourceHandler(async (event, context, callback) => {
     region: config._meta.region
   });
 
-  console.log("[config]", config);
+  console.log("[config]", config, event, context);
   
   try {
     const data = await cloudformation.send(new ListStackResourcesCommand({

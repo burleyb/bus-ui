@@ -12,13 +12,16 @@ import SavedWorkflows from '../dialogs/savedWorkflows.jsx';
 import SavedSearches from '../dialogs/savedSearches.jsx';
 
 function Content() {
-    const state = useData();
+    const state = useState();
+    const {settings, setSettings} = useData({
+        view: 'dashboard' // or whatever your default view should be
+    });
+    const {nodeSettings, setNodeSettings} = useData(null);
+    const {subNodeSettings, setSubNodeSettings} = useData(null);
+    const {traceSettings, setTraceSettings} = useData(null);
     const [dialogs, setDialogs] = useState({});
-    const [createBot, setCreateBot] = useState();
-    const [createSystem, setCreateSystem] = useState();
-    const [nodeSettings, setNodeSettings] = useState();
-    const [subNodeSettings, setSubNodeSettings] = useState();
-    const [traceSettings, setTraceSettings] = useState();
+    const [createBot, setCreateBot] = useState(null);
+    const [createSystem, setCreateSystem] = useState(null);
     const [createNode, setCreateNode] = useState({});
     const [manageWorkflows, setManageWorkflows] = useState(false);
     const [manageSearches, setManageSearches] = useState(false);
@@ -70,11 +73,16 @@ function Content() {
 
     return (
         <div>
-            <DashboardPage />
-            <CatalogPage />
-            <WorkflowPage />
-            <TracePage />
-            <SDKPage />
+            {settings && (
+                <>
+                    {console.log('settings', settings)}
+                    {settings.view === "dashboard" && <DashboardPage />}
+                    {settings.view === "catalog" && <CatalogPage />}
+                    {settings.view === "node" && <WorkflowPage />}
+                    {settings.view === "trace" && <TracePage />}
+                    {settings.view === "documentation" && <SDKPage />}
+                </>
+            )}
 
             {createBot && <BotSettings data={createBot} onClose={() => setCreateBot(undefined)} />}
             {createSystem && <SystemSettings data={createSystem} onClose={() => setCreateSystem(undefined)} />}

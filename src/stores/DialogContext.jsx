@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useState } from 'react';
 
-export const DialogContext = createContext();
+export const DialogContext = createContext({
+    openDialog: () => {},
+    closeDialog: () => {},
+  });
 
 export const useDialog = () => {
   const context = useContext(DialogContext);

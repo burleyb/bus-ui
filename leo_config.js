@@ -8,7 +8,7 @@ module.exports = {
         leoauth: leoauth.resources || leoauth,
         leosdk: leosdk.resources || leosdk,
         Resources: process.env.Resources || leosdk.resources,
-		CognitoId: "us-east-1:3e9094d3-afc1-407c-a548-533e22f44c34",
+		CognitoId: "us-east-1:3425a7c9-40c1-4aa0-b7c7-62e28e353b9e",
 		cognito_region: 'us-east-1',
 		region: 'us-east-1',
 		profile: 'symmatiq',
@@ -17,32 +17,31 @@ module.exports = {
     },
     DEV: {
         leosdk: {
-            "Leo":               "SymmatiqDev-RStreamsPlatformBusC9D77D07-YSTIH0GP071F",
-            "LeoStream":         "SymmatiqDev-RStreamsPlatformBusC9D77D07-YSTIH0GP071F-LeoStream-TWI8DMLSEJT0",
-            "LeoCron":           "SymmatiqDev-RStreamsPlatformBusC9D77D07-YSTIH0GP071F-LeoCron-D7X9B35W6A1L",
-            "LeoEvent":          "SymmatiqDev-RStreamsPlatformBusC9D77D07-YSTIH0GP071F-LeoEvent-17UABWOHMDZTB",
-            "LeoSettings":       "SymmatiqDev-RStreamsPlatformBusC9D77D07-YSTIH0GP071F-LeoSettings-18W9ID339U5AM",
-            "LeoSystem":         "SymmatiqDev-RStreamsPlatformBusC9D77D07-YSTIH0GP071F-LeoSystem-1SUE40LASJJQL",
-            "LeoKinesisStream":  "SymmatiqDev-RStreamsPlatformBusC9D77D07-YSTIH0GP071F-LeoKinesisStream-GLSHzZnfcxNa",
-            "LeoFirehoseStream": "SymmatiqDev-RStreamsPlatformBusC9D77D07-YSTIH0GP071-oKFGyxwrYfdS",
-            "LeoS3":             "symmatiqdev-rstreamsplatformbusc9d77d07-ysti-leos3-u9vbibkepqsx",
-            "Region":            "us-east-1",
-            "LeoStats":          "SymmatiqDev-RStreamsPlatformBotmonA0BC40F1-1EX7NMKFE6ESV-LeoStats-10V8K26V6D5DG"
+            LeoStream:         "RstreamsDEV-LeoStream-EP7D4OKQQA4V",
+            LeoCron:           "RstreamsDEV-LeoCron-S3540RRCMKFF",
+            LeoEvent:          "RstreamsDEV-LeoEvent-1CI2JPZRI4XL5",
+            LeoSettings:       "RstreamsDEV-LeoSettings-1PYANSN5KF62P",
+            LeoSystem:         "RstreamsDEV-LeoSystem-50XSQ54RG0C5",
+            LeoKinesisStream:  "RstreamsDEV-LeoKinesisStream-Sf4gUfGmtLaa",
+            LeoFirehoseStream: "RstreamsDEV-LeoFirehoseStream-7dXDfIwWgfU0",
+            LeoS3:             "rstreamsdev-leos3-jd6xgayqyqol",
+            Region:            "us-east-1",
+            LeoStats:          "botmon-dev-LeoStats-19HPMG1N4PPEQ"
         },
         leoauth: {
             Region: "us-east-1",
-            LeoAuth: "SymmatiqDev-RStreamsPlatformAuth543A3B88-1I25S5KUFXIRF-LeoAuth719CEE8F-DG9R720X8LAJ",
-            LeoAuthIdentity: "SymmatiqDev-RStreamsPlatformAuth543A3B88-1I25S5KUFXIRF-LeoAuthIdentity0B3C5E31-1H182SMEZ9Z0T",
-            LeoAuthPolicy: "SymmatiqDev-RStreamsPlatformAuth543A3B88-1I25S5KUFXIRF-LeoAuthPolicy789FD165-13T50DB7OT8GI",
-            LeoAuthUser: "SymmatiqDev-RStreamsPlatformAuth543A3B88-1I25S5KUFXIRF-LeoAuthUser427CD581-KWBW35URB81C",
-            cognito_id: "us-east-1:3e9094d3-afc1-407c-a548-533e22f44c34"
+            LeoAuth: "leo-auth-stack-dev-LeoAuth719CEE8F-77GHPJK0UJEZ",
+            LeoAuthIdentity: "leo-auth-stack-dev-LeoAuthIdentity0B3C5E31-4QEUZP0P42YT",
+            LeoAuthPolicy: "leo-auth-stack-dev-LeoAuthPolicy789FD165-78K3HR1ZBCBJ",
+            LeoAuthUser: "leo-auth-stack-dev-LeoAuthUser427CD581-B2RQ0I7TQTG",
+            cognito_id: "us-east-1:3425a7c9-40c1-4aa0-b7c7-62e28e353b9e"
         },        
         ui: {
-            staticAssets: "https://d1duc0za9qk2vm.cloudfront.net/leo_botmon",
+            staticAssets: "https://s3.us-east-1.amazonaws.com/symmatiq.com/botmon/",
             cognito: {
-                id: "us-east-1:3e9094d3-afc1-407c-a548-533e22f44c34"
+                id: "us-east-1:3425a7c9-40c1-4aa0-b7c7-62e28e353b9e"
             },
-			CognitoId: "us-east-1:3e9094d3-afc1-407c-a548-533e22f44c34",
+			CognitoId: "us-east-1:3425a7c9-40c1-4aa0-b7c7-62e28e353b9e",
 			Region: "us-east-1",
 			CustomJS: "",
 			basePath: "botmon/",

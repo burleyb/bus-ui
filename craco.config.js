@@ -1,4 +1,5 @@
 const CracoLessPlugin = require('craco-less');
+const ModuleScopePlugin = require('react-dev-utils/ModuleScopePlugin');
 
 module.exports = {
 	plugins: [
@@ -22,7 +23,18 @@ module.exports = {
 		  absoluteRuntime: false
 		}]
 	  ]
-	}
+	},
+	webpack: {
+		configure: (webpackConfig) => {
+		  // Remove the ModuleScopePlugin which throws when we try
+		  // to import something outside of src/.
+		  webpackConfig.resolve.plugins = webpackConfig.resolve.plugins.filter(
+			plugin => !(plugin instanceof ModuleScopePlugin)
+		  );
+		  
+		  return webpackConfig;
+		}
+	  }
   };
 
   
