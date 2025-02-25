@@ -1,0 +1,37 @@
+{
+  "presets": [
+    [
+      "@babel/preset-react",
+      {
+        // "pragma": "dom", // default pragma is React.createElement (only in classic runtime)
+        // "pragmaFrag": "DomFrag", // default is React.Fragment (only in classic runtime)
+        "throwIfNamespace": false, // defaults to true
+        // "runtime": "automatic" // defaults to classic
+        // "importSource": "custom-jsx-library" // defaults to react (only in automatic runtime)
+      }
+    ],    
+    [
+      "@babel/preset-env",
+      {
+        "targets": { "node": 22 },
+        "modules": "auto",
+        "useBuiltIns": "usage",
+        "corejs": "3.38.1",
+        "debug": true  			
+  		}
+    ]
+  ],
+	"plugins": [
+    ["@babel/plugin-proposal-decorators", { "version": "legacy" }],
+    ["@babel/plugin-transform-class-properties", { "loose": true }],
+    "@babel/plugin-transform-modules-commonjs", 
+    "@babel/plugin-proposal-function-bind", 
+      [
+        "@babel/plugin-transform-runtime",
+        {
+        "corejs": false,
+        "helpers": true,  // Enables runtime helper functions
+        "regenerator": false // Enables async/await transformations  
+        }
+      ]
+}
