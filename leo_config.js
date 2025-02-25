@@ -11,17 +11,11 @@ module.exports = {
         leosdk: leosdk.resources || leosdk,
         Resources: process.env.Resources && JSON.parse(process.env.Resources) || leosdk.resources,
 		CognitoId: "us-east-1:3425a7c9-40c1-4aa0-b7c7-62e28e353b9e",
-			basePath: "botmon/",
-			basehref: "botmon/",
-    },
-    PROD: {
-        ui: {
-            staticAssets: "https://s3.us-east-1.amazonaws.com/symmatiq.com/botmon",
-            cognito: {
-                id: "us-east-1:76a899db-012a-452d-a06c-939362ed05b1"
-            },
-            region: "us-east-1"
-        }
+		cognito_region: 'us-east-1',
+		region: 'us-east-1',
+		profile: 'symmatiq',        
+        basePath: "botmon/",
+        basehref: "botmon/",
     },
     DEV: {
         leosdk: {
@@ -34,8 +28,8 @@ module.exports = {
             LeoKinesisStream:  "RstreamsDEV-LeoKinesisStream-Sf4gUfGmtLaa",
             LeoFirehoseStream: "RstreamsDEV-LeoFirehoseStream-7dXDfIwWgfU0",
             LeoS3:             "rstreamsdev-leos3-jd6xgayqyqol",
-            Region:          "us-east-1",
-            LeoStats:        "botmon-dev-LeoStats-19HPMG1N4PPEQ"
+            Region:            "us-east-1",
+            LeoStats:          "botmon-dev-LeoStats-19HPMG1N4PPEQ"
         },
         leoauth: {
             Region: "us-east-1",

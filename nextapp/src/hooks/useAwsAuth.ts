@@ -45,6 +45,7 @@ export function useAwsAuth(): UseAwsAuthResult {
       
       let credentials = null;
       if (authenticated) {
+        // Use getAwsCredentials directly from awsAuth
         credentials = await getAwsCredentials();
       }
       
@@ -119,6 +120,7 @@ export function useAwsAuth(): UseAwsAuthResult {
     setAuthState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
+      // Use getAwsCredentials directly from awsAuth
       const credentials = await getAwsCredentials();
       setAuthState(prev => ({
         ...prev,

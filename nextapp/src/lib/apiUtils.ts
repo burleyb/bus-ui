@@ -2,6 +2,7 @@
  * API utility functions
  */
 import { API_BASE_URL } from '@/config';
+import axios from 'axios';
 
 /**
  * Build a full API URL from a path
@@ -27,12 +28,15 @@ export const buildApiUrl = (path: string): string => {
 export const checkApiConnection = async (): Promise<boolean> => {
   try {
     // Try to fetch a simple endpoint that should always be available
-    const response = await fetch(buildApiUrl('api/settings'), {
+    const response = await axios({
+      url: buildApiUrl('api/settings'),
       method: 'HEAD',
-      cache: 'no-cache',
+      headers: {
+        'Cache-Control': 'no-cache'
+      }
     });
     
-    return response.ok;
+    return response.status >= 200 && response.status < 300;
   } catch (error) {
     console.error('API connection check failed:', error);
     return false;

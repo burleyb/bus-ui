@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { getAwsCredentials } from '@/lib/awsAuth';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -15,9 +16,20 @@ export default function ProtectedRoute({ children }: ProtectedRouteProps) {
     // Only attempt authentication once if not already authenticated and not loading
     if (!isLoading && !isAuthenticated && !authAttempted) {
       setAuthAttempted(true);
-      signIn().catch(error => {
-        console.error('Authentication failed:', error);
-      });
+      
+      // Try to get credentials directly first (will use cache if available)
+      getAwsCredentials()
+        .then(() => {
+          // If we got credentials successfully, we're authenticated
+          // The auth context will be updated in its own useEffect
+        })
+        .catch(() => {
+          // If getting credentials failed, try to sign in
+          return signIn();
+        })
+        .catch(error => {
+          console.error('Authentication failed:', error);
+        });
     }
   }, [isAuthenticated, isLoading, signIn, authAttempted]);
 

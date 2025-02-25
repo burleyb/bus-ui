@@ -3,7 +3,7 @@
 /**
  * AWS Authentication utilities
  */
-import { getCredentials, clearCredentialsCache } from './leoCognito';
+import { clearCredentialsCache, getCredentials } from './leoCognito';
 import type { AwsCredentials } from './leoCognito';
 
 /**
@@ -27,6 +27,7 @@ export async function isAuthenticated(): Promise<boolean> {
  */
 export async function getAwsCredentials(): Promise<AwsCredentials> {
   try {
+    // Use getCredentials directly from leoCognito
     return await getCredentials();
   } catch (error) {
     console.error('Failed to get AWS credentials:', error);

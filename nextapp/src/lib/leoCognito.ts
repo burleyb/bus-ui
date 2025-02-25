@@ -7,6 +7,7 @@
 
 import CryptoJS from 'crypto-js';
 import { AWS_IDENTITY_POOL_ID, AWS_REGION } from '@/config';
+import axios from 'axios';
 
 // Types
 export interface AwsCredentials {
@@ -107,22 +108,17 @@ async function getIdentityId(): Promise<string> {
     IdentityPoolId: AWS_IDENTITY_POOL_ID
   };
   
-  const response = await fetch(endpoint, {
+  const response = await axios({
+    url: endpoint,
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-amz-json-1.1',
       'X-Amz-Target': 'AWSCognitoIdentityService.GetId'
     },
-    body: JSON.stringify(params)
+    data: params
   });
   
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to get identity ID: ${errorText}`);
-  }
-  
-  const data = await response.json();
-  return data.IdentityId;
+  return response.data.IdentityId;
 }
 
 /**
@@ -135,31 +131,55 @@ async function getCredentialsForIdentity(identityId: string): Promise<AwsCredent
     IdentityId: identityId
   };
   
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-amz-json-1.1',
-      'X-Amz-Target': 'AWSCognitoIdentityService.GetCredentialsForIdentity'
-    },
-    body: JSON.stringify(params)
-  });
-  
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Failed to get credentials: ${errorText}`);
+  try {
+    const response = await axios({
+      url: endpoint,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-amz-json-1.1',
+        'X-Amz-Target': 'AWSCognitoIdentityService.GetCredentialsForIdentity'
+      },
+      data: params
+    });
+    
+    const data = response.data;
+    console.log('Raw credentials data:', JSON.stringify(data.Credentials));
+    
+    // Format the credentials
+    const credentials: AwsCredentials = {
+      accessKeyId: data.Credentials.AccessKeyId,
+      secretAccessKey: data.Credentials.SecretKey,
+      sessionToken: data.Credentials.SessionToken,
+    };
+    
+    // Handle different expiration formats
+    if (data.Credentials.Expiration) {
+      const expiration = data.Credentials.Expiration;
+      
+      // Check if it's a number (seconds since epoch) or string (ISO date)
+      if (typeof expiration === 'number') {
+        // Convert seconds to milliseconds for JS Date
+        credentials.expiration = new Date(expiration * 1000);
+      } else if (typeof expiration === 'string') {
+        // Parse ISO string or other string format
+        credentials.expiration = new Date(expiration);
+      } else {
+        // Default fallback
+        const defaultExpiration = new Date();
+        defaultExpiration.setMinutes(defaultExpiration.getMinutes() + 55);
+        credentials.expiration = defaultExpiration;
+      }
+      
+      console.log('Got credentials with expiration:', credentials.expiration);
+    }
+    
+    return credentials;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response) {
+      throw new Error(`Failed to get credentials: ${error.response.data}`);
+    }
+    throw error;
   }
-  
-  const data = await response.json();
-  
-  // Format the credentials
-  const credentials: AwsCredentials = {
-    accessKeyId: data.Credentials.AccessKeyId,
-    secretAccessKey: data.Credentials.SecretKey,
-    sessionToken: data.Credentials.SessionToken,
-    expiration: new Date(data.Credentials.Expiration)
-  };
-  
-  return credentials;
 }
 
 /**
@@ -173,19 +193,20 @@ export function clearCredentialsCache(): void {
 
 /**
  * Sign a request with AWS Signature Version 4
+ * This function now works with axios request config instead of fetch Request
  */
 export async function signRequest(
-  request: Request,
+  config: any,
   service: string = 'execute-api',
   region: string = 'us-east-1'
-): Promise<Request> {
+): Promise<any> {
   const credentials = await getCredentials();
   
-  // Create a new request with the same properties
-  const url = new URL(request.url);
-  const method = request.method;
-  const headers = new Headers(request.headers);
-  const body = await request.clone().text();
+  // Extract request details from axios config
+  const url = new URL(config.url);
+  const method = config.method?.toUpperCase() || 'GET';
+  const headers = config.headers || {};
+  const body = config.data ? (typeof config.data === 'string' ? config.data : JSON.stringify(config.data)) : '';
   
   // Get the current date and time
   const now = new Date();
@@ -193,9 +214,9 @@ export async function signRequest(
   const dateStamp = amzDate.substring(0, 8);
   
   // Add required headers for AWS Signature Version 4
-  headers.set(X_AMZ_DATE, amzDate);
+  headers[X_AMZ_DATE] = amzDate;
   if (credentials.sessionToken) {
-    headers.set(X_AMZ_SECURITY_TOKEN, credentials.sessionToken);
+    headers[X_AMZ_SECURITY_TOKEN] = credentials.sessionToken;
   }
   
   // Create canonical request
@@ -203,18 +224,18 @@ export async function signRequest(
   const canonicalQueryString = url.search.substring(1); // Remove the leading '?'
   
   // Sort headers by name
-  const sortedHeaders = Array.from(headers.entries()).sort((a, b) => 
-    a[0].toLowerCase().localeCompare(b[0].toLowerCase())
+  const sortedHeaderNames = Object.keys(headers).sort((a, b) => 
+    a.toLowerCase().localeCompare(b.toLowerCase())
   );
   
   // Create canonical headers
-  const canonicalHeaders = sortedHeaders
-    .map(([name, value]) => `${name.toLowerCase()}:${value.trim()}`)
+  const canonicalHeaders = sortedHeaderNames
+    .map(name => `${name.toLowerCase()}:${headers[name].trim()}`)
     .join('\n') + '\n';
   
   // Create signed headers
-  const signedHeaders = sortedHeaders
-    .map(([name]) => name.toLowerCase())
+  const signedHeaders = sortedHeaderNames
+    .map(name => name.toLowerCase())
     .join(';');
   
   // Create payload hash
@@ -248,60 +269,55 @@ export async function signRequest(
   const kRegion = CryptoJS.HmacSHA256(region, kDate);
   const kService = CryptoJS.HmacSHA256(service, kRegion);
   const kSigning = CryptoJS.HmacSHA256(AWS4_REQUEST, kService);
-  
   const signature = CryptoJS.HmacSHA256(stringToSign, kSigning).toString(CryptoJS.enc.Hex);
   
-  // Add the authorization header
+  // Add the signature to the headers
   const authorizationHeader = [
     `${algorithm} Credential=${credentials.accessKeyId}/${credentialScope}`,
     `SignedHeaders=${signedHeaders}`,
     `Signature=${signature}`
   ].join(', ');
   
-  headers.set('Authorization', authorizationHeader);
+  headers[AUTHORIZATION] = authorizationHeader;
   
-  // Create a new request with the signed headers
-  return new Request(request.url, {
-    method: request.method,
-    headers: headers,
-    body: body || undefined,
-    mode: request.mode,
-    credentials: request.credentials,
-    cache: request.cache,
-    redirect: request.redirect,
-    referrer: request.referrer,
-    integrity: request.integrity,
-  });
-}
-
-/**
- * Create a signed fetch function that automatically signs requests with AWS Signature Version 4
- */
-export function createSignedFetch(
-  service: string = 'execute-api',
-  region: string = 'us-east-1'
-) {
-  return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    try {
-      // Create the request
-      const request = new Request(input, init);
-      
-      // Sign the request
-      const signedRequest = await signRequest(request, service, region);
-      
-      // Send the signed request
-      return fetch(signedRequest);
-    } catch (error) {
-      console.error('Error in signed fetch:', error);
-      throw error;
-    }
+  // Return the updated axios config
+  return {
+    ...config,
+    headers
   };
 }
 
+/**
+ * Create a signed axios request function
+ * This replaces the previous createSignedFetch function
+ */
+export function createSignedAxios(
+  service: string = 'execute-api',
+  region: string = 'us-east-1'
+) {
+  return async (config: any) => {
+    const signedConfig = await signRequest(config, service, region);
+    return axios(signedConfig);
+  };
+}
+
+// Default export
 export default {
   initialize,
   getCredentials,
+  clearCredentialsCache,
   refreshCredentials: getCredentials,
   signRequest,
-  createSignedFetch
-}; 
+  createSignedAxios
+};
+
+// Auto-initialize the module with the configuration from the environment
+// This ensures the module is ready to use without explicit initialization
+
+// Initialize the module with the configuration from the environment
+initialize({
+  identityPoolId: AWS_IDENTITY_POOL_ID,
+  region: AWS_REGION
+});
+
+console.log('LEOCognito module initialized with Identity Pool ID:', AWS_IDENTITY_POOL_ID, 'and Region:', AWS_REGION); 

@@ -4,7 +4,6 @@ import Header from './Header';
 import Sidebar from './Sidebar';
 import { useData } from '@/context/DataContext';
 import EnvInfo from '@/components/debug/EnvInfo';
-import AuthDebug from '@/components/debug/AuthDebug';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 
 interface LayoutProps {
@@ -72,8 +71,6 @@ export default function Layout({ children }: LayoutProps) {
       {/* Environment info component (only visible in development) */}
       <EnvInfo />
       
-      {/* Auth debug component (only visible in development) */}
-      <AuthDebug />
     </div>
   );
 } 
