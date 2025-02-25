@@ -14,7 +14,6 @@
 	"config": {
 		"leo": {
 			"type": "microservice",
-			"subtype": "react",
 			"role": "ApiRole",
 			"name": "symmatiq.com/botmon",
 			"display-name": "Bot Monitoring",
