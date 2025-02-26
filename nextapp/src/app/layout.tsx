@@ -1,39 +1,45 @@
-'use client'
-import { Inter } from "next/font/google";
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { DataProvider } from "@/context/DataContext";
+import { AppProvider } from "@/context/AppContext";
+import { ApiProvider } from "@/context/ApiContext";
 import { AuthProvider } from "@/context/AuthContext";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
-import Layout from "@/components/layout/Layout";
+import { InitProvider } from "@/context/InitContext";
 
-const inter = Inter({ subsets: ["latin"] });
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "EventBus UI",
+  description: "Monitoring UI for EventBus",
+};
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Create a client in the component to ensure it's created on the client side
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: {
-      queries: {
-        refetchOnWindowFocus: false,
-        staleTime: 1000 * 60 * 5, // 5 minutes
-      },
-    },
-  }));
-
   return (
     <html lang="en">
-      <body className={inter.className}>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <DataProvider>
-              <Layout>{children}</Layout>
-            </DataProvider>
-          </AuthProvider>
-        </QueryClientProvider>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        <InitProvider>
+          <AppProvider>
+            <ApiProvider>
+              <AuthProvider>
+                {children}
+              </AuthProvider>
+            </ApiProvider>
+          </AppProvider>
+        </InitProvider>
       </body>
     </html>
   );

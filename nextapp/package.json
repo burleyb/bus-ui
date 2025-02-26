@@ -1,19 +1,24 @@
 {
-  "name": "botmon-ui",
-  "version": "4.0.0",
-  "description": "Modern React application for monitoring and managing bots",
+  "name": "nextapp",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "migrate": "node scripts/migrate.js"
+    "lint": "next lint"
   },
   "dependencies": {
+    "@aws-crypto/sha256-browser": "^5.2.0",
+    "@aws-sdk/client-cognito-identity": "^3.533.0",
+    "@aws-sdk/credential-provider-cognito-identity": "^3.750.0",
+    "@aws-sdk/credential-providers": "^3.533.0",
+    "@aws-sdk/signature-v4": "^3.370.0",
     "@headlessui/react": "^2.2.0",
     "@heroicons/react": "^2.2.0",
     "@tanstack/react-query": "^5.66.9",
+    "amazon-cognito-identity-js": "^6.3.15",
+    "autoprefixer": "^10.4.20",
     "axios": "^1.7.9",
     "crypto-js": "^4.2.0",
     "d3": "^7.9.0",
@@ -30,11 +35,12 @@
     "@types/crypto-js": "^4.2.2",
     "@types/d3": "^7.4.3",
     "@types/node": "^20",
+    "@types/numeral": "^2.0.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.1.7",
-    "postcss": "^8",
+    "postcss": "^8.5.3",
     "tailwindcss": "^3.4.1",
     "typescript": "^5"
   }
