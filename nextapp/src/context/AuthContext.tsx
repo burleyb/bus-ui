@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import leoCognito from '@/lib/leoCognito';
-import { useAppContext } from './AppContext';
 import { useInit } from './InitContext';
 
 interface AuthContextType {
@@ -31,10 +30,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [user, setUser] = useState<any>(null);
-  const { dispatch } = useAppContext();
   const { isInitialized, isInitializing } = useInit();
 
-  // Check authentication status when initialization is complete
+  // Update this effect to broadcast authentication changes
   useEffect(() => {
     // Skip auth check if initialization is not complete
     if (isInitializing || !isInitialized) {
@@ -49,11 +47,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const authenticated = await leoCognito.isAuthenticated();
         setIsAuthenticated(authenticated);
         
-        // Update app context authentication state
-        dispatch({
-          type: 'SET_AUTHENTICATED',
-          payload: authenticated
-        });
+        // Broadcast authentication status for other contexts
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('auth_status', authenticated.toString());
+          // Dispatch an event to notify listeners
+          window.dispatchEvent(new StorageEvent('storage', {
+            key: 'auth_status',
+            newValue: authenticated.toString()
+          }));
+        }
         
         // Log authentication status in development mode
         if (process.env.NODE_ENV !== 'production') {
@@ -62,17 +64,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (error) {
         console.error('Error checking authentication:', error);
         setIsAuthenticated(false);
-        dispatch({
-          type: 'SET_AUTHENTICATED',
-          payload: false
-        });
+        
+        // Broadcast authentication failure
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('auth_status', 'false');
+          window.dispatchEvent(new StorageEvent('storage', {
+            key: 'auth_status',
+            newValue: 'false'
+          }));
+        }
       } finally {
         setIsLoading(false);
       }
     };
 
     checkAuth();
-  }, [dispatch, isInitialized, isInitializing]);
+  }, [isInitialized, isInitializing]);
 
   // Get AWS credentials
   const getAwsCredentials = async () => {
@@ -90,13 +97,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setIsAuthenticated(false);
     setUser(null);
     
-    dispatch({
-      type: 'SET_AUTHENTICATED',
-      payload: false
-    });
-    
-    // Refresh the page to reset application state
+    // Broadcast sign out to other contexts
     if (typeof window !== 'undefined') {
+      localStorage.setItem('auth_status', 'false');
+      window.dispatchEvent(new StorageEvent('storage', {
+        key: 'auth_status',
+        newValue: 'false'
+      }));
+      
+      // Refresh the page to reset application state
       window.location.href = '/dashboard';
     }
   };

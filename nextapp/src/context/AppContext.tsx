@@ -224,6 +224,26 @@ export function AppProvider({ children }: AppProviderProps) {
     }
   }, [state.tagCards]);
 
+  // Add this effect to sync with AuthProvider if it becomes available
+  useEffect(() => {
+    // Listen for authentication status changes from other sources
+    const handleAuthChange = (event: StorageEvent) => {
+      if (event.key === 'auth_status') {
+        const newStatus = event.newValue === 'true';
+        dispatch({
+          type: 'SET_AUTHENTICATED',
+          payload: newStatus
+        });
+      }
+    };
+
+    window.addEventListener('storage', handleAuthChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleAuthChange);
+    };
+  }, []);
+
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       {children}

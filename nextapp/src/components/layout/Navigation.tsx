@@ -13,7 +13,7 @@ import {
 
 const navItems = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-  { name: 'Node View', href: '/node', icon: CircleStackIcon },
+  { name: 'Workflow View', href: '/workflow', icon: CircleStackIcon },
   { name: 'Catalog', href: '/catalog', icon: RectangleStackIcon },
   { name: 'Trace', href: '/trace', icon: DocumentTextIcon },
   { name: 'SDK Info', href: '/sdk', icon: CodeBracketIcon },

@@ -16,7 +16,7 @@ import {
   useQueryClient
 } from '@tanstack/react-query';
 import { useAppContext } from './AppContext';
-import { awsFetch, awsNativeFetch } from '@/lib/authUtils';
+import { awsNativeFetch } from '@/lib/authUtils';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -29,7 +29,7 @@ const queryClient = new QueryClient({
   },
 });
 
-// Define API methods - all are using axios now via the awsFetch wrapper
+// Define API methods - all are using axios now via the awsNativeFetch wrapper
 const API = {
   // Dashboard related
   getDashboard: async (id: string, rangeCount?: any, timestamp?: any) => {
@@ -42,7 +42,7 @@ const API = {
     const queryString = params.toString();
     const url = `/api/dashboard${queryString ? `?${queryString}` : ''}`;
     
-    const response = await awsFetch(url);
+    const response = await awsNativeFetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch dashboard: ${response.statusText}`);
     }
@@ -62,7 +62,7 @@ const API = {
     const queryString = params.toString();
     const url = `/api/logs/${botId}${queryString ? `?${queryString}` : ''}`;
     
-    const response = await awsFetch(url);
+    const response = await awsNativeFetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch logs: ${response.statusText}`);
     }
@@ -79,7 +79,7 @@ const API = {
     const queryString = params.toString();
     const url = `/api/trace/${queueId}/events${queryString ? `?${queryString}` : ''}`;
     
-    const response = await awsFetch(url);
+    const response = await awsNativeFetch(url);
     if (!response.ok) {
       throw new Error(`Failed to fetch trace events: ${response.statusText}`);
     }
@@ -87,7 +87,7 @@ const API = {
   },
   
   getEventDetails: async (queueId: string, eventId: string) => {
-    const response = await awsFetch(`/api/trace/${queueId}/events/${eventId}`);
+    const response = await awsNativeFetch(`/api/trace/${queueId}/events/${eventId}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch event details: ${response.statusText}`);
     }
@@ -96,7 +96,7 @@ const API = {
 
   // Settings related
   getSettings: async () => {
-    const response = await awsFetch('/api/settings');
+    const response = await awsNativeFetch('/api/settings');
     if (!response.ok) {
       throw new Error(`Failed to fetch settings: ${response.statusText}`);
     }
@@ -105,7 +105,7 @@ const API = {
 
   // SDK related
   getSdkConfig: async () => {
-    const response = await awsFetch('/api/sdk/config');
+    const response = await awsNativeFetch('/api/sdk/config');
     if (!response.ok) {
       throw new Error(`Failed to fetch SDK configuration: ${response.statusText}`);
     }
@@ -114,7 +114,7 @@ const API = {
 
   // Cron related
   getCron: async (id: string) => {
-    const response = await awsFetch(`/api/cron/${id}`);
+    const response = await awsNativeFetch(`/api/cron/${id}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch cron data: ${response.statusText}`);
     }
@@ -130,12 +130,12 @@ const API = {
       if (count) params.append('count', count.toString());
       if (timestamp) params.append('timestamp', timestamp);
       
-      // Build API URL
+      // Build API URL with relative path
       const queryString = params.toString();
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/stats_v2${queryString ? `?${queryString}` : ''}`;
+      const apiUrl = `/api/stats_v2${queryString ? `?${queryString}` : ''}`;
       
       if (process.env.NODE_ENV !== 'production') {
-        console.log('Fetching stats with URL:', apiUrl);
+        console.log('Preparing to fetch stats from:', apiUrl);
       }
       
       // Use our custom fetch implementation with AWS SigV4
@@ -186,6 +186,9 @@ export function useDashboard(id: string, rangeCount?: any, timestamp?: any) {
 export function useStats() {
   const { state, dispatch } = useAppContext();
   
+  // Add console log to track hook initialization
+  console.log('useStats hook initialized');
+
   // Extract time period from application state (default to 15 minutes if not set)
   const timePeriod = state.urlObj.timePeriod.interval || 'minute_15';
   
@@ -242,6 +245,8 @@ export function useStats() {
   const handleStatsData = (data: StatsData) => {
     // Process and save bots data
     if (data.nodes?.bot) {
+      console.log('Processing bot data:', Object.keys(data.nodes.bot).length, 'bots found');
+      
       const botsData = Object.values(data.nodes.bot);
       const bots = botsData.map((bot: any) => ({
         ...bot,
@@ -265,6 +270,24 @@ export function useStats() {
         (bot.alarms && Object.keys(bot.alarms).length > 0)
       );
       
+      // Create nodes object for state update
+      const nodesObj = bots.reduce((acc: Record<string, any>, bot: any) => {
+        acc[bot.id] = {
+          ...bot,
+          type: 'bot', // Ensure type is explicitly set
+          // Add additional computed fields for UI components
+          eventCount: bot.executions || 0,
+          errorCount: bot.errors || 0,
+          processingTime: bot.duration?.avg || 0,
+          // Extract connections from link_to for visualization
+          connections: bot.link_to?.children ? 
+            Object.keys(bot.link_to.children) : []
+        };
+        return acc;
+      }, {});
+      
+      console.log('Processed bot data:', Object.keys(nodesObj).length, 'bots ready for state update');
+      
       dispatch({ type: 'SET_BOTS', payload: bots });
       dispatch({ 
         type: 'UPDATE_STATE', 
@@ -273,21 +296,11 @@ export function useStats() {
           alarmed,
           alarmedCount: alarmed.length,
           // Store nodes lookup by ID for easy access by components
-          nodes: bots.reduce((acc: Record<string, any>, bot: any) => {
-            acc[bot.id] = {
-              ...bot,
-              // Add additional computed fields for UI components
-              eventCount: bot.executions || 0,
-              errorCount: bot.errors || 0,
-              processingTime: bot.duration?.avg || 0,
-              // Extract connections from link_to for visualization
-              connections: bot.link_to?.children ? 
-                Object.keys(bot.link_to.children) : []
-            };
-            return acc;
-          }, {})
+          nodes: nodesObj
         } 
       });
+    } else {
+      console.log('No bot data found in stats response');
     }
 
     // Process and save queues data
@@ -419,6 +432,162 @@ export function useBots() {
   return {
     data: state.bots || [],
     isLoading: state.updatingStats,
+    isError: false,
+    error: null
+  };
+}
+
+// Add hooks for fetching detailed node information
+export function useBotDetails(botId: string) {
+  const { state } = useAppContext();
+  
+  return useQuery({
+    queryKey: ['bot-details', botId],
+    queryFn: async () => {
+      try {
+        console.log(`Fetching bot details for: ${botId}`);
+        // Use the correct API endpoint format
+        const response = await awsNativeFetch(`/api/cron/${botId}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch bot details: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log(`Successfully fetched bot details for: ${botId}`, data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching bot details:', error);
+        
+        // Fallback to basic data if available
+        const basicInfo = state.nodes[botId];
+        if (basicInfo && Object.keys(basicInfo).length > 0) {
+          console.log('Falling back to basic bot info from state');
+          return { ...basicInfo, _fromFallback: true };
+        }
+        
+        // Create minimal data if nothing else is available
+        console.log('Creating minimal bot data for:', botId);
+        return {
+          id: botId,
+          name: botId.split(':').pop() || botId,
+          type: 'bot',
+          status: 'unknown',
+          _fromFallback: true
+        };
+      }
+    },
+    enabled: !!botId,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000)
+  });
+}
+
+export function useQueueDetails(queueId: string) {
+  const { state } = useAppContext();
+  
+  return useQuery({
+    queryKey: ['queue-details', queueId],
+    queryFn: async () => {
+      try {
+        console.log(`Fetching queue details for: ${queueId}`);
+        // Use the correct API endpoint format
+        const response = await awsNativeFetch(`/api/cron/${queueId}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch queue details: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log(`Successfully fetched queue details for: ${queueId}`, data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching queue details:', error);
+        
+        // Fallback to basic data if available
+        const basicInfo = state.nodes[queueId];
+        if (basicInfo && Object.keys(basicInfo).length > 0) {
+          console.log('Falling back to basic queue info from state');
+          return { ...basicInfo, _fromFallback: true };
+        }
+        
+        // Create minimal data if nothing else is available
+        console.log('Creating minimal queue data for:', queueId);
+        return {
+          id: queueId,
+          name: queueId.split(':').pop() || queueId,
+          type: 'queue',
+          status: 'unknown',
+          _fromFallback: true
+        };
+      }
+    },
+    enabled: !!queueId,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000)
+  });
+}
+
+export function useSystemDetails(systemId: string) {
+  const { state } = useAppContext();
+  
+  return useQuery({
+    queryKey: ['system-details', systemId],
+    queryFn: async () => {
+      try {
+        console.log(`Fetching system details for: ${systemId}`);
+        // Use the correct API endpoint format
+        const response = await awsNativeFetch(`/api/cron/${systemId}`);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch system details: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        console.log(`Successfully fetched system details for: ${systemId}`, data);
+        return data;
+      } catch (error) {
+        console.error('Error fetching system details:', error);
+        
+        // Fallback to basic data if available
+        const basicInfo = state.nodes[systemId];
+        if (basicInfo && Object.keys(basicInfo).length > 0) {
+          console.log('Falling back to basic system info from state');
+          return { ...basicInfo, _fromFallback: true };
+        }
+        
+        // Create minimal data if nothing else is available
+        console.log('Creating minimal system data for:', systemId);
+        return {
+          id: systemId,
+          name: systemId.split(':').pop() || systemId,
+          type: 'system',
+          status: 'unknown',
+          _fromFallback: true
+        };
+      }
+    },
+    enabled: !!systemId,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000)
+  });
+}
+
+// Unified hook that returns the right query based on node type
+export function useNodeDetails(nodeId: string, nodeType?: 'bot' | 'queue' | 'system') {
+  const botDetailsQuery = useBotDetails(nodeType === 'bot' ? nodeId : '');
+  const queueDetailsQuery = useQueueDetails(nodeType === 'queue' ? nodeId : '');
+  const systemDetailsQuery = useSystemDetails(nodeType === 'system' ? nodeId : '');
+  
+  // Return the appropriate query based on node type
+  if (nodeType === 'bot') return botDetailsQuery;
+  if (nodeType === 'queue') return queueDetailsQuery;
+  if (nodeType === 'system') return systemDetailsQuery;
+  
+  // If no type is provided, return a placeholder
+  return {
+    data: null,
+    isLoading: false,
     isError: false,
     error: null
   };

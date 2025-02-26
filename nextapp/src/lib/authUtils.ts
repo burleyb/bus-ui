@@ -25,61 +25,58 @@ export async function signAwsRequest(
  * Create a fetch function for AWS services with proper SigV4 signing
  * This now uses axios under the hood but maintains the same interface
  */
-export async function awsFetch(url: string, options: RequestInit = {}) {
-  try {
-    // Convert fetch options to axios options
-    const axiosOptions: AxiosRequestConfig = {
+export const awsFetch = async (url: string, options: RequestInit = {}): Promise<Response> => {
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+  const fullUrl = url.startsWith('http') ? url : `${apiBaseUrl}${url}`;
+  
+  // Log API call in development
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`API call to: ${fullUrl}`, {
       method: options.method || 'GET',
-      headers: options.headers as RawAxiosRequestHeaders,
-      data: options.body,
-      signal: options.signal || undefined,
-    };
-    
-    // Make the request using axios
-    const response = await awsAxios(url, axiosOptions);
-    
-    // Create a fetch-like response object for backward compatibility
-    return {
-      ok: response.status >= 200 && response.status < 300,
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-      // Add json method to mimic fetch Response
-      json: () => Promise.resolve(response.data),
-      // Add text method to mimic fetch Response
-      text: () => Promise.resolve(
-        typeof response.data === 'string' 
-          ? response.data 
-          : JSON.stringify(response.data)
-      ),
-      data: response.data
-    };
-  } catch (error: any) {
-    if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      return {
-        ok: false,
-        status: error.response.status,
-        statusText: error.response.statusText,
-        headers: error.response.headers,
-        json: () => Promise.reject(error.response.data),
-        text: () => Promise.reject(error.response.data),
-        data: error.response.data
-      };
-    } else {
-      // Something happened in setting up the request that triggered an Error
-      throw error;
-    }
+      headers: options.headers || {}
+    });
   }
-}
+  
+  try {
+    const response = await fetch(fullUrl, {
+      ...options,
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        ...options.headers
+      }
+    });
+    
+    // Log errors for easier debugging
+    if (!response.ok) {
+      console.error(`API error (${response.status}): ${fullUrl}`, 
+        await response.text().catch(() => 'Failed to get response text')
+      );
+    }
+    
+    return response;
+  } catch (error) {
+    console.error(`API fetch error for ${fullUrl}:`, error);
+    throw error;
+  }
+};
 
 /**
  * Alternative native fetch implementation using AWS SigV4
  * Direct wrapper around the new fetchWithSigV4 function
  */
 export async function awsNativeFetch(url: string, options: RequestInit = {}) {
-  return fetchWithSigV4(url, options);
+  // Determine if we need to add the base URL
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+  const fullUrl = url.startsWith('http') ? url : `${apiBaseUrl}${url}`;
+  
+  // Log API call in development
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`API call to: ${fullUrl}`);
+  }
+  
+  return fetchWithSigV4(fullUrl, options);
 }
 
 /**

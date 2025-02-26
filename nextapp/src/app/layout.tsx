@@ -1,24 +1,18 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import { AppProvider } from "@/context/AppContext";
-import { ApiProvider } from "@/context/ApiContext";
-import { AuthProvider } from "@/context/AuthContext";
-import { InitProvider } from "@/context/InitContext";
+import "./globals.css";
+import { AppProvider } from '@/context/AppContext';
+import { DialogProvider } from '@/context/DialogContext';
+import { InitProvider } from '@/context/InitContext';
+import { AuthProvider } from '@/context/AuthContext';
+import { ApiProvider } from '@/context/ApiContext';
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "EventBus UI",
-  description: "Monitoring UI for EventBus",
+  title: "Event Bus UI",
+  description: "Management interface for the Event Bus system",
 };
 
 export default function RootLayout({
@@ -28,17 +22,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+      <body className={inter.className}>
         <InitProvider>
-          <AppProvider>
-            <ApiProvider>
-              <AuthProvider>
-                {children}
-              </AuthProvider>
-            </ApiProvider>
-          </AppProvider>
+          <AuthProvider>
+            <AppProvider>
+              <ApiProvider>
+                <DialogProvider>
+                  {children}
+                </DialogProvider>
+              </ApiProvider>
+            </AppProvider>
+          </AuthProvider>
         </InitProvider>
       </body>
     </html>

@@ -3,6 +3,7 @@
 import React from 'react';
 import { useAppContext } from '@/context/AppContext';
 import numeral from 'numeral';
+import { useDialogs } from '@/hooks/useDialogs';
 
 interface NodeDetailsProps {
   selectedBot: string;
@@ -10,6 +11,7 @@ interface NodeDetailsProps {
 
 export default function NodeDetails({ selectedBot }: NodeDetailsProps) {
   const { state } = useAppContext();
+  const { openNodeSettingsDialog } = useDialogs();
   
   // Get node details based on the selectedBot
   const nodeDetails = selectedBot && state.nodes 
@@ -53,19 +55,33 @@ export default function NodeDetails({ selectedBot }: NodeDetailsProps) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{nodeDetails.id || selectedBot}</h3>
+        <div className="flex justify-between items-center">
+          <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{nodeDetails.id || selectedBot}</h3>
+          <button 
+            className="text-blue-500 hover:text-blue-700 text-sm"
+            onClick={() => openNodeSettingsDialog(selectedBot)}
+          >
+            Edit Settings
+          </button>
+        </div>
         {nodeDetails.type && (
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Type: {nodeDetails.type}</p>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+        <div 
+          className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => openNodeSettingsDialog(selectedBot)}
+        >
           <p className="text-sm text-gray-500 dark:text-gray-400">Events Processed</p>
           <p className="text-xl font-semibold text-gray-900 dark:text-white mt-1">{eventCount}</p>
         </div>
         
-        <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+        <div 
+          className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => openNodeSettingsDialog(selectedBot)}
+        >
           <p className="text-sm text-gray-500 dark:text-gray-400">Errors</p>
           <p className={`text-xl font-semibold mt-1 ${
             Number(errorCount) > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-900 dark:text-white'
@@ -74,12 +90,18 @@ export default function NodeDetails({ selectedBot }: NodeDetailsProps) {
           </p>
         </div>
         
-        <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+        <div 
+          className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => openNodeSettingsDialog(selectedBot)}
+        >
           <p className="text-sm text-gray-500 dark:text-gray-400">Processing Time</p>
           <p className="text-xl font-semibold text-gray-900 dark:text-white mt-1">{processingTime}ms</p>
         </div>
         
-        <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
+        <div 
+          className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          onClick={() => openNodeSettingsDialog(selectedBot)}
+        >
           <p className="text-sm text-gray-500 dark:text-gray-400">Status</p>
           <div className="flex items-center mt-1">
             <span className={`inline-block h-3 w-3 rounded-full mr-2 ${
