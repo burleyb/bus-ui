@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import NodeSettingsDialog from '@/components/dialogs/NodeSettingsDialog';
 import EventReplayDialog from '@/components/dialogs/EventReplayDialog';
+import { ToastProvider } from '@/components/ui/toast';
 
 // Dialog states interface
 interface DialogState {
@@ -106,18 +107,20 @@ export function DialogProvider({ children }: DialogProviderProps) {
       {children}
       
       {/* Render dialogs */}
-      <NodeSettingsDialog 
-        open={dialogState.nodeSettings.open} 
-        onClose={closeNodeSettingsDialog}
-        nodeId={dialogState.nodeSettings.nodeId || ''}
-      />
-      
-      <EventReplayDialog
-        open={dialogState.eventReplay.open}
-        onClose={closeEventReplayDialog}
-        queueId={dialogState.eventReplay.queueId || ''}
-        eventId={dialogState.eventReplay.eventId || ''}
-      />
+      <ToastProvider>
+        <NodeSettingsDialog 
+          open={dialogState.nodeSettings.open} 
+          onClose={closeNodeSettingsDialog}
+          nodeId={dialogState.nodeSettings.nodeId || ''}
+        />
+        
+        <EventReplayDialog
+          open={dialogState.eventReplay.open}
+          onClose={closeEventReplayDialog}
+          queueId={dialogState.eventReplay.queueId || ''}
+          eventId={dialogState.eventReplay.eventId || ''}
+        />
+      </ToastProvider>
     </DialogContext.Provider>
   );
 }

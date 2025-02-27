@@ -4,6 +4,7 @@ import { SignatureV4 } from "@aws-sdk/signature-v4";
 import { Sha256 } from "@aws-crypto/sha256-browser";
 import leoCognito from './leoCognito';
 import { HeaderBag } from "@aws-sdk/types";
+import axiosClient from './axiosClient';
 
 /**
  * Signs an HTTP request using AWS Signature V4
@@ -28,18 +29,20 @@ export async function signRequest(
     // Extract region from environment or use default
     const region = process.env.NEXT_PUBLIC_COGNITO_REGION || 'us-east-1';
     
+    // Parse the URL
+    const parsedUrl = new URL(url);
+    
     // Log signing attempt in development
     if (process.env.NODE_ENV !== 'production') {
       console.debug('Signing request with AWS SigV4', {
         method,
         url,
+        path: parsedUrl.pathname,
+        query: parsedUrl.search,
         region,
         service
       });
     }
-
-    // Parse the URL
-    const parsedUrl = new URL(url);
     
     // Create a signer with the provided credentials and service
     const signer = new SignatureV4({
@@ -52,19 +55,13 @@ export async function signRequest(
       service: service,
       sha256: Sha256,
       // Important: Set this to false to NOT include x-amz-content-sha256 header
-      // which is causing CORS issues
       applyChecksum: false
     });
     
     // Prepare headers as HeaderBag object
     const requestHeaders: HeaderBag = {};
     
-    // First populate with any default headers
-    if (!headers['content-type'] && body) {
-      requestHeaders['content-type'] = 'application/json';
-    }
-    
-    // Add all provided headers
+    // Add all provided headers, normalizing to lowercase
     Object.entries(headers).forEach(([key, value]) => {
       // Convert header name to lowercase
       requestHeaders[key.toLowerCase()] = value;
@@ -75,10 +72,36 @@ export async function signRequest(
       requestHeaders['host'] = parsedUrl.host;
     }
     
-    // Create query parameters object from URL search params
-    const query: Record<string, string> = {};
-    for (const [key, value] of new URLSearchParams(parsedUrl.search)) {
-      query[key] = value;
+    // Explicitly ensure content-type is set for GET requests
+    if (method === 'GET' && !requestHeaders['content-type']) {
+      requestHeaders['content-type'] = '';
+    }
+    
+    // Create query parameters object - preserving order
+    const queryParams: Record<string, string[]> = {};
+    
+    // Convert URL search params to the expected format
+    // Need to maintain the order and handle multiple parameters with the same name
+    for (const [key, value] of parsedUrl.searchParams.entries()) {
+      if (!queryParams[key]) {
+        queryParams[key] = [];
+      }
+      queryParams[key].push(value);
+    }
+    
+    // Log the canonical query parameters in development
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('Query parameters for signing:', queryParams);
+    }
+    
+    // Convert multi-valued parameters to the format expected by the signer
+    const signerQuery: Record<string, string | string[]> = {};
+    for (const [key, values] of Object.entries(queryParams)) {
+      if (values.length === 1) {
+        signerQuery[key] = values[0];
+      } else {
+        signerQuery[key] = values;
+      }
     }
     
     // Sign the request
@@ -86,7 +109,7 @@ export async function signRequest(
       method: method,
       hostname: parsedUrl.hostname,
       path: parsedUrl.pathname,
-      query: query,
+      query: signerQuery as any,
       headers: requestHeaders,
       body: body
     });
@@ -94,7 +117,7 @@ export async function signRequest(
     // Convert the signed headers back to a simple Record for compatibility
     const signedHeaders: Record<string, string> = {};
     Object.entries(signed.headers).forEach(([key, value]) => {
-      // Skip headers that may cause CORS issues if they're not in the allowed list
+      // Skip headers that may cause CORS issues
       if (key.toLowerCase() === 'x-amz-content-sha256') {
         return; // Skip this header
       }
@@ -105,8 +128,13 @@ export async function signRequest(
         signedHeaders[key] = value;
       }
     });
+    
+    // Log the canonical string for debugging in development
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('Signed headers:', signedHeaders);
+    }
 
-    // Return headers without modifying the original
+    // Return the signed headers
     return signedHeaders;
   } catch (error) {
     console.error('Error signing request with AWS SigV4:', error);
@@ -130,18 +158,37 @@ export async function fetchWithSigV4(
       (typeof options.body === 'string' ? options.body : JSON.stringify(options.body)) 
       : undefined;
     
-    // Sign the request
-    const signedHeaders = await signRequest(method, url, headers, body);
+    // const signedHeaders = await signRequest(method, url, headers, body);
     
-    // Create the fetch request with signed headers
-    const response = await fetch(url, {
-      ...options,
-      headers: signedHeaders
+    // Use a fresh axios instance to avoid double signing
+    const axiosResponse = await axiosClient({
+      url,
+      method,
+      headers: headers,
+      data: body,
+      responseType: 'text',
+    });
+    
+    // Convert axios response to fetch Response
+    const response = new Response(axiosResponse.data, {
+      status: axiosResponse.status,
+      statusText: axiosResponse.statusText,
+      headers: new Headers(axiosResponse.headers as any),
     });
     
     return response;
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error in fetchWithSigV4:', error);
+    
+    // Handle axios errors by creating an error Response
+    if (error.response) {
+      return new Response(JSON.stringify(error.response.data), {
+        status: error.response.status,
+        statusText: error.response.statusText,
+        headers: new Headers(error.response.headers),
+      });
+    }
+    
     throw error;
   }
 } 

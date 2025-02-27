@@ -2,11 +2,11 @@
 
 import React from 'react';
 
-interface BotGeneralTabProps {
+interface BotDashboardTabProps {
   nodeData: any;
 }
 
-export default function BotGeneralTab({ nodeData }: BotGeneralTabProps) {
+export default function BotDashboardTab({ nodeData }: BotDashboardTabProps) {
   return (
     <div className="space-y-4">
       <div>
@@ -125,13 +125,19 @@ export default function BotGeneralTab({ nodeData }: BotGeneralTabProps) {
                 nodeData.health.status === 'warning' ? 'text-yellow-600 dark:text-yellow-400' : 
                 'text-red-600 dark:text-red-400'
               }`}>
-                {nodeData.health.status.charAt(0).toUpperCase() + nodeData.health.status.slice(1)}
+                {nodeData.health && nodeData.health.status ? 
+                  nodeData.health.status.charAt(0).toUpperCase() + nodeData.health.status.slice(1) :
+                  'Unknown'
+                }
               </p>
             </div>
             <div>
               <p className="text-xs text-gray-500 dark:text-gray-400">Last Checked</p>
               <p className="text-sm">
-                {new Date(nodeData.health.lastCheck).toLocaleString()}
+                {nodeData.health && nodeData.health.lastCheck ? 
+                  new Date(nodeData.health.lastCheck).toLocaleString() :
+                  'Never'
+                }
               </p>
             </div>
           </div>

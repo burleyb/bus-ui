@@ -3,7 +3,7 @@
 import { createContext, useContext, useReducer, ReactNode, useEffect, useState } from 'react';
 
 // Define the initial state based on the old MobX store
-interface AppState {
+export interface AppState {
   action: Record<string, any>;
   active: string | null;
   activeBotCount: number;
@@ -22,6 +22,7 @@ interface AppState {
   filterByTag: string;
   gotInitialChangeLog: boolean;
   hasData: boolean;
+  lastStatsUpdate: number | null;
   logDetails: any | null;
   logId: string | null;
   logSettings: any | null;
@@ -106,6 +107,7 @@ const initialState: AppState = {
   filterByTag: '',
   gotInitialChangeLog: false,
   hasData: false,
+  lastStatsUpdate: null,
   logDetails: null,
   logId: null,
   logSettings: null,

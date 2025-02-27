@@ -2,11 +2,11 @@
 
 import React from 'react';
 
-interface QueueGeneralTabProps {
+interface QueueDashboardTabProps {
   nodeData: any;
 }
 
-const QueueGeneralTab: React.FC<QueueGeneralTabProps> = ({ nodeData }) => {
+const QueueDashboardTab: React.FC<QueueDashboardTabProps> = ({ nodeData }) => {
   return (
     <div className="space-y-4">
       <div>
@@ -143,4 +143,4 @@ const QueueGeneralTab: React.FC<QueueGeneralTabProps> = ({ nodeData }) => {
   );
 };
 
-export default QueueGeneralTab; 
+export default QueueDashboardTab; 

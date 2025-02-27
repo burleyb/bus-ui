@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import * as d3 from 'd3';
 import { useDialogs } from '@/hooks/useDialogs';
+import { getNodeImagesSvgString } from '@/components/node/NodeIcon';
 
 interface WorkflowGraphProps {
   selectedBot: string;
@@ -60,7 +61,7 @@ export default function WorkflowGraph({ selectedBot }: WorkflowGraphProps) {
     
     filteredNodes.forEach(node => {
       if (node.connections && node.connections.length > 0) {
-        node.connections.forEach(target => {
+        node.connections.forEach((target: any) => {
           // Only add links where both source and target are in our filtered nodes
           if (filteredNodes.some(n => n.id === target)) {
             links.push({
@@ -108,6 +109,11 @@ export default function WorkflowGraph({ selectedBot }: WorkflowGraphProps) {
       .attr("stroke-opacity", 0.6)
       .attr("stroke-width", (d) => Math.sqrt(d.value));
     
+    // Determine the base URL for assets
+    const baseUrl = typeof window !== 'undefined' 
+      ? window.location.origin 
+      : process.env.NEXT_PUBLIC_BASE_URL || '';
+    
     // Create nodes
     const node = g.append("g")
       .selectAll("g")
@@ -138,35 +144,40 @@ export default function WorkflowGraph({ selectedBot }: WorkflowGraphProps) {
         .on("end", dragended) as any
       );
     
-    // Add circles to nodes
-    node.append("circle")
-      .attr("r", 20)
-      .attr("fill", (d) => {
-        if (d.type === 'bot') return "#4299e1"; // Blue for bots
-        if (d.type === 'queue') return "#805ad5"; // Purple for queues
-        return "#38a169"; // Green for systems
-      })
-      .attr("stroke", (d) => {
-        if (d.status === 'active') return "#38a169"; // Green for active
-        if (d.status === 'paused') return "#ecc94b"; // Yellow for paused
-        return "#e53e3e"; // Red for inactive or error
-      })
-      .attr("stroke-width", 2);
+    // Add SVG for node icons with proper dimensions
+    node.append("g")
+      .attr("transform", "translate(-20, -20)") // Center the 40x40 icon around the node point
+      .each(function(d: any) {
+        // Create a group for each node's icon
+        const nodeGroup = d3.select(this);
+        
+        // Generate SVG markup for node icon
+        const svgMarkup = getNodeImagesSvgString(
+          { 
+            id: d.id, 
+            type: d.type,
+            status: d.status
+          },
+          state.nodes,
+          baseUrl
+        );
+        
+        // Create an SVG element for the icon with proper dimensions
+        const iconSvg = nodeGroup.append("svg")
+          .attr("width", 40)
+          .attr("height", 40)
+          .attr("viewBox", "0 0 40 40");
+        
+        // Manually append the SVG markup to the node
+        iconSvg.html(svgMarkup);
+      });
     
-    // Add text labels
+    // Add text labels for node IDs
     node.append("text")
       .attr("dx", 25)
       .attr("dy", 5)
       .attr("font-size", "12px")
       .text((d) => d.id);
-    
-    // Add type indicator
-    node.append("text")
-      .attr("text-anchor", "middle")
-      .attr("dy", 5)
-      .attr("font-size", "10px")
-      .attr("fill", "white")
-      .text((d) => d.type?.charAt(0).toUpperCase());
     
     // Update positions on each tick
     simulation.on("tick", () => {
@@ -210,7 +221,7 @@ export default function WorkflowGraph({ selectedBot }: WorkflowGraphProps) {
     return () => {
       simulation.stop();
     };
-  }, [graphData, openNodeSettingsDialog]);
+  }, [graphData, openNodeSettingsDialog, state.nodes]);
   
   if (state.updatingStats && !graphData.nodes.length) {
     return (
@@ -236,15 +247,27 @@ export default function WorkflowGraph({ selectedBot }: WorkflowGraphProps) {
         <div className="text-xs text-gray-700 dark:text-gray-300 font-semibold mb-1">Legend</div>
         <div className="flex space-x-4 text-xs">
           <div className="flex items-center">
-            <div className="w-3 h-3 rounded-full bg-blue-500 mr-1"></div>
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot.png`} width="100%" height="100%" />
+              </svg>
+            </div>
             <span className="text-gray-700 dark:text-gray-300">Bot</span>
           </div>
           <div className="flex items-center">
-            <div className="w-3 h-3 rounded-full bg-purple-500 mr-1"></div>
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/queue.png`} width="100%" height="100%" />
+              </svg>
+            </div>
             <span className="text-gray-700 dark:text-gray-300">Queue</span>
           </div>
           <div className="flex items-center">
-            <div className="w-3 h-3 rounded-full bg-green-500 mr-1"></div>
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/system.png`} width="100%" height="100%" />
+              </svg>
+            </div>
             <span className="text-gray-700 dark:text-gray-300">System</span>
           </div>
         </div>

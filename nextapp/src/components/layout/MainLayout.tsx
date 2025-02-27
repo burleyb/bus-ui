@@ -4,6 +4,7 @@ import React, { ReactNode } from 'react';
 import Navigation from './Navigation';
 import AuthGuard from '@/components/auth/AuthGuard';
 import InitGuard from '@/components/auth/InitGuard';
+import { ToastProvider } from '@/components/ui/toast';
 
 interface MainLayoutProps {
   children: ReactNode;
@@ -43,7 +44,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
           <Navigation />
           
           <main className="flex-1 overflow-auto p-6">
-            {children}
+            <ToastProvider>
+              {children}
+            </ToastProvider>
           </main>
         </div>
       </AuthGuard>

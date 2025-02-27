@@ -8,6 +8,7 @@ export interface DialogProps {
   open: boolean;
   onClose: () => void;
   title?: string;
+  headerContent?: React.ReactNode;
   children: React.ReactNode;
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
 }
@@ -16,6 +17,7 @@ export function Dialog({
   open, 
   onClose, 
   title, 
+  headerContent,
   children, 
   size = 'md' 
 }: DialogProps) {
@@ -87,15 +89,19 @@ export function Dialog({
                     bg-white dark:bg-gray-900 text-left align-middle shadow-xl transition-all`}
         >
           {/* Header */}
-          {title && (
+          {(title || headerContent) && (
             <div className="border-b border-gray-200 dark:border-gray-700">
               <div className="flex items-center justify-between px-6 py-4">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-white">{title}</h3>
+                {headerContent ? (
+                  <div className="flex-1 flex items-center justify-between">{headerContent}</div>
+                ) : (
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">{title}</h3>
+                )}
                 <button
                   type="button"
                   onClick={onClose}
                   className="rounded-md bg-white dark:bg-gray-900 text-gray-400 hover:text-gray-500 
-                            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ml-4"
                 >
                   <span className="sr-only">Close</span>
                   <XMarkIcon className="h-6 w-6" aria-hidden="true" />

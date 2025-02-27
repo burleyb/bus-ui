@@ -4,6 +4,7 @@ import React from 'react';
 import { useAppContext } from '@/context/AppContext';
 import numeral from 'numeral';
 import { useDialogs } from '@/hooks/useDialogs';
+import NodeIcon from './NodeIcon';
 
 interface NodeDetailsProps {
   selectedBot: string;
@@ -53,20 +54,31 @@ export default function NodeDetails({ selectedBot }: NodeDetailsProps) {
   const processingTime = numeral(nodeDetails.processingTime || 0).format('0.00');
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="flex justify-between items-center">
-          <h3 className="font-semibold text-lg text-gray-900 dark:text-white">{nodeDetails.id || selectedBot}</h3>
-          <button 
-            className="text-blue-500 hover:text-blue-700 text-sm"
+    <div className="space-y-4">
+      <div className="flex items-center">
+        <div className="mr-3">
+          <NodeIcon 
+            node={selectedBot} 
+            size={48} 
+            className="rounded-lg"
+          />
+        </div>
+        <div>
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+            {nodeDetails.name || nodeDetails.id}
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {nodeDetails.type.charAt(0).toUpperCase() + nodeDetails.type.slice(1)} • {nodeDetails.id}
+          </p>
+        </div>
+        <div className="ml-auto">
+          <button
             onClick={() => openNodeSettingsDialog(selectedBot)}
+            className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
           >
-            Edit Settings
+            View Details
           </button>
         </div>
-        {nodeDetails.type && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Type: {nodeDetails.type}</p>
-        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -123,13 +135,12 @@ export default function NodeDetails({ selectedBot }: NodeDetailsProps) {
       )}
 
       {nodeDetails.connections && nodeDetails.connections.length > 0 && (
-        <div>
-          <h4 className="font-medium text-gray-900 dark:text-white text-sm mb-2">Connections</h4>
-          <ul className="text-sm text-gray-700 dark:text-gray-300 space-y-1">
-            {nodeDetails.connections.map((connection, index) => (
-              <li key={index} className="flex items-center">
-                <span className="text-gray-400">→</span>
-                <span className="ml-2">{connection}</span>
+        <div className="mt-6">
+          <h4 className="text-md font-medium text-gray-800 dark:text-gray-200 mb-2">Connections</h4>
+          <ul className="space-y-1 text-sm">
+            {nodeDetails.connections.map((connection: string, index: number) => (
+              <li key={index} className="text-gray-600 dark:text-gray-400">
+                {connection}
               </li>
             ))}
           </ul>

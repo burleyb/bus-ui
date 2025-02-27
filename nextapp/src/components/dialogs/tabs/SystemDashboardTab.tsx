@@ -2,11 +2,11 @@
 
 import React from 'react';
 
-interface SystemGeneralTabProps {
+interface SystemDashboardTabProps {
   nodeData: any;
 }
 
-const SystemGeneralTab: React.FC<SystemGeneralTabProps> = ({ nodeData }) => {
+const SystemDashboardTab: React.FC<SystemDashboardTabProps> = ({ nodeData }) => {
   return (
     <div className="space-y-4">
       <div>
@@ -155,4 +155,4 @@ function formatUptime(seconds: number): string {
   return `${days}d ${hours % 24}h`;
 }
 
-export default SystemGeneralTab; 
+export default SystemDashboardTab; 

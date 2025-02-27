@@ -64,19 +64,48 @@ export const awsFetch = async (url: string, options: RequestInit = {}): Promise<
 
 /**
  * Alternative native fetch implementation using AWS SigV4
- * Direct wrapper around the new fetchWithSigV4 function
+ * Direct wrapper around the fetchWithSigV4 function
  */
 export async function awsNativeFetch(url: string, options: RequestInit = {}) {
-  // Determine if we need to add the base URL
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
-  const fullUrl = url.startsWith('http') ? url : `${apiBaseUrl}${url}`;
-  
-  // Log API call in development
-  if (process.env.NODE_ENV !== 'production') {
-    console.log(`API call to: ${fullUrl}`);
+  try {
+    // Determine if we need to add the base URL
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const fullUrl = url.startsWith('http') ? url : `${apiBaseUrl}${url}`;
+    
+    // Parse the URL to handle query parameters properly
+    const parsedUrl = new URL(fullUrl);
+    
+    // Only add a timestamp if one doesn't already exist
+    if (!parsedUrl.searchParams.has('timestamp')) {
+      parsedUrl.searchParams.append('timestamp', new Date().toISOString());
+    }
+    
+    // Get the final URL string with properly encoded parameters
+    const finalUrl = parsedUrl.toString();
+    
+    // Log API call in development
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`API call to: ${finalUrl}`, {
+        method: options.method || 'GET',
+        hasHeaders: !!options.headers,
+        path: parsedUrl.pathname,
+        query: parsedUrl.search
+      });
+    }
+    
+    // Use fetchWithSigV4 for the request
+    const response = await fetchWithSigV4(finalUrl, options);
+    
+    // Log response in development
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`API response: ${response.status} ${response.statusText}`);
+    }
+    
+    return response;
+  } catch (error) {
+    console.error(`API call error for ${url}:`, error);
+    throw error;
   }
-  
-  return fetchWithSigV4(fullUrl, options);
 }
 
 /**

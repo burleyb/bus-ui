@@ -1,10 +1,11 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo, useTransition, useEffect } from 'react';
 import Link from 'next/link';
 import { useAppContext } from '@/context/AppContext';
 import { useBots } from '@/context/ApiContext';
 import { useDialogs } from '@/hooks/useDialogs';
+import { NodeIcon } from '@/components/node';
 import { 
   CheckCircleIcon, 
   XCircleIcon, 
@@ -14,7 +15,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 // Define status badge component
-function StatusBadge({ status }: { status?: string }) {
+const StatusBadge = React.memo(({ status }: { status?: string }) => {
   if (!status) {
     return (
       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300">
@@ -62,7 +63,7 @@ function StatusBadge({ status }: { status?: string }) {
         </span>
       );
   }
-}
+});
 
 interface CatalogItemProps {
   id: string;
@@ -79,13 +80,171 @@ interface CatalogListProps {
   order: 'asc' | 'desc';
 }
 
-export default function CatalogList({ search, type, sort, order }: CatalogListProps) {
+// Row component for better memoization with stable props
+const CatalogRow = React.memo(({ item, openNodeSettingsDialog }: { 
+  item: CatalogItemProps, 
+  openNodeSettingsDialog: (id: string) => void 
+}) => (
+  <tr className="hover:bg-gray-50 dark:hover:bg-gray-700">
+    <td className="px-6 py-4 whitespace-nowrap">
+      <div className="flex items-center">
+        <div className="mr-2">
+          <NodeIcon 
+            node={{ 
+              id: item.id, 
+              type: item.type, 
+              status: item.status 
+            }} 
+            size={24} 
+          />
+        </div>
+        <div className="text-sm font-medium text-gray-900 dark:text-white">{item.id}</div>
+      </div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+        ${item.type === 'bot' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 
+          item.type === 'queue' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' : 
+          'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
+        }`}>
+        {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+      </span>
+    </td>
+    <td className="px-6 py-4">
+      <div className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+        {item.description || 'No description available'}
+      </div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap">
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        {item.lastUpdated || 'N/A'}
+      </div>
+    </td>
+    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+      <button
+        onClick={() => openNodeSettingsDialog(item.id)}
+        className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 inline-flex items-center"
+      >
+        View Details
+        <ChevronRightIcon className="ml-1 h-4 w-4" />
+      </button>
+    </td>
+  </tr>
+));
+
+// Immutable empty arrays to avoid reference changes when empty
+const EMPTY_ARRAY: any[] = [];
+
+// Main component with memoization
+const CatalogList = ({ search, type, sort, order }: CatalogListProps) => {
   const { state } = useAppContext();
   const botsQuery = useBots();
   const { openNodeSettingsDialog } = useDialogs();
   
-  const isLoading = botsQuery.isLoading || state.updatingStats;
+  // Use transition to avoid blocking UI updates during data changes
+  const [isPending, startTransition] = useTransition();
+  
+  // Replace dynamic loading state with transition state
+  const isLoading = botsQuery.isLoading || (state.updatingStats && isPending);
   const isError = botsQuery.isError;
+  
+  // Use stable references to empty arrays
+  const bots = state.bots || EMPTY_ARRAY;
+  const queues = state.queues || EMPTY_ARRAY;
+  const systems = state.systems || EMPTY_ARRAY;
+  
+  // Memoize the catalog items to prevent recalculation on every render
+  const catalogItems = useMemo(() => {
+    // Don't use startTransition here - it's not allowed in render
+    return [
+      ...bots.map(bot => ({
+        id: bot.id,
+        type: 'bot',
+        status: bot.status,
+        description: bot.description,
+        lastUpdated: bot.lastUpdated
+      })),
+      ...queues.map(queue => ({
+        id: queue.id,
+        type: 'queue',
+        status: queue.status,
+        description: queue.description,
+        lastUpdated: queue.lastUpdated
+      })),
+      ...systems.map(system => ({
+        id: system.id,
+        type: 'system',
+        status: system.status,
+        description: system.description,
+        lastUpdated: system.lastUpdated
+      }))
+    ];
+  }, [bots, queues, systems]);
+  
+  // Memoize filtered items
+  const filteredItems = useMemo(() => {
+    // Regular computation without startTransition
+    return catalogItems.filter(item => {
+      // Apply search filter
+      if (search && !item.id.toLowerCase().includes(search.toLowerCase())) {
+        return false;
+      }
+      
+      // Apply type filter
+      if (type && item.type !== type) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [catalogItems, search, type]);
+  
+  // Memoize sorted items
+  const sortedItems = useMemo(() => {
+    // Regular computation without startTransition
+    return [...filteredItems].sort((a, b) => {
+      const aValue = a[sort as keyof CatalogItemProps] || '';
+      const bValue = b[sort as keyof CatalogItemProps] || '';
+      
+      const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      return order === 'asc' ? comparison : -comparison;
+    });
+  }, [filteredItems, sort, order]);
+  
+  // Use a transition effect to update derived state in a non-blocking way
+  useEffect(() => {
+    // Mark data processing as a transition to keep UI responsive
+    startTransition(() => {
+      // This is just a way to trigger the transition state
+      // The actual computation is done in the useMemo hooks
+    });
+  }, [bots, queues, systems, search, type, sort, order]);
+  
+  // Memoize type counts
+  const typeCounts = useMemo(() => ({
+    bot: filteredItems.filter(item => item.type === 'bot').length,
+    queue: filteredItems.filter(item => item.type === 'queue').length,
+    system: filteredItems.filter(item => item.type === 'system').length,
+  }), [filteredItems]);
+  
+  // Create a stable callback for opening node settings
+  const handleOpenNodeSettings = React.useCallback((id: string) => {
+    openNodeSettingsDialog(id);
+  }, [openNodeSettingsDialog]);
+  
+  // IMPORTANT: Move the TableBody memo here, before conditional returns
+  // Memorize the table body to prevent re-rendering when only status changes
+  const TableBody = React.useMemo(() => (
+    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+      {sortedItems.map((item) => (
+        <CatalogRow 
+          key={`${item.type}-${item.id}`}
+          item={item} 
+          openNodeSettingsDialog={handleOpenNodeSettings} 
+        />
+      ))}
+    </tbody>
+  ), [sortedItems, handleOpenNodeSettings]);
   
   if (isLoading) {
     return (
@@ -118,55 +277,6 @@ export default function CatalogList({ search, type, sort, order }: CatalogListPr
     );
   }
   
-  // Combine bots, queues, and systems into a single catalog
-  const catalogItems: CatalogItemProps[] = [
-    ...state.bots.map(bot => ({
-      id: bot.id,
-      type: 'bot',
-      status: bot.status,
-      description: bot.description,
-      lastUpdated: bot.lastUpdated
-    })),
-    ...state.queues.map(queue => ({
-      id: queue.id,
-      type: 'queue',
-      status: queue.status,
-      description: queue.description,
-      lastUpdated: queue.lastUpdated
-    })),
-    ...(state.systems || []).map(system => ({
-      id: system.id,
-      type: 'system',
-      status: system.status,
-      description: system.description,
-      lastUpdated: system.lastUpdated
-    }))
-  ];
-  
-  // Apply filters
-  const filteredItems = catalogItems.filter(item => {
-    // Apply search filter
-    if (search && !item.id.toLowerCase().includes(search.toLowerCase())) {
-      return false;
-    }
-    
-    // Apply type filter
-    if (type && item.type !== type) {
-      return false;
-    }
-    
-    return true;
-  });
-  
-  // Apply sorting
-  const sortedItems = [...filteredItems].sort((a, b) => {
-    const aValue = a[sort as keyof CatalogItemProps] || '';
-    const bValue = b[sort as keyof CatalogItemProps] || '';
-    
-    const comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
-    return order === 'asc' ? comparison : -comparison;
-  });
-  
   if (sortedItems.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-8 text-center">
@@ -177,13 +287,6 @@ export default function CatalogList({ search, type, sort, order }: CatalogListPr
       </div>
     );
   }
-  
-  // Get type counts for summary
-  const typeCounts = {
-    bot: sortedItems.filter(item => item.type === 'bot').length,
-    queue: sortedItems.filter(item => item.type === 'queue').length,
-    system: sortedItems.filter(item => item.type === 'system').length,
-  };
   
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
@@ -218,9 +321,6 @@ export default function CatalogList({ search, type, sort, order }: CatalogListPr
                 Type
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Description
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -231,48 +331,21 @@ export default function CatalogList({ search, type, sort, order }: CatalogListPr
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            {sortedItems.map((item) => (
-              <tr key={`${item.type}-${item.id}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm font-medium text-gray-900 dark:text-white">{item.id}</div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                    ${item.type === 'bot' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 
-                      item.type === 'queue' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' : 
-                      'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
-                    }`}>
-                    {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <StatusBadge status={item.status} />
-                </td>
-                <td className="px-6 py-4">
-                  <div className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                    {item.description || 'No description available'}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-500 dark:text-gray-400">
-                    {item.lastUpdated || 'N/A'}
-                  </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                  <button
-                    onClick={() => openNodeSettingsDialog(item.id)}
-                    className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 inline-flex items-center"
-                  >
-                    View Details
-                    <ChevronRightIcon className="ml-1 h-4 w-4" />
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
+          {TableBody}
         </table>
       </div>
     </div>
   );
-} 
+}
+
+// Use a deeper comparison for memoization
+function areEqual(prevProps: CatalogListProps, nextProps: CatalogListProps) {
+  return (
+    prevProps.search === nextProps.search &&
+    prevProps.type === nextProps.type &&
+    prevProps.sort === nextProps.sort &&
+    prevProps.order === nextProps.order
+  );
+}
+
+export default React.memo(CatalogList, areEqual); 

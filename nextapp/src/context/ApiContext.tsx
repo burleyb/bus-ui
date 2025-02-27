@@ -13,9 +13,11 @@ import {
   QueryClientProvider, 
   useMutation, 
   useQuery,
-  useQueryClient
+  useQueryClient,
+  UseQueryResult
 } from '@tanstack/react-query';
 import { useAppContext } from './AppContext';
+import type { AppState } from './AppContext';
 import { awsNativeFetch } from '@/lib/authUtils';
 
 // Create a client
@@ -105,7 +107,7 @@ const API = {
 
   // SDK related
   getSdkConfig: async () => {
-    const response = await awsNativeFetch('/api/sdk/config');
+    const response = await awsNativeFetch('/api/sdkConfig');
     if (!response.ok) {
       throw new Error(`Failed to fetch SDK configuration: ${response.statusText}`);
     }
@@ -119,6 +121,105 @@ const API = {
       throw new Error(`Failed to fetch cron data: ${response.statusText}`);
     }
     return response.json();
+  },
+  
+  // Search Queue Events - new function to search for events in a queue
+  searchQueueEvents: async (queueId: string, eid?: string, searchText?: string, count?: number) => {
+    try {
+      // Format the URL with the required parameters
+      let url = `/api/search/${encodeURIComponent(queueId)}`;
+      
+      // Add the EID if provided
+      if (eid) {
+        url += `/${encodeURIComponent(eid)}`;
+        
+        // Add the search text if provided
+        if (searchText) {
+          url += `/${encodeURIComponent(searchText)}`;
+        }
+      }
+      
+      // Add count as a query parameter if specified
+      const params = new URLSearchParams();
+      if (count) {
+        params.append('count', count.toString());
+      }
+      
+      const queryString = params.toString();
+      if (queryString) {
+        url += `?${queryString}`;
+      }
+      
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Searching queue events:', url);
+      }
+      
+      const response = await awsNativeFetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error('Error searching queue events:', error);
+      throw error;
+    }
+  },
+
+  searchSystemEvents: async (systemId: string, eid?: string, searchText?: string, count?: number) => {
+    try {
+      // Format the URL with the required parameters
+      let url = `/api/search/${encodeURIComponent(systemId)}`;
+      
+      // Add the EID if provided
+      if (eid) {
+        url += `/${encodeURIComponent(eid)}`;
+        
+        // Add the search text if provided
+        if (searchText) {
+          url += `/${encodeURIComponent(searchText)}`;
+        }
+      }
+      
+      // Add count as a query parameter if specified
+      const params = new URLSearchParams();
+      if (count) {
+        params.append('count', count.toString());
+      }
+      
+      const queryString = params.toString();
+      if (queryString) {
+        url += `?${queryString}`;
+      }
+      
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('Searching queue events:', url);
+      }
+      
+      const response = await awsNativeFetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status} ${response.statusText}`);
+      }
+      
+      return response.json();
+    } catch (error) {
+      console.error('Error searching queue events:', error);
+      throw error;
+    }
   },
   
   // Stats related - provides essential system data
@@ -164,9 +265,42 @@ interface ApiProviderProps {
   children: ReactNode;
 }
 
+// Create a ApiInitializer component to initialize API calls
+function ApiInitializer() {
+  console.log('ApiInitializer: Starting global API initialization');
+  
+  // Get app context for state
+  const { state } = useAppContext();
+  
+  // Initialize stats polling (primary system data)
+  useStats();
+  
+  // Initialize settings (global application settings)
+  useSettings();
+  
+  // Initialize SDK configuration
+  useSdkConfig();
+  
+  // Initialize bots data
+  // This is conditional since it may depend on other data being loaded first
+  const shouldLoadBots = state && state.hasData;
+  const botsQuery = useBots();
+  
+  // Log initialization status
+  useEffect(() => {
+    console.log('ApiInitializer: Global API calls initialized');
+    return () => {
+      console.log('ApiInitializer: Cleaning up global API calls');
+    };
+  }, []);
+  
+  return null; // This component doesn't render anything
+}
+
 export function ApiProvider({ children }: ApiProviderProps) {
   return (
     <QueryClientProvider client={queryClient}>
+      <ApiInitializer />
       {children}
     </QueryClientProvider>
   );
@@ -190,25 +324,48 @@ export function useStats() {
   console.log('useStats hook initialized');
 
   // Extract time period from application state (default to 15 minutes if not set)
-  const timePeriod = state.urlObj.timePeriod.interval || 'minute_15';
+  const timePeriod = useMemo(() => 
+    state?.urlObj?.timePeriod?.interval || 'minute_15',
+  [state?.urlObj?.timePeriod?.interval]);
   
   // Parse the time period into range and count
-  const [range, countStr] = timePeriod.split('_');
-  const count = parseInt(countStr, 10);
+  const [range, countStr] = useMemo(() => {
+    const parts = timePeriod.split('_');
+    return parts.length > 1 ? [parts[0], parts[1]] : ['minute', '15'];
+  }, [timePeriod]);
+  
+  const count = useMemo(() => 
+    parseInt(countStr, 10),
+  [countStr]);
   
   // Create query with time period parameters
   const query = useQuery<StatsData, Error, StatsData, [string, string, number]>({
     queryKey: ['stats', range, count],
     queryFn: async () => {
-      // Set loading indicator
-      dispatch({ type: 'UPDATE_STATE', payload: { updatingStats: true } });
-      
       try {
+        // Only set loading if this is the first load or if it's been more than 5 seconds since the last update
+        const shouldShowLoading = !state?.nodes || Object.keys(state?.nodes || {}).length === 0 || 
+                               (!state?.lastStatsUpdate || 
+                                (new Date().getTime() - (state?.lastStatsUpdate || 0)) > 5000);
+        
+        if (shouldShowLoading && dispatch) {
+          dispatch({ type: 'UPDATE_STATE', payload: { updatingStats: true } });
+        }
+        
         // Call API with time period parameters and current timestamp
         return await API.getStats(range, count, new Date().toISOString());
       } finally {
-        // Clear loading indicator when done (success or error)
-        dispatch({ type: 'UPDATE_STATE', payload: { updatingStats: false } });
+        // Record the time of this update
+        if (dispatch) {
+          const now = new Date().getTime();
+          dispatch({ 
+            type: 'UPDATE_STATE', 
+            payload: { 
+              updatingStats: false,
+              lastStatsUpdate: now
+            } 
+          });
+        }
       }
     },
     // Poll every 10 seconds
@@ -221,10 +378,10 @@ export function useStats() {
 
   // Process the stats data when it becomes available
   useEffect(() => {
-    if (query.data) {
-      handleStatsData(query.data);
+    if (query.data && dispatch) {
+      handleStatsData(query.data, dispatch);
     }
-  }, [query.data]);
+  }, [query.data, dispatch]);
 
   // Define the expected shape of the stats data
   interface StatsData {
@@ -241,9 +398,38 @@ export function useStats() {
     systemTypes?: any;
   }
 
+  // Deep equality check for objects
+  const areObjectsEqual = (obj1: any, obj2: any): boolean => {
+    if (obj1 === obj2) return true;
+    if (!obj1 || !obj2) return false;
+    if (typeof obj1 !== 'object' || typeof obj2 !== 'object') return false;
+    
+    const keys1 = Object.keys(obj1);
+    const keys2 = Object.keys(obj2);
+    
+    if (keys1.length !== keys2.length) return false;
+    
+    for (const key of keys1) {
+      const val1 = obj1[key];
+      const val2 = obj2[key];
+      
+      if (typeof val1 === 'object' && typeof val2 === 'object') {
+        if (!areObjectsEqual(val1, val2)) return false;
+      } else if (val1 !== val2) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
   // Process the stats data and update global state
-  const handleStatsData = (data: StatsData) => {
-    // Process and save bots data
+  const handleStatsData = (data: StatsData, dispatch: React.Dispatch<any>) => {
+    // Prepare a single state update to apply at the end
+    const stateUpdates: Partial<AppState> = {};
+    let hasChanges = false;
+
+    // Process bots data if available
     if (data.nodes?.bot) {
       console.log('Processing bot data:', Object.keys(data.nodes.bot).length, 'bots found');
       
@@ -263,6 +449,12 @@ export function useStats() {
           bot.source ? 'source' : ''
         ].filter(Boolean)
       }));
+
+      // Check if bots have actually changed
+      if (!areObjectsEqual(bots, state.bots)) {
+        dispatch({ type: 'SET_BOTS', payload: bots });
+        hasChanges = true;
+      }
 
       const active = bots.filter((bot: any) => bot.status === 'active' || bot.status === 'idle');
       const alarmed = bots.filter((bot: any) => 
@@ -288,22 +480,33 @@ export function useStats() {
       
       console.log('Processed bot data:', Object.keys(nodesObj).length, 'bots ready for state update');
       
-      dispatch({ type: 'SET_BOTS', payload: bots });
-      dispatch({ 
-        type: 'UPDATE_STATE', 
-        payload: { 
-          activeBotCount: active.length,
-          alarmed,
-          alarmedCount: alarmed.length,
-          // Store nodes lookup by ID for easy access by components
-          nodes: nodesObj
-        } 
-      });
+      // Only update if values have changed
+      if (active.length !== state.activeBotCount) {
+        stateUpdates.activeBotCount = active.length;
+        hasChanges = true;
+      }
+      
+      if (!areObjectsEqual(alarmed, state.alarmed)) {
+        stateUpdates.alarmed = alarmed;
+        stateUpdates.alarmedCount = alarmed.length;
+        hasChanges = true;
+      }
+      
+      // Only update nodes if they've changed
+      const currentBotNodes = Object.fromEntries(
+        Object.entries(state.nodes || {}).filter(([_, node]) => node.type === 'bot')
+      );
+      
+      if (!areObjectsEqual(nodesObj, currentBotNodes)) {
+        const updatedNodes = { ...(state.nodes || {}), ...nodesObj };
+        stateUpdates.nodes = updatedNodes;
+        hasChanges = true;
+      }
     } else {
       console.log('No bot data found in stats response');
     }
 
-    // Process and save queues data
+    // Process queues data if available
     if (data.nodes?.queue) {
       const queuesData = Object.values(data.nodes.queue);
       const queues = queuesData.map((queue: any) => ({
@@ -320,23 +523,36 @@ export function useStats() {
           Object.keys(queue.link_to.children) : []
       }));
 
-      dispatch({ type: 'UPDATE_STATE', payload: { 
-        queues,
-        // Update nodes lookup to include queues
-        nodes: {
-          ...state.nodes,
-          ...queues.reduce((acc: Record<string, any>, queue: any) => {
-            acc[queue.id] = {
-              ...queue,
-              type: 'queue'
-            };
-            return acc;
-          }, {})
+      // Only update if queues have changed
+      if (!areObjectsEqual(queues, state.queues)) {
+        stateUpdates.queues = queues;
+        hasChanges = true;
+        
+        // Update nodes lookup to include queues, preserving any existing nodes
+        const queueNodes = queues.reduce((acc: Record<string, any>, queue: any) => {
+          acc[queue.id] = {
+            ...queue,
+            type: 'queue'
+          };
+          return acc;
+        }, {});
+        
+        // Check if queue nodes have changed
+        const currentQueueNodes = Object.fromEntries(
+          Object.entries(state.nodes || {}).filter(([_, node]) => node.type === 'queue')
+        );
+        
+        if (!areObjectsEqual(queueNodes, currentQueueNodes)) {
+          stateUpdates.nodes = {
+            ...(stateUpdates.nodes || state.nodes || {}),
+            ...queueNodes
+          };
+          hasChanges = true;
         }
-      }});
+      }
     }
 
-    // Process and save systems data
+    // Process systems data if available
     if (data.nodes?.system) {
       const systemsData = Object.values(data.nodes.system);
       const systems = systemsData.map((system: any) => ({
@@ -346,34 +562,48 @@ export function useStats() {
         type: 'system'
       }));
 
-      dispatch({ type: 'UPDATE_STATE', payload: { 
-        systems,
+      // Only update if systems have changed
+      if (!areObjectsEqual(systems, state.systems)) {
+        stateUpdates.systems = systems;
+        hasChanges = true;
+        
         // Update nodes lookup to include systems
-        nodes: {
-          ...state.nodes,
-          ...systems.reduce((acc: Record<string, any>, system: any) => {
-            acc[system.id] = system;
-            return acc;
-          }, {})
+        const systemNodes = systems.reduce((acc: Record<string, any>, system: any) => {
+          acc[system.id] = system;
+          return acc;
+        }, {});
+        
+        // Check if system nodes have changed
+        const currentSystemNodes = Object.fromEntries(
+          Object.entries(state.nodes || {}).filter(([_, node]) => node.type === 'system')
+        );
+        
+        if (!areObjectsEqual(systemNodes, currentSystemNodes)) {
+          stateUpdates.nodes = {
+            ...(stateUpdates.nodes || state.nodes || {}),
+            ...systemNodes
+          };
+          hasChanges = true;
         }
-      }});
+      }
     }
-
-    // Update total events counter
-    if (data.totalEvents !== undefined) {
-      dispatch({ type: 'UPDATE_STATE', payload: { totalEvents: data.totalEvents } });
+    
+    // Apply all state updates in a single dispatch only if there are changes
+    if (hasChanges && Object.keys(stateUpdates).length > 0) {
+      console.log('Updating state with changes:', Object.keys(stateUpdates).join(', '));
+      dispatch({ type: 'UPDATE_STATE', payload: stateUpdates });
+    } else {
+      console.log('No state changes detected in stats update');
     }
-
-    // Update system types
-    if (data.systemTypes) {
-      dispatch({ type: 'UPDATE_STATE', payload: { systemTypes: data.systemTypes } });
-    }
-
-    // Save the entire stats response
-    dispatch({ type: 'SET_STATS', payload: data });
   };
 
-  return query;
+  return {
+    data: query.data,
+    isLoading: state.updatingStats,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch
+  };
 }
 
 export function useLogs(botId: string, result?: string, customTimeFrame?: any) {
@@ -402,16 +632,24 @@ export function useEventDetails(queueId: string, eventId: string) {
 }
 
 export function useSettings() {
+  console.log('useSettings hook initialized');
+  
   return useQuery({
     queryKey: ['settings'],
     queryFn: API.getSettings,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    retry: 3
   });
 }
 
 export function useSdkConfig() {
+  console.log('useSdkConfig hook initialized');
+  
   return useQuery({
     queryKey: ['sdk-config'],
     queryFn: API.getSdkConfig,
+    staleTime: 1000 * 60 * 15, // 15 minutes
+    retry: 3
   });
 }
 
@@ -425,13 +663,14 @@ export function useCron(id: string) {
 
 // Add the missing useBots function
 export function useBots() {
+  console.log('useBots hook initialized');
   const { state } = useAppContext();
   
   // Create a derived query that just returns the bot data from global state
   // This matches the structure that CatalogList.tsx expects
   return {
-    data: state.bots || [],
-    isLoading: state.updatingStats,
+    data: state?.bots || [],
+    isLoading: state?.updatingStats || false,
     isError: false,
     error: null
   };
@@ -591,4 +830,120 @@ export function useNodeDetails(nodeId: string, nodeType?: 'bot' | 'queue' | 'sys
     isError: false,
     error: null
   };
+}
+
+/**
+ * Hook to search for events in a queue
+ * @param queueId The queue ID to search in
+ * @param eid The EID to search from (optional)
+ * @param searchText Text to search for in events (optional)
+ * @param count Maximum number of events to return (default: 100)
+ */
+export function useSearchQueueEvents(
+  queueId?: string,
+  eid?: string,
+  searchText?: string,
+  count: number = 100
+) {
+  // Create a query key for caching and refetching
+  const queryKey = ['queue-events', queueId, eid, searchText, count];
+  
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
+      if (!queueId) {
+        console.warn('[HOOK] No queue ID provided for useSearchQueueEvents');
+        return { results: [], resumptionToken: null };
+      }
+      
+      try {
+        console.log(`[HOOK] Searching queue events:`, { queueId, eid, searchText, count });
+        const response = await API.searchQueueEvents(queueId, eid, searchText, count);
+        
+        if (!response) {
+          console.warn('[HOOK] No data returned from searchQueueEvents');
+          return { results: [], resumptionToken: null };
+        }
+        
+        // Check if the response has a results array
+        if (!response.results) {
+          console.warn('[HOOK] Response does not contain a results array:', response);
+          return { results: [], resumptionToken: response.resumptionToken || null };
+        }
+        
+        if (!Array.isArray(response.results)) {
+          console.warn('[HOOK] Results is not an array:', response.results);
+          return { results: [], resumptionToken: response.resumptionToken || null };
+        }
+        
+        console.log(`[HOOK] Found ${response.results.length} queue events, resumptionToken: ${response.resumptionToken || 'none'}`);
+        return response;
+      } catch (error) {
+        console.error('[HOOK] Error searching queue events:', error);
+        throw error; // Let React Query handle the error state
+      }
+    },
+    enabled: !!queueId, // Only run the query if we have a queueId
+    staleTime: 1000 * 60, // 1 minute
+    refetchOnMount: true,
+    retry: 1,            // Retry failed requests once
+  });
+} 
+
+/**
+ * Hook to search for events in a system
+ * @param systemId The system ID to search in
+ * @param eid The EID to search from (optional)
+ * @param searchText Text to search for in events (optional)
+ * @param count Maximum number of events to return (default: 100)
+ */
+export function useSearchSystemEvents(
+  systemId?: string,
+  eid?: string,
+  searchText?: string,
+  count: number = 100
+) {
+  // Create a query key for caching and refetching
+  const queryKey = ['queue-events', systemId, eid, searchText, count];
+  
+  return useQuery({
+    queryKey,
+    queryFn: async () => {
+      if (!systemId) {
+        console.warn('[HOOK] No system ID provided for useSearchSystemEvents');
+        return { results: [], resumptionToken: null };
+      }
+      
+      try {
+        console.log(`[HOOK] Searching system events:`, { systemId, eid, searchText, count });
+        const response = await API.searchSystemEvents(systemId, eid, searchText, count);
+        
+        if (!response) {
+          console.warn('[HOOK] No data returned from searchSystemEvents');
+          return { results: [], resumptionToken: null };
+        }
+        
+        // Check if the response has a results array
+        if (!response.results) {
+          console.warn('[HOOK] Response does not contain a results array:', response);
+          return { results: [], resumptionToken: response.resumptionToken || null };
+        }
+        
+        if (!Array.isArray(response.results)) {
+          console.warn('[HOOK] Results is not an array:', response.results);
+          return { results: [], resumptionToken: response.resumptionToken || null };
+        }
+        
+        console.log(`[HOOK] Found ${response.results.length} system events, resumptionToken: ${response.resumptionToken || 'none'}`);
+        return response;
+      } catch (error) {
+        console.error('[HOOK] Error searching system events:', error);
+        throw error; // Let React Query handle the error state
+      }
+    },
+    enabled: !!systemId, // Only run the query if we have a systemId
+    staleTime: 1000 * 60, // 1 minute
+    refetchOnMount: true,
+    retry: 1,            // Retry failed requests once
+  });
 } 

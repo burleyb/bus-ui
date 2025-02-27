@@ -5,26 +5,28 @@ import { Dialog } from '@/components/ui/Dialog';
 import { useAppContext } from '@/context/AppContext';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs';
 import { useBotDetails, useQueueDetails, useSystemDetails } from '@/context/ApiContext';
+import { NodeIcon } from '@/components/node';
+import { NodeSettingsDialogHeader } from './NodeSettingsDialogHeader';
+import { useToast } from '../ui/toast';
+import { API } from '@/lib/api';
 
 // Bot-specific tab components
-import BotGeneralTab from './tabs/BotGeneralTab';
-import BotPerformanceTab from './tabs/BotPerformanceTab';
-import BotErrorHandlingTab from '@/components/dialogs/tabs/BotErrorHandlingTab';
-import BotCodeTab from './tabs/BotCodeTab';
-import BotTriggersTab from './tabs/BotTriggersTab';
+import BotDashboardTab from '@/components/dialogs/tabs/BotDashboardTab';
+import BotSettingsTab from '@/components/dialogs/tabs/BotSettingsTab';
+import BotCodeTab from '@/components/dialogs/tabs/BotCodeTab';
 
 // Queue-specific tab components
-import QueueGeneralTab from './tabs/QueueGeneralTab';
-import QueueSchemaTab from './tabs/QueueSchemaTab';
-import QueueEventsTab from './tabs/QueueEventsTab';
+import QueueDashboardTab from '@/components/dialogs/tabs/QueueDashboardTab';
+import QueueSchemaTab from '@/components/dialogs/tabs/QueueSchemaTab';
+import QueueEventsTab from '@/components/dialogs/tabs/QueueEventsTab';
 
 // System-specific tab components
-import SystemGeneralTab from './tabs/SystemGeneralTab';
-import SystemConnectionsTab from './tabs/SystemConnectionsTab';
-import SystemConfigTab from './tabs/SystemConfigTab';
+import SystemDashboardTab from '@/components/dialogs/tabs/SystemDashboardTab';
+import SystemConnectionsTab from '@/components/dialogs/tabs/SystemConnectionsTab';
+import SystemConfigTab from '@/components/dialogs/tabs/SystemConfigTab';
 
 // Common tab components
-import LogsTab from './tabs/LogsTab';
+import LogsTab from '@/components/dialogs/tabs/LogsTab';
 
 export interface NodeSettingsDialogProps {
   open: boolean;
@@ -34,9 +36,11 @@ export interface NodeSettingsDialogProps {
 
 export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettingsDialogProps) {
   const { state } = useAppContext();
-  const [activeTab, setActiveTab] = useState("general");
+  const [activeTab, setActiveTab] = useState("Dashboard");
   const [nodeType, setNodeType] = useState<'bot' | 'queue' | 'system' | 'unknown'>('unknown');
   const [nodeData, setNodeData] = useState<any>(null);
+  const { addToast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
   
   // Determine node type from nodeId or state.nodes
   useEffect(() => {
@@ -67,9 +71,9 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
       setNodeType(type);
       
       // Set default active tab based on node type
-      if (type === 'bot') setActiveTab('general');
-      else if (type === 'queue') setActiveTab('general');
-      else if (type === 'system') setActiveTab('general');
+      if (type === 'bot') setActiveTab('Dashboard');
+      else if (type === 'queue') setActiveTab('Dashboard');
+      else if (type === 'system') setActiveTab('Dashboard');
     }
   }, [open, nodeId, state.nodes]);
   
@@ -87,7 +91,12 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
         type: 'bot',
         // Keep some fields from the basic info if needed
         id: nodeId,
-        status: basicInfo.status || botDetailsQuery.data.status || 'unknown'
+        status: basicInfo.status || botDetailsQuery.data.status || 'unknown',
+        // Ensure health data is properly structured
+        health: botDetailsQuery.data.health || basicInfo.health || {
+          status: 'unknown',
+          lastCheck: null
+        }
       });
     } else if (nodeType === 'queue' && queueDetailsQuery.data) {
       const basicInfo = state.nodes[nodeId] || {};
@@ -110,14 +119,31 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
       const basicInfo = state.nodes[nodeId] || {};
       if (Object.keys(basicInfo).length > 0) {
         console.log('Using basic info as fallback for', nodeType, nodeId);
-        setNodeData({...basicInfo, type: nodeType});
+        setNodeData({
+          ...basicInfo, 
+          type: nodeType,
+          // Add default health property for bot nodes
+          ...(nodeType === 'bot' ? {
+            health: basicInfo.health || {
+              status: 'unknown',
+              lastCheck: null
+            }
+          } : {})
+        });
       } else {
         // If no data at all, create a minimal node data object
         setNodeData({
           id: nodeId,
           type: nodeType,
           status: 'unknown',
-          name: nodeId.split(':').pop() || nodeId
+          name: nodeId.split(':').pop() || nodeId,
+          // Add default health property for bot nodes
+          ...(nodeType === 'bot' ? {
+            health: {
+              status: 'unknown',
+              lastCheck: null
+            }
+          } : {})
         });
       }
     }
@@ -132,7 +158,7 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
   ]);
 
   // Determine loading state from the appropriate query
-  const isLoading = 
+  const isLoadingQuery = 
     (nodeType === 'bot' && botDetailsQuery.isLoading) ||
     (nodeType === 'queue' && queueDetailsQuery.isLoading) ||
     (nodeType === 'system' && systemDetailsQuery.isLoading) ||
@@ -153,7 +179,7 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
   // Get available tabs based on node type
   const getTabsForNodeType = () => {
     const commonTabs = [
-      { value: 'general', label: 'General' },
+      { value: 'dashboard', label: 'Dashboard' },
     ];
     
     // Add logs tab only for bot nodes
@@ -163,66 +189,102 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
       case 'bot':
         return [
           ...commonTabs,
-          logsTab,
-          { value: 'triggers', label: 'Triggers' },
           { value: 'code', label: 'Code' },
-          { value: 'performance', label: 'Performance' },
-          { value: 'error', label: 'Error Handling' },
+          logsTab,
+          { value: 'settings', label: 'Settings' },
         ];
       case 'queue':
         return [
           ...commonTabs,
           { value: 'schema', label: 'Schema' },
           { value: 'events', label: 'Events' },
+          { value: 'settings', label: 'Settings' },
         ];
       case 'system':
         return [
           ...commonTabs,
           { value: 'connections', label: 'Connections' },
           { value: 'config', label: 'Configuration' },
+          { value: 'settings', label: 'Settings' },
         ];
       default:
         return commonTabs;
     }
   };
 
-  const handleSave = () => {
-    // Simulate saving settings
-    console.log('Saving settings for node:', nodeId, nodeData);
+  const handleSave = async () => {
+    if (!nodeData) return;
     
-    // In a real implementation, you would send these settings to your API
-    // Example:
-    // const saveNodeSettings = async () => {
-    //   try {
-    //     const response = await fetch(`/api/nodes/${nodeId}`, {
-    //       method: 'PUT',
-    //       headers: {
-    //         'Content-Type': 'application/json',
-    //       },
-    //       body: JSON.stringify(nodeData),
-    //     });
-    //     const result = await response.json();
-    //     onClose();
-    //   } catch (error) {
-    //     console.error('Error saving node settings:', error);
-    //   }
-    // };
-    // saveNodeSettings();
-    
-    // For now, just simulate the save with a timeout
-    setTimeout(() => {
-      onClose();
-    }, 300);
+    try {
+      setIsLoading(true);
+      console.log('Saving settings for node:', nodeId, nodeData);
+      
+      // Gather form data from the dialog
+      // This will need to be updated based on your actual form implementation
+      const formData = {
+        // Extract values from form fields
+        // You would replace these with actual form values
+        name: nodeData.name,
+        description: nodeData.description,
+        // Add other settings as needed
+      };
+      
+      // Save node settings using the appropriate API method based on node type
+      let result;
+      switch (nodeType) {
+        case 'bot':
+          result = await API.saveNodeSettings(nodeId, formData);
+          break;
+        case 'queue':
+          result = await API.saveNodeSettings(nodeId, formData);
+          break;
+        case 'system':
+          result = await API.saveNodeSettings(nodeId, formData);
+          break;
+        default:
+          result = await API.saveNodeSettings(nodeId, formData);
+      }
+      
+      if (result && !result.error) {
+        addToast({
+          title: 'Settings saved',
+          description: 'Node settings have been updated successfully.',
+          type: 'success'
+        });
+        onClose();
+      } else {
+        addToast({
+          title: 'Error saving settings',
+          description: result?.error || 'An error occurred while saving node settings.',
+          type: 'error'
+        });
+      }
+    } catch (error) {
+      console.error('Error saving node settings:', error);
+      addToast({
+        title: 'Error',
+        description: 'An unexpected error occurred while saving settings.',
+        type: 'error'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
+      headerContent={nodeData ? <NodeSettingsDialogHeader 
+        nodeData={nodeData} 
+        nodeId={nodeId} 
+        nodeType={nodeType} 
+        onClose={onClose} 
+      /> : undefined}
       title={nodeData ? `${nodeType && nodeType !== 'unknown' ? nodeType.charAt(0).toUpperCase() + nodeType.slice(1) : 'Node'} Settings: ${nodeData.id || nodeId}` : 'Node Settings'}
-      size="lg"
+      size="full"
     >
-      {isLoading ? (
+      {isLoadingQuery ? (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
         </div>
@@ -242,32 +304,11 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
           </button>
         </div>
       ) : nodeData ? (
-        <div className="space-y-6">
-          <div className="flex items-center space-x-2">
-            <div 
-              className={`h-3 w-3 rounded-full ${
-                nodeData.status === 'active' ? 'bg-green-500' : 
-                nodeData.status === 'paused' || nodeData.status === 'idle' ? 'bg-yellow-500' : 'bg-red-500'
-              }`}
-            />
-            <span className="text-sm text-gray-600 dark:text-gray-400">
-              Status: {nodeData.status ? `${nodeData.status.charAt(0).toUpperCase()}${nodeData.status.slice(1)}` : 'Unknown'}
-            </span>
-            
-            {/* Node Type Badge */}
-            <span className={`ml-auto px-2 py-1 text-xs rounded-full ${
-              nodeType === 'bot' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' : 
-              nodeType === 'queue' ? 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300' :
-              nodeType === 'system' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
-              'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300'
-            }`}>
-              {nodeType.toUpperCase()}
-            </span>
-          </div>
-          
+        <div className="space-y-6 h-full flex flex-col">
           <Tabs
             defaultValue={activeTab}
             onValueChange={(value) => setActiveTab(value)}
+            className="flex-1 flex flex-col"
           >
             <TabsList className="mb-4">
               {getTabsForNodeType().map(tab => (
@@ -277,72 +318,67 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
               ))}
             </TabsList>
 
-            {/* Render appropriate tab content based on node type */}
-            {nodeType === 'bot' && (
-              <>
-                <TabsContent value="general" className="mt-4">
-                  <BotGeneralTab nodeData={nodeData} />
-                </TabsContent>
-                
-                <TabsContent value="triggers" className="mt-4">
-                  <BotTriggersTab nodeData={nodeData} />
-                </TabsContent>
+            <div className="flex-1 overflow-hidden">
+              {/* Render appropriate tab content based on node type */}
+              {nodeType === 'bot' && (
+                <>
+                  <TabsContent value="Dashboard" className="mt-4 h-full">
+                    <BotDashboardTab nodeData={nodeData} />
+                  </TabsContent>
+                  
+                  <TabsContent value="code" className="mt-4 h-full">
+                    <BotCodeTab nodeData={nodeData} />
+                  </TabsContent>
 
-                <TabsContent value="performance" className="mt-4">
-                  <BotPerformanceTab nodeData={nodeData} />
-                </TabsContent>
-                
-                <TabsContent value="error" className="mt-4">
-                  <BotErrorHandlingTab nodeData={nodeData} />
-                </TabsContent>
-                
-                <TabsContent value="code" className="mt-4">
-                  <BotCodeTab nodeData={nodeData} />
-                </TabsContent>
-              </>
-            )}
+                  <TabsContent value="error" className="mt-4 h-full">
+                    <BotSettingsTab nodeData={nodeData} />
+                  </TabsContent>
+                  
+                </>
+              )}
 
-            {nodeType === 'queue' && (
-              <>
-                <TabsContent value="general" className="mt-4">
-                  <QueueGeneralTab nodeData={nodeData} />
-                </TabsContent>
-                
-                <TabsContent value="schema" className="mt-4">
-                  <QueueSchemaTab nodeData={nodeData} />
-                </TabsContent>
-                
-                <TabsContent value="events" className="mt-4">
-                  <QueueEventsTab nodeData={nodeData} />
-                </TabsContent>
-              </>
-            )}
+              {nodeType === 'queue' && (
+                <>
+                  <TabsContent value="Dashboard" className="mt-4 h-full">
+                    <QueueDashboardTab nodeData={nodeData} />
+                  </TabsContent>
+                  
+                  <TabsContent value="schema" className="mt-4 h-full">
+                    <QueueSchemaTab nodeData={nodeData} />
+                  </TabsContent>
+                  
+                  <TabsContent value="events" className="mt-4 h-full overflow-auto">
+                    <QueueEventsTab nodeData={nodeData} />
+                  </TabsContent>
+                </>
+              )}
 
-            {nodeType === 'system' && (
-              <>
-                <TabsContent value="general" className="mt-4">
-                  <SystemGeneralTab nodeData={nodeData} />
+              {nodeType === 'system' && (
+                <>
+                  <TabsContent value="Dashboard" className="mt-4 h-full">
+                    <SystemDashboardTab nodeData={nodeData} />
+                  </TabsContent>
+                  
+                  <TabsContent value="connections" className="mt-4 h-full">
+                    <SystemConnectionsTab nodeData={nodeData} />
+                  </TabsContent>
+                  
+                  <TabsContent value="config" className="mt-4 h-full">
+                    <SystemConfigTab nodeData={nodeData} />
+                  </TabsContent>
+                </>
+              )}
+              
+              {/* Logs Tab for bot nodes only */}
+              {nodeType === 'bot' && (
+                <TabsContent value="logs" className="mt-4 h-full">
+                  <LogsTab nodeId={nodeId} nodeType={nodeType} />
                 </TabsContent>
-                
-                <TabsContent value="connections" className="mt-4">
-                  <SystemConnectionsTab nodeData={nodeData} />
-                </TabsContent>
-                
-                <TabsContent value="config" className="mt-4">
-                  <SystemConfigTab nodeData={nodeData} />
-                </TabsContent>
-              </>
-            )}
-            
-            {/* Logs Tab for bot nodes only */}
-            {nodeType === 'bot' && (
-              <TabsContent value="logs" className="mt-4">
-                <LogsTab nodeId={nodeId} nodeType={nodeType} />
-              </TabsContent>
-            )}
+              )}
+            </div>
           </Tabs>
 
-          <div className="flex justify-end space-x-3 mt-6">
+          <div className="flex justify-end space-x-3 mt-auto pt-4 border-t border-gray-200 dark:border-gray-700">
             <button
               type="button"
               onClick={onClose}
@@ -350,6 +386,7 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
                       rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300
                       bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 
                       focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              disabled={isLoading}
             >
               Cancel
             </button>
@@ -359,8 +396,19 @@ export default function NodeSettingsDialog({ open, onClose, nodeId }: NodeSettin
               className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm 
                       font-medium text-white bg-blue-600 hover:bg-blue-700 
                       focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              disabled={isLoading}
             >
-              Save Changes
+              {isLoading ? (
+                <span className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Saving...
+                </span>
+              ) : (
+                'Save Changes'
+              )}
             </button>
           </div>
         </div>

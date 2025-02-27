@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '@/context/AppContext';
 import * as d3 from 'd3';
+import { getNodeImagesSvgString } from './NodeIcon';
 
 interface NodeGraphProps {
   selectedBot: string;
@@ -110,11 +111,19 @@ export default function NodeGraph({ selectedBot }: NodeGraphProps) {
     // Create the nodes
     const node = svg.append('g')
       .attr('class', 'nodes')
-      .selectAll('circle')
+      .selectAll('g')
       .data(graphData.nodes)
       .enter()
-      .append('circle')
-      .attr('r', 10)
+      .append('g')
+      .call(d3.drag()
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended) as any
+      );
+    
+    // Add node circles as background/hitarea
+    node.append('circle')
+      .attr('r', 16)
       .attr('fill', (d) => {
         switch(d.status) {
           case 'active': return '#10B981'; // green
@@ -123,11 +132,21 @@ export default function NodeGraph({ selectedBot }: NodeGraphProps) {
           default: return '#6B7280'; // gray
         }
       })
-      .call(d3.drag()
-        .on('start', dragstarted)
-        .on('drag', dragged)
-        .on('end', dragended) as any
-      );
+      .attr('fill-opacity', 0.7);
+    
+    // Add node icons
+    node.append('svg:g')
+      .attr('transform', 'translate(-16,-16)')
+      .attr('width', 32)
+      .attr('height', 32)
+      .html((d) => {
+        // Get the base URL for assets
+        const baseUrl = typeof window !== 'undefined' 
+          ? window.location.origin 
+          : (process.env.NEXT_PUBLIC_BASE_URL || '');
+        
+        return getNodeImagesSvgString(d, state.nodes, baseUrl);
+      });
     
     // Add labels to nodes
     const text = svg.append('g')
@@ -196,7 +215,7 @@ export default function NodeGraph({ selectedBot }: NodeGraphProps) {
     return () => {
       simulation.stop();
     };
-  }, [graphData]);
+  }, [graphData, state.nodes]);
   
   if (state.nodes.length === 0) {
     return (

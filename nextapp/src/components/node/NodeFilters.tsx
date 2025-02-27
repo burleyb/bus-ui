@@ -22,8 +22,8 @@ export default function NodeFilters({ selectedBot }: NodeFiltersProps) {
     const newBotId = e.target.value;
     setBotId(newBotId);
 
-    // Navigate to new URL with updated bot parameter
-    router.push(`/node${newBotId ? `?bot=${newBotId}` : ''}`);
+    // Navigate to new URL with updated bot parameter (changed from /node to /workflow)
+    router.push(`/workflow${newBotId ? `?bot=${newBotId}` : ''}`);
   };
 
   return (

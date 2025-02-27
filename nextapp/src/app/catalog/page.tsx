@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import CatalogList from '@/components/catalog/CatalogList';
@@ -8,15 +8,15 @@ import CatalogSearch from '@/components/catalog/CatalogSearch';
 import CatalogFilters from '@/components/catalog/CatalogFilters';
 import { useStats } from '@/context/ApiContext';
 
-export default function CatalogPage() {
+const CatalogPage = () => {
   // Use the useSearchParams hook instead of receiving as props
   const searchParams = useSearchParams();
   
-  // Get query parameters
-  const search = searchParams?.get('search') || '';
-  const type = searchParams?.get('type') || '';
-  const sort = searchParams?.get('sort') || 'id';
-  const order = searchParams?.get('order') || 'asc';
+  // Get query parameters with useMemo to prevent re-calculation on every render
+  const search = useMemo(() => searchParams?.get('search') || '', [searchParams]);
+  const type = useMemo(() => searchParams?.get('type') || '', [searchParams]);
+  const sort = useMemo(() => searchParams?.get('sort') || 'id', [searchParams]);
+  const order = useMemo(() => searchParams?.get('order') || 'asc', [searchParams]) as 'asc' | 'desc';
 
   // Initialize stats polling on catalog page load
   useStats();
@@ -35,7 +35,7 @@ export default function CatalogPage() {
             <CatalogFilters 
               activeType={type} 
               activeSort={sort}
-              activeOrder={order as 'asc' | 'desc'}
+              activeOrder={order}
             />
           </div>
         </div>
@@ -46,11 +46,13 @@ export default function CatalogPage() {
               search={search}
               type={type}
               sort={sort}
-              order={order as 'asc' | 'desc'}
+              order={order}
             />
           </Suspense>
         </div>
       </div>
     </div>
   );
-} 
+}
+
+export default React.memo(CatalogPage); 
