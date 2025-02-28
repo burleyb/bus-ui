@@ -23,7 +23,7 @@ export default function WorkflowViewPage() {
   });
   const [zoom, setZoom] = useState<number>(1);
   const [offset, setOffset] = useState<number[]>([0, 0]);
-  const [showStats, setShowStats] = useState<boolean>(false);
+  const [showStats, setShowStats] = useState<boolean>(true);
   
   // Reference to the filters component for auto-search functionality
   const filtersRef = useRef<{ openSearch: (initialText: string) => void } | null>(null);

@@ -32,7 +32,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
   const [bookmarks, setBookmarks] = useState<SavedBookmark[]>([]);
   const [isBookmarkDropdownOpen, setIsBookmarkDropdownOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [statsEnabled, setStatsEnabled] = useState(false);
+  const [statsEnabled, setStatsEnabled] = useState(true);
   
   // Get current URL hash parameters
   const getUrlParams = (): Record<string, any> => {
