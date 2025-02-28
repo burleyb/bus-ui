@@ -102,6 +102,32 @@ export default function WorkflowGraph({
   // Get the primary focus node (first one in the array)
   const primaryNode = selectedBot && selectedBot.length > 0 ? selectedBot[0] : '';
   
+  // Set up background color variable for node circles based on theme
+  useEffect(() => {
+    // Check if we're in dark mode
+    const isDarkMode = window.matchMedia && 
+      (window.matchMedia('(prefers-color-scheme: dark)').matches || 
+       document.documentElement.classList.contains('dark'));
+    
+    // Set the CSS variable based on theme
+    document.documentElement.style.setProperty(
+      '--bg-color', 
+      isDarkMode ? '#1f2937' : '#ffffff'
+    );
+    
+    // Listen for theme changes
+    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const handleChange = (e: MediaQueryListEvent) => {
+      document.documentElement.style.setProperty(
+        '--bg-color', 
+        e.matches ? '#1f2937' : '#ffffff'
+      );
+    };
+    
+    mediaQuery.addEventListener('change', handleChange);
+    return () => mediaQuery.removeEventListener('change', handleChange);
+  }, []);
+  
   // Read collapsed/expanded state from URL hash on initialization and when hash changes
   useEffect(() => {
     const parseCollapsedState = () => {
@@ -368,6 +394,25 @@ export default function WorkflowGraph({
     });
   }, [localOffset, localZoom, debouncedUpdateUrl]);
 
+  // Add a useEffect to update button visibility when hoveredNode changes
+  useEffect(() => {
+    if (!svgRef.current) return;
+    
+    // Hide all action buttons first
+    d3.select(svgRef.current)
+      .selectAll('.action-buttons')
+      .attr('opacity', 0)
+      .attr('pointer-events', 'none');
+    
+    // If there's a hovered node, show its action buttons
+    if (hoveredNode) {
+      d3.select(svgRef.current)
+        .selectAll(`.action-buttons[data-node-id="${hoveredNode}"]`)
+        .attr('opacity', 1)
+        .attr('pointer-events', 'all');
+    }
+  }, [hoveredNode]);
+
   // Prepare graph data based on selected focus node
   const graphData = React.useMemo<GraphData>(() => {
     const data: GraphData = { nodes: [], links: [] };
@@ -580,17 +625,16 @@ export default function WorkflowGraph({
       .attr("transform", `translate(${margin.left + currentOffset[0]},${margin.top + currentOffset[1]}) scale(${currentZoom})`);
     
     // Define arrow marker for links
-    svg.append("defs").append("marker")
-      .attr("id", "arrowhead")
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 20) // Position slightly before the target node
-      .attr("refY", 0)
-      .attr("orient", "auto")
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
-      .append("path")
-      .attr("d", "M0,-5L10,0L0,5")
-      .attr("fill", "#3182ce"); // Blue arrow
+    //   .attr("id", "arrowhead")
+    //   .attr("viewBox", "0 -5 10 10")
+    //   .attr("refX", 20) // Position slightly before the target node
+    //   .attr("refY", 0)
+    //   .attr("orient", "auto")
+    //   .attr("markerWidth", 6)
+    //   .attr("markerHeight", 6)
+    //   .append("path")
+    //   .attr("d", "M0,-5L10,0L0,5")
+    //   .attr("fill", "#3182ce"); // Blue arrow
     
     // Set positions based on node groups
     const innerWidth = width - margin.left - margin.right;
@@ -609,6 +653,9 @@ export default function WorkflowGraph({
         let x = innerWidth / 2;
         let y = innerHeight / 2;
         
+        // Calculate horizontal spacing based on graph structure
+        const horizontalSpacing = innerWidth * 0.25; // Consistent horizontal spacing between generations
+        
         if (node.group === 0) {
           // Parent nodes go left
           x = innerWidth * 0.25;
@@ -624,10 +671,10 @@ export default function WorkflowGraph({
           x = innerWidth / 2;
           y = innerHeight / 2;
         } else if (node.group === 2) {
-          // Child nodes go right
+          // Child nodes go right of parent with fixed distance
           x = innerWidth * 0.75;
           
-          // If multiple children, space them vertically
+          // If multiple children, space them vertically with equal spacing
           if (children.length > 1) {
             const index = children.findIndex(n => n.id === node.id);
             const spacing = innerHeight / (children.length + 1);
@@ -646,17 +693,41 @@ export default function WorkflowGraph({
       };
     });
     
-    // Create the simulation but don't apply forces for dragging
+    // Create the simulation with modified forces for better horizontal layout
     const simulation = d3.forceSimulation(nodesWithPositions as any)
       .force("link", d3.forceLink(graphData.links as any)
         .id((d: any) => d.id)
         .distance(180)
       )
-      .force("charge", d3.forceManyBody().strength(-400))
-      .force("center", d3.forceCenter(innerWidth / 2, innerHeight / 2))
-      .force("collide", d3.forceCollide().radius(70))
-      .force("x", d3.forceX().strength(0.1))
-      .stop(); // Start manually and control ticks
+      // Use stronger x positioning based on group
+      .force("x", d3.forceX().x((d: any) => {
+        if (d.group === 0) return innerWidth * 0.25; // Left side for parents
+        if (d.group === 1) return innerWidth * 0.5;  // Center for focus node
+        if (d.group === 2) return innerWidth * 0.75; // Right side for children
+        return innerWidth * 0.5; // Default to center
+      }).strength(0.5)) // Stronger x force for horizontal alignment
+      // Reduce y force for more horizontal layout
+      .force("y", d3.forceY((d: any) => {
+        // For children, distribute vertically based on their index
+        if (d.group === 2 && children.length > 1) {
+          const index = children.findIndex(n => n.id === d.id);
+          return (innerHeight / (children.length + 1)) * (index + 1);
+        }
+        // For parents, distribute vertically based on their index
+        if (d.group === 0 && parents.length > 1) {
+          const index = parents.findIndex(n => n.id === d.id);
+          return (innerHeight / (parents.length + 1)) * (index + 1);
+        }
+        // Default to center
+        return innerHeight / 2;
+      }).strength(0.3))
+      // Reduce charge force to let x positioning dominate
+      .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
+      // Add a small collision force to prevent overlap
+      .force("collide", d3.forceCollide().radius(50))
+      // Remove center force to prevent pulling focus node to center
+      // .force("center", d3.forceCenter(innerWidth / 2, innerHeight / 2))
+      .stop(); // Stop the simulation as we're controlling it manually
     
     // Fix positions of all nodes if we already have a layout
     if (initialLayoutComplete.current) {
@@ -689,15 +760,35 @@ export default function WorkflowGraph({
         
         if (!source || !target) return '';
         
-        // For 1-to-1 connections (no siblings), use straight lines
-        const sourceHasSiblings = nodesWithPositions.filter(n => 
-          n.group === source.group && n.id !== source.id
-        ).length > 0;
+        // Get node radius for positioning
+        const nodeRadius = 24;
         
-        const targetHasSiblings = nodesWithPositions.filter(n => 
-          n.group === target.group && n.id !== target.id
-        ).length > 0;
+        // Determine if this is a parent-child relationship
+        const isParentToChild = source.group === 0 && target.group === 1 || // Parent to focus
+                               source.group === 1 && target.group === 2;    // Focus to child
+                               
+        const isChildToParent = source.group === 2 && target.group === 1 || // Child to focus
+                               source.group === 1 && target.group === 0;    // Focus to parent
+                               
+        // Count siblings for positioning
+        let siblings = [];
+        let siblingIndex = -1;
+        let totalSiblings = 0;
+        let isMidline = false;
         
+        if (isParentToChild && target.group === 2) {
+          // Target is a child, count all children
+          siblings = children;
+          siblingIndex = children.findIndex(n => n.id === target.id);
+          totalSiblings = children.length;
+        } else if (isChildToParent && source.group === 0) {
+          // Source is a parent, count all parents
+          siblings = parents;
+          siblingIndex = parents.findIndex(n => n.id === source.id);
+          totalSiblings = parents.length;
+        }
+        
+        // Basic coordinates
         const x1 = source.x;
         const y1 = source.y;
         const x2 = target.x;
@@ -712,22 +803,48 @@ export default function WorkflowGraph({
         const nx = dx / distance;
         const ny = dy / distance;
         
-        // Calculate points at the edge of the circles (radius = 24)
-        const nodeRadius = 24;
+        // Calculate points at the edge of the circles
         const sourceX = x1 + (nx * nodeRadius);
         const sourceY = y1 + (ny * nodeRadius);
         const targetX = x2 - (nx * nodeRadius);
         const targetY = y2 - (ny * nodeRadius);
         
-        // For perfectly horizontal 1-to-1 connections with no siblings
-        if (!sourceHasSiblings && !targetHasSiblings && Math.abs(y1 - y2) < 1) {
+        // Case 1: Single child or parent - draw straight horizontal line
+        if ((isParentToChild || isChildToParent) && totalSiblings === 1) {
           return `M${sourceX},${sourceY}L${targetX},${targetY}`;
         }
         
-        // Otherwise use curved lines
+        // Case 2: Multiple children/parents - determine position relative to midline
+        if ((isParentToChild || isChildToParent) && totalSiblings > 1) {
+          const midIndex = Math.floor(totalSiblings / 2);
+          
+          // Check if this node should be on the midline (when odd number of siblings)
+          if (totalSiblings % 2 !== 0 && siblingIndex === midIndex) {
+            // This is the middle child/parent, draw straight line
+            return `M${sourceX},${sourceY}L${targetX},${targetY}`;
+          }
+          
+          // Determine if above or below midline
+          const isAboveMidline = siblingIndex < midIndex;
+          
+          // Calculate control points for S-curve or reverse S-curve
+          const midX = (sourceX + targetX) / 2;
+          
+          // Control point offset scales with distance between nodes
+          const controlOffset = distance * 0.3; // 30% of the distance
+          
+          if (isAboveMidline) {
+            // S-curve for nodes above midline
+            return `M${sourceX},${sourceY} C${sourceX + controlOffset},${sourceY - controlOffset} ${targetX - controlOffset},${targetY - controlOffset} ${targetX},${targetY}`;
+          } else {
+            // Reverse S-curve for nodes below midline
+            return `M${sourceX},${sourceY} C${sourceX + controlOffset},${sourceY + controlOffset} ${targetX - controlOffset},${targetY + controlOffset} ${targetX},${targetY}`;
+          }
+        }
+        
         const newDx = targetX - sourceX;
         const newDy = targetY - sourceY;
-        const newDr = Math.sqrt(newDx * newDx + newDy * newDy) * 1.5; // Adjust curve
+        const newDr = Math.sqrt(newDx * newDx + newDy * newDy) * 6.5; // Adjust curve
         
         return `M${sourceX},${sourceY}A${newDr},${newDr} 0 0,1 ${targetX},${targetY}`;
       })
@@ -825,6 +942,20 @@ export default function WorkflowGraph({
         d3.select(tooltipRef.current).style("display", "none");
       });
     
+    // Add hover detection area FIRST (larger than the visible node)
+    nodeGroup.each(function(d: any) {
+      const nodeGroup = d3.select(this);
+      
+      // Add an invisible, larger circle for better hover detection
+      // Make it about 67% larger than the visible node circle (24px * 1.67 = 40px)
+      nodeGroup.append("circle")
+        .attr("r", 40)
+        .attr("fill", "transparent") // Completely transparent
+        .attr("stroke", "none")
+        .attr("pointer-events", "all") // Ensure it captures mouse events
+        .attr("class", "hover-detection-area");
+    });
+    
     // Add shadow circles for collapsed nodes
     nodeGroup.each(function(d: any) {
       const nodeGroup = d3.select(this);
@@ -843,12 +974,12 @@ export default function WorkflowGraph({
           for (let i = 0; i < Math.min(3, parentCount); i++) {
             nodeGroup.append("circle")
               .attr("r", 24)
-              .attr("cx", -5 - (i * 3))
-              .attr("cy", -5 - (i * 3))
+              .attr("cx", -8 - (i * 5))
+              .attr("cy", -8 - (i * 5))
               .attr("fill", "none")
               .attr("stroke", "#3182ce")
-              .attr("stroke-width", 1)
-              .attr("opacity", 0.2 - (i * 0.05));
+              .attr("stroke-width", 2)
+              .attr("opacity", 0.5 - (i * 0.1));
           }
         }
         
@@ -858,12 +989,12 @@ export default function WorkflowGraph({
           for (let i = 0; i < Math.min(3, childCount); i++) {
             nodeGroup.append("circle")
               .attr("r", 24)
-              .attr("cx", 5 + (i * 3))
-              .attr("cy", 5 + (i * 3))
+              .attr("cx", 8 + (i * 5))
+              .attr("cy", 8 + (i * 5))
               .attr("fill", "none")
               .attr("stroke", "#3182ce")
-              .attr("stroke-width", 1)
-              .attr("opacity", 0.2 - (i * 0.05));
+              .attr("stroke-width", 2)
+              .attr("opacity", 0.5 - (i * 0.1));
           }
         }
       }
@@ -873,17 +1004,16 @@ export default function WorkflowGraph({
     nodeGroup.each(function(d: any) {
       const nodeGroup = d3.select(this);
       
-      // Add circle for all queue nodes and bots in good states
+      // Add solid circle with stroke and solid background
       const goodStates = ['active', 'idle', 'running'];
       if ((d.type === 'bot' && goodStates.includes(d.status?.toLowerCase())) || 
           d.type === 'queue' || d.type === 'system') {
-        // Add solid circle with stroke
         nodeGroup.append("circle")
           .attr("r", 24)
-          .attr("fill", "none")
+          .attr("fill", "var(--bg-color, #ffffff)") // Use CSS variable with fallback to white
           .attr("stroke", "#3182ce")
           .attr("stroke-width", d.id === primaryNode ? 6 : 1.5) // Doubled thickness for selected node (from 3 to 6)
-          .attr("opacity", 0.8);
+          .attr("opacity", 1.0); // Full opacity to hide shadow circles
       }
     });
     
@@ -1011,12 +1141,13 @@ export default function WorkflowGraph({
     // Add floating action buttons that appear on hover
     nodeGroup.each(function(d: any) {
       const node = d3.select(this);
-      const radius = 32; // Distance from node center
-      const buttonRadius = 16; // Size of the action buttons
+      const radius = 50; // Increase distance from node center (was 32)
+      const buttonRadius = 15; // Increase size of the action buttons (was 16)
       
       // Create a group for the action buttons with initial opacity of 0
       const actionGroup = node.append("g")
         .attr("class", "action-buttons")
+        .attr("data-node-id", d.id) // Add data attribute to identify the node
         .attr("opacity", 0)
         .attr("pointer-events", "none");
       
@@ -1038,11 +1169,22 @@ export default function WorkflowGraph({
         .attr("fill", "#3182ce")
         .attr("opacity", 0.9);
       
-      // Add crosshair icon using SVG path
+      // Add crosshair icon using SVG path - made thicker
       selectButton.append("path")
-        .attr("d", "M15 3.75a.75.75 0 0 1 .75.75v2.25h2.25a.75.75 0 0 1 0 1.5H15.75V10.5a.75.75 0 0 1-1.5 0V8.25H12a.75.75 0 0 1 0-1.5h2.25V4.5a.75.75 0 0 1 .75-.75Zm-7.5 7.5a.75.75 0 0 1 .75.75v2.25h2.25a.75.75 0 0 1 0 1.5H8.25V18a.75.75 0 0 1-1.5 0v-2.25H4.5a.75.75 0 0 1 0-1.5h2.25V12a.75.75 0 0 1 .75-.75Z")
-        .attr("transform", "translate(-8, -8) scale(0.5)")
-        .attr("fill", "white");
+        .attr("d", "M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z")
+        .attr("transform", "translate(-10, -10) scale(0.75)")
+        .attr("fill", "none")
+        .attr("stroke", "white")
+        .attr("stroke-width", "1.5");
+      
+      // Add the crosshair lines
+      selectButton.append("path")
+        .attr("d", "M22 12h-4 M6 12H2 M12 6V2 M12 22v-4")
+        .attr("transform", "translate(-10, -10) scale(0.75)")
+        .attr("fill", "none")
+        .attr("stroke", "white")
+        .attr("stroke-width", "1.5")
+        .attr("stroke-linecap", "round");
       
       // On click, update URL to select this node
       selectButton.on("click", (event) => {
@@ -1074,7 +1216,7 @@ export default function WorkflowGraph({
       });
       
       // 2. Settings button (open node settings) at 2 o'clock
-      const pos2 = positionButton(Math.PI * 0.25);
+      const pos2 = positionButton(Math.PI * 0.29);
       const settingsButton = actionGroup.append("g")
         .attr("transform", `translate(${pos2.x},${pos2.y})`)
         .attr("cursor", "pointer");
@@ -1084,11 +1226,13 @@ export default function WorkflowGraph({
         .attr("fill", "#4a5568")
         .attr("opacity", 0.9);
       
-      // Add settings icon using SVG path
+      // Add settings icon using SVG path - made thicker
       settingsButton.append("path")
         .attr("d", "M9.594 3.094A1.5 1.5 0 0 1 11.07 4.5h.164a1.5 1.5 0 0 1 1.477 1.256l.133.792a1.5 1.5 0 0 0 1.732 1.132l.316-.07a1.5 1.5 0 0 1 1.706.8l.082.16a1.5 1.5 0 0 1-.292 1.841l-.63.54a1.5 1.5 0 0 0 0 2.25l.63.54a1.5 1.5 0 0 1 .292 1.841l-.082.16a1.5 1.5 0 0 1-1.706.8l-.316-.07a1.5 1.5 0 0 0-1.732 1.132l-.133.792A1.5 1.5 0 0 1 11.234 19h-.164a1.5 1.5 0 0 1-1.477-1.256l-.133-.792a1.5 1.5 0 0 0-1.732-1.132l-.316.07a1.5 1.5 0 0 1-1.706-.8l-.082-.16a1.5 1.5 0 0 1 .292-1.841l.63-.54a1.5 1.5 0 0 0 0-2.25l-.63-.54a1.5 1.5 0 0 1-.292-1.841l.082-.16a1.5 1.5 0 0 1 1.706-.8l.316.07a1.5 1.5 0 0 0 1.732-1.132l.133-.792ZM11 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z")
-        .attr("transform", "translate(-8, -8) scale(0.45)")
-        .attr("fill", "white");
+        .attr("transform", "translate(-10, -10) scale(0.85)") // Increased scale from 0.45
+        .attr("fill", "white")
+        .attr("stroke", "white")
+        .attr("stroke-width", "0.2");
       
       // On click, open node settings dialog
       settingsButton.on("click", (event) => {
@@ -1108,17 +1252,17 @@ export default function WorkflowGraph({
           .attr("fill", "#ed8936")
           .attr("opacity", 0.9);
         
-        // Add chevron icon using SVG path (right for expand, left for collapse)
+        // Add chevron icon using SVG path (right for expand, left for collapse) - made thicker
         const isCollapsed = collapsedState.collapsed.right.includes(d.id);
         childrenButton.append("path")
           .attr("d", isCollapsed 
             ? "M8.25 4.5l7.5 7.5-7.5 7.5" // Right chevron (expand)
             : "M15.75 19.5L8.25 12l7.5-7.5" // Left chevron (collapse)
           )
-          .attr("transform", "translate(-8, -8) scale(0.5)")
+          .attr("transform", "translate(-10, -10) scale(0.65)") // Increased scale from 0.5
           .attr("fill", "none")
           .attr("stroke", "white")
-          .attr("stroke-width", "3")
+          .attr("stroke-width", "4") // Increased from 3
           .attr("stroke-linecap", "round")
           .attr("stroke-linejoin", "round");
         
@@ -1141,17 +1285,17 @@ export default function WorkflowGraph({
           .attr("fill", "#38b2ac")
           .attr("opacity", 0.9);
         
-        // Add chevron icon using SVG path (left for expand, right for collapse)
+        // Add chevron icon using SVG path (left for expand, right for collapse) - made thicker
         const isCollapsed = collapsedState.collapsed.left.includes(d.id);
         parentsButton.append("path")
           .attr("d", isCollapsed 
             ? "M15.75 19.5L8.25 12l7.5-7.5" // Left chevron (expand)
             : "M8.25 4.5l7.5 7.5-7.5 7.5" // Right chevron (collapse)
           )
-          .attr("transform", "translate(-8, -8) scale(0.5)")
+          .attr("transform", "translate(-10, -10) scale(0.65)") // Increased scale from 0.5
           .attr("fill", "none")
           .attr("stroke", "white")
-          .attr("stroke-width", "3")
+          .attr("stroke-width", "4") // Increased from 3
           .attr("stroke-linecap", "round")
           .attr("stroke-linejoin", "round");
         
@@ -1160,13 +1304,6 @@ export default function WorkflowGraph({
           event.stopPropagation();
           toggleParentsCollapse(d.id);
         });
-      }
-      
-      // Show/hide action buttons on hover
-      if (hoveredNode === d.id) {
-        actionGroup
-          .attr("opacity", 1)
-          .attr("pointer-events", "all");
       }
     });
         
