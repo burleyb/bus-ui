@@ -728,7 +728,7 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
                 </button>
               ))}
             </div>
-          </div>
+        </div>
         )}
       </div>
       

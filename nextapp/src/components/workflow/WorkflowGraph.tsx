@@ -27,6 +27,7 @@ type Node = {
   status: string;
   type?: string;
   group?: number; // 0 = input, 1 = focus, 2 = output
+  generation?: number; // Generation level (negative for ancestors, positive for descendants)
   x?: number;
   y?: number;
   fx?: number;
@@ -431,37 +432,54 @@ export default function WorkflowGraph({
       return data;
     }
     
-    // Add the focus node
-    data.nodes.push({
-      id: primaryNode,
-      status: focusNodeData.status || 'unknown',
-      type: focusNodeData.type || 'unknown',
-      group: 1, // Focus node is always group 1
-      executions: focusNodeData.executions || 0,
-      errors: focusNodeData.errors || 0,
-      queues: focusNodeData.queues,
-      link_to: focusNodeData.link_to
-    });
+    // Track visited nodes to avoid cycles
+    const visited = new Set<string>();
     
-    // Add parent nodes (inputs to the focus node) if not collapsed
-    const isParentsCollapsed = collapsedState.collapsed.left.includes(primaryNode);
-    if (focusNodeData.link_to?.parent && Object.keys(focusNodeData.link_to.parent).length > 0 && !isParentsCollapsed) {
-      Object.keys(focusNodeData.link_to.parent).forEach(connId => {
-        const parentNode = state.nodes[connId];
-        if (parentNode) {
-          // Add parent node
-          data.nodes.push({
-            id: connId,
-            status: parentNode.status || 'unknown',
-            type: parentNode.type || 'unknown',
-            group: 0, // Parent/input nodes are group 0
-            executions: parentNode.executions || 0,
-            errors: parentNode.errors || 0,
-            queues: parentNode.queues,
-            link_to: parentNode.link_to
-          });
+    // Helper function to add a node to the graph data
+    const addNodeToGraph = (nodeId: string, generation: number, group: number) => {
+      if (visited.has(nodeId)) return;
+      
+      const nodeData = state.nodes[nodeId];
+      if (!nodeData) return;
+      
+      visited.add(nodeId);
+      
+      data.nodes.push({
+        id: nodeId,
+        status: nodeData.status || 'unknown',
+        type: nodeData.type || 'unknown',
+        group, // 0 = ancestor, 1 = focus, 2 = descendant
+        generation, // Negative for ancestors, 0 for focus, positive for descendants
+        executions: nodeData.executions || 0,
+        errors: nodeData.errors || 0,
+        queues: nodeData.queues,
+        link_to: nodeData.link_to
+      });
+    };
+    
+    // Add focus node to the graph
+    addNodeToGraph(primaryNode, 0, 1);
+    
+    // Recursively add ancestor nodes (parents and their parents)
+    const addAncestors = (nodeId: string, generation: number) => {
+      const nodeData = state.nodes[nodeId];
+      if (!nodeData || !nodeData.link_to?.parent) return;
+      
+      // Check if this node is collapsed
+      const isCollapsed = collapsedState.collapsed.left.includes(nodeId);
+      if (isCollapsed) return;
+      
+      // Add each parent
+      Object.keys(nodeData.link_to.parent).forEach(parentId => {
+        const parentNode = state.nodes[parentId];
+        if (!parentNode) return;
+        
+        // Check if we've already visited this node
+        if (!visited.has(parentId)) {
+          // Add parent node with generation - 1 (moving left)
+          addNodeToGraph(parentId, generation - 1, 0);
           
-          // Add link from parent to focus with stats if available
+          // Add link from parent to child
           const linkStats = {
             count: 0,
             last_time: '',
@@ -469,8 +487,8 @@ export default function WorkflowGraph({
           };
           
           // For queue->bot connection, get stats from bot's read queue data
-          if (parentNode.type === 'queue' && focusNodeData.type === 'bot' && focusNodeData.queues?.read) {
-            const readStats = focusNodeData.queues.read[connId];
+          if (parentNode.type === 'queue' && nodeData.type === 'bot' && nodeData.queues?.read) {
+            const readStats = nodeData.queues.read[parentId];
             if (readStats) {
               linkStats.count = readStats.count || 0;
               linkStats.lag = readStats.last_source_lag || 0;
@@ -478,8 +496,8 @@ export default function WorkflowGraph({
           }
           
           // For bot->queue connection, get stats from bot's write queue data
-          if (parentNode.type === 'bot' && focusNodeData.type === 'queue' && parentNode.queues?.write) {
-            const writeStats = parentNode.queues.write[focusNodeData.id];
+          if (parentNode.type === 'bot' && nodeData.type === 'queue' && parentNode.queues?.write) {
+            const writeStats = parentNode.queues.write[nodeId];
             if (writeStats) {
               linkStats.count = writeStats.count || 0;
               linkStats.last_time = writeStats.last_write || '';
@@ -487,34 +505,38 @@ export default function WorkflowGraph({
           }
           
           data.links.push({
-            source: connId,
-            target: primaryNode,
+            source: parentId,
+            target: nodeId,
             value: 1,
             stats: linkStats
           });
+          
+          // Recursively add ancestors of this parent
+          addAncestors(parentId, generation - 1);
         }
       });
-    }
+    };
     
-    // Add child nodes (outputs from the focus node) if not collapsed
-    const isChildrenCollapsed = collapsedState.collapsed.right.includes(primaryNode);
-    if (focusNodeData.link_to?.children && Object.keys(focusNodeData.link_to.children).length > 0 && !isChildrenCollapsed) {
-      Object.keys(focusNodeData.link_to.children).forEach(connId => {
-        const childNode = state.nodes[connId];
-        if (childNode) {
-          // Add child node
-          data.nodes.push({
-            id: connId,
-            status: childNode.status || 'unknown',
-            type: childNode.type || 'unknown',
-            group: 2, // Child/output nodes are group 2
-            executions: childNode.executions || 0,
-            errors: childNode.errors || 0,
-            queues: childNode.queues,
-            link_to: childNode.link_to
-          });
+    // Recursively add descendant nodes (children and their children)
+    const addDescendants = (nodeId: string, generation: number) => {
+      const nodeData = state.nodes[nodeId];
+      if (!nodeData || !nodeData.link_to?.children) return;
+      
+      // Check if this node is collapsed
+      const isCollapsed = collapsedState.collapsed.right.includes(nodeId);
+      if (isCollapsed) return;
+      
+      // Add each child
+      Object.keys(nodeData.link_to.children).forEach(childId => {
+        const childNode = state.nodes[childId];
+        if (!childNode) return;
+        
+        // Check if we've already visited this node
+        if (!visited.has(childId)) {
+          // Add child node with generation + 1 (moving right)
+          addNodeToGraph(childId, generation + 1, 2);
           
-          // Add link from focus to child with stats if available
+          // Add link from parent to child
           const linkStats = {
             count: 0,
             last_time: '',
@@ -522,8 +544,8 @@ export default function WorkflowGraph({
           };
           
           // For bot->queue connection, get stats from bot's write queue data
-          if (focusNodeData.type === 'bot' && childNode.type === 'queue' && focusNodeData.queues?.write) {
-            const writeStats = focusNodeData.queues.write[connId];
+          if (nodeData.type === 'bot' && childNode.type === 'queue' && nodeData.queues?.write) {
+            const writeStats = nodeData.queues.write[childId];
             if (writeStats) {
               linkStats.count = writeStats.count || 0;
               linkStats.last_time = writeStats.last_write || '';
@@ -531,8 +553,8 @@ export default function WorkflowGraph({
           }
           
           // For queue->bot connection, get stats from bot's read queue data
-          if (focusNodeData.type === 'queue' && childNode.type === 'bot' && childNode.queues?.read) {
-            const readStats = childNode.queues.read[focusNodeData.id];
+          if (nodeData.type === 'queue' && childNode.type === 'bot' && childNode.queues?.read) {
+            const readStats = childNode.queues.read[nodeId];
             if (readStats) {
               linkStats.count = readStats.count || 0;
               linkStats.lag = readStats.last_source_lag || 0;
@@ -540,14 +562,21 @@ export default function WorkflowGraph({
           }
           
           data.links.push({
-            source: primaryNode,
-            target: connId,
+            source: nodeId,
+            target: childId,
             value: 1,
             stats: linkStats
           });
+          
+          // Recursively add descendants of this child
+          addDescendants(childId, generation + 1);
         }
       });
-    }
+    };
+    
+    // Start recursive traversal from the focus node
+    addAncestors(primaryNode, 0);
+    addDescendants(primaryNode, 0);
     
     return data;
   }, [state.nodes, selectedBot, primaryNode, collapsedState]);
@@ -578,7 +607,7 @@ export default function WorkflowGraph({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
+  
   // Draw the graph when data changes
   useEffect(() => {
     drawGraph();
@@ -624,129 +653,334 @@ export default function WorkflowGraph({
     const g = svg.append("g")
       .attr("transform", `translate(${margin.left + currentOffset[0]},${margin.top + currentOffset[1]}) scale(${currentZoom})`);
     
-    // Define arrow marker for links
-    //   .attr("id", "arrowhead")
-    //   .attr("viewBox", "0 -5 10 10")
-    //   .attr("refX", 20) // Position slightly before the target node
-    //   .attr("refY", 0)
-    //   .attr("orient", "auto")
-    //   .attr("markerWidth", 6)
-    //   .attr("markerHeight", 6)
-    //   .append("path")
-    //   .attr("d", "M0,-5L10,0L0,5")
-    //   .attr("fill", "#3182ce"); // Blue arrow
-    
     // Set positions based on node groups
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
     
-    // Determine layout approach based on node relationships
-    const parents = graphData.nodes.filter(node => node.group === 0);
-    const focus = graphData.nodes.find(node => node.group === 1);
-    const children = graphData.nodes.filter(node => node.group === 2);
+    // =========================================================================
+    // NEW HIERARCHICAL TREE LAYOUT ALGORITHM
+    // =========================================================================
     
-    // Apply stored positions to nodes or generate new ones
-    const nodesWithPositions = graphData.nodes.map(node => {
-      // For new layout, position nodes based on left-to-right flow
-      if (!initialLayoutComplete.current || !fixedPositions[node.id]) {
-        // Default to center position
-        let x = innerWidth / 2;
-        let y = innerHeight / 2;
-        
-        // Calculate horizontal spacing based on graph structure
-        const horizontalSpacing = innerWidth * 0.25; // Consistent horizontal spacing between generations
-        
-        if (node.group === 0) {
-          // Parent nodes go left
-          x = innerWidth * 0.25;
-          
-          // If multiple parents, space them vertically
-          if (parents.length > 1) {
-            const index = parents.findIndex(n => n.id === node.id);
-            const spacing = innerHeight / (parents.length + 1);
-            y = spacing * (index + 1);
-          }
-        } else if (node.group === 1) {
-          // Focus node goes in the center
-          x = innerWidth / 2;
-          y = innerHeight / 2;
-        } else if (node.group === 2) {
-          // Child nodes go right of parent with fixed distance
-          x = innerWidth * 0.75;
-          
-          // If multiple children, space them vertically with equal spacing
-          if (children.length > 1) {
-            const index = children.findIndex(n => n.id === node.id);
-            const spacing = innerHeight / (children.length + 1);
-            y = spacing * (index + 1);
-          }
-        }
-        
-        return { ...node, x, y };
-      }
-      
-      // Use stored position for existing nodes
-      return { 
-        ...node, 
-        x: fixedPositions[node.id].x, 
-        y: fixedPositions[node.id].y
-      };
+    // STEP 1: Define constants for spacing and dimensions
+    const NODE_RADIUS = 24;
+    const MIN_NODE_SPACING = 240; // Increased vertical spacing between nodes (pixels)
+    const GENERATION_SPACING = 220; // Horizontal spacing between generations (pixels)
+    
+    // STEP 2: Build hierarchical tree structure
+    const nodeMap = new Map<string, {
+      node: Node,
+      children: string[],
+      parents: string[],
+      x: number,
+      y: number,
+      level: number, // Vertical level within a generation
+      totalLevels: number, // Total number of levels in this node's generation
+    }>();
+    
+    // Initialize nodeMap with all nodes
+    graphData.nodes.forEach(node => {
+      nodeMap.set(node.id, {
+        node,
+        children: [],
+        parents: [],
+        x: 0,
+        y: 0,
+        level: 0,
+        totalLevels: 1
+      });
     });
     
-    // Create the simulation with modified forces for better horizontal layout
-    const simulation = d3.forceSimulation(nodesWithPositions as any)
-      .force("link", d3.forceLink(graphData.links as any)
-        .id((d: any) => d.id)
-        .distance(180)
-      )
-      // Use stronger x positioning based on group
-      .force("x", d3.forceX().x((d: any) => {
-        if (d.group === 0) return innerWidth * 0.25; // Left side for parents
-        if (d.group === 1) return innerWidth * 0.5;  // Center for focus node
-        if (d.group === 2) return innerWidth * 0.75; // Right side for children
-        return innerWidth * 0.5; // Default to center
-      }).strength(0.5)) // Stronger x force for horizontal alignment
-      // Reduce y force for more horizontal layout
-      .force("y", d3.forceY((d: any) => {
-        // For children, distribute vertically based on their index
-        if (d.group === 2 && children.length > 1) {
-          const index = children.findIndex(n => n.id === d.id);
-          return (innerHeight / (children.length + 1)) * (index + 1);
+    // Populate parent-child relationships from links
+    graphData.links.forEach(link => {
+      const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+      const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+      
+      const sourceNode = nodeMap.get(sourceId);
+      const targetNode = nodeMap.get(targetId);
+      
+      if (sourceNode && targetNode) {
+        const sourceGen = sourceNode.node.generation || 0;
+        const targetGen = targetNode.node.generation || 0;
+        
+        // Determine direction based on generation
+        if (sourceGen < targetGen) {
+          // Source is parent of target
+          sourceNode.children.push(targetId);
+          targetNode.parents.push(sourceId);
+        } else if (targetGen < sourceGen) {
+          // Target is parent of source
+          targetNode.children.push(sourceId);
+          sourceNode.parents.push(targetId);
         }
-        // For parents, distribute vertically based on their index
-        if (d.group === 0 && parents.length > 1) {
-          const index = parents.findIndex(n => n.id === d.id);
-          return (innerHeight / (parents.length + 1)) * (index + 1);
-        }
-        // Default to center
-        return innerHeight / 2;
-      }).strength(0.3))
-      // Reduce charge force to let x positioning dominate
-      .force("charge", d3.forceManyBody().strength(-300).distanceMax(300))
-      // Add a small collision force to prevent overlap
-      .force("collide", d3.forceCollide().radius(50))
-      // Remove center force to prevent pulling focus node to center
-      // .force("center", d3.forceCenter(innerWidth / 2, innerHeight / 2))
-      .stop(); // Stop the simulation as we're controlling it manually
+      }
+    });
     
-    // Fix positions of all nodes if we already have a layout
-    if (initialLayoutComplete.current) {
-      nodesWithPositions.forEach((d: any) => {
-        d.fx = d.x;
-        d.fy = d.y;
+    // STEP 3: Collect nodes by generation and sort them
+    const nodesByGeneration = new Map<number, string[]>();
+    
+    graphData.nodes.forEach(node => {
+      const generation = node.generation || 0;
+      if (!nodesByGeneration.has(generation)) {
+        nodesByGeneration.set(generation, []);
+      }
+      nodesByGeneration.get(generation)!.push(node.id);
+    });
+    
+    // Get min and max generations
+    const allGenerations = Array.from(nodesByGeneration.keys()).sort((a, b) => a - b);
+    const minGeneration = allGenerations[0];
+    const maxGeneration = allGenerations[allGenerations.length - 1];
+    
+    // STEP 4: Set horizontal positions based on generation
+    const centerX = innerWidth / 2;
+    
+    // Horizontal placement - each generation gets a fixed x position
+    nodesByGeneration.forEach((nodeIds, generation) => {
+      nodeIds.forEach(nodeId => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (nodeInfo) {
+          // Calculate x position based on generation
+          nodeInfo.x = centerX + (generation * GENERATION_SPACING);
+        }
       });
-      simulation.tick(0); // Just update without moving
-    } else {
-      // Run simulation for a fixed number of ticks to position initial layout
-      simulation.tick(100);
+    });
+    
+    // STEP 5: Calculate vertical levels and positions using a tree layout algorithm
+    
+    // First, process generation 0 (focus node)
+    if (nodesByGeneration.has(0)) {
+      const gen0Nodes = nodesByGeneration.get(0)!;
+      const totalNodes = gen0Nodes.length;
       
-      // Store the final positions
-      nodesWithPositions.forEach((d: any) => {
-        fixedPositions[d.id] = { x: d.x, y: d.y };
+      // Place generation 0 nodes in the center vertically
+      gen0Nodes.forEach((nodeId, index) => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (nodeInfo) {
+          nodeInfo.level = index;
+          nodeInfo.totalLevels = totalNodes;
+          nodeInfo.y = innerHeight / 2 + (index - totalNodes / 2 + 0.5) * MIN_NODE_SPACING;
+        }
       });
-      
-      initialLayoutComplete.current = true;
     }
+    
+    // Process negative generations (ancestors) - work from generation 0 toward more negative
+    for (let gen = -1; gen >= minGeneration; gen--) {
+      if (!nodesByGeneration.has(gen)) continue;
+      
+      const currentGenNodes = nodesByGeneration.get(gen)!;
+      
+      // Group nodes by their children for proper positioning
+      const nodesByChildren = new Map<string, string[]>();
+      
+      currentGenNodes.forEach(nodeId => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (!nodeInfo) return;
+        
+        // Check if this node has children in the next generation
+        const childrenInNextGen = nodeInfo.children.filter(childId => {
+          const childInfo = nodeMap.get(childId);
+          return childInfo && childInfo.node.generation === gen + 1;
+        });
+        
+        if (childrenInNextGen.length > 0) {
+          // Use the first child as a grouping key
+          const primaryChildId = childrenInNextGen[0];
+          if (!nodesByChildren.has(primaryChildId)) {
+            nodesByChildren.set(primaryChildId, []);
+          }
+          nodesByChildren.get(primaryChildId)!.push(nodeId);
+        } else {
+          // Node has no children in next gen, treat it as an independent group
+          nodesByChildren.set(`orphan_${nodeId}`, [nodeId]);
+        }
+      });
+      
+      // Assign levels based on child positions
+      let currentLevel = 0;
+      
+      // Sort nodesByChildren by the Y position of their children
+      const sortedChildGroups = Array.from(nodesByChildren.entries())
+        .sort((a, b) => {
+          const aChildInfo = nodeMap.get(a[0].startsWith('orphan_') ? a[0].substring(7) : a[0]);
+          const bChildInfo = nodeMap.get(b[0].startsWith('orphan_') ? b[0].substring(7) : b[0]);
+          
+          if (!aChildInfo || !bChildInfo) return 0;
+          return aChildInfo.y - bChildInfo.y;
+        });
+      
+      // Now assign levels and calculate positions
+      sortedChildGroups.forEach(([childId, parentIds]) => {
+        // Sort parents for consistent ordering
+        parentIds.sort((a, b) => a.localeCompare(b));
+        
+        const totalParents = parentIds.length;
+        
+        // Position parents based on the child's position
+        parentIds.forEach((parentId, index) => {
+          const parentInfo = nodeMap.get(parentId);
+          if (!parentInfo) return;
+          
+          parentInfo.level = currentLevel + index;
+          
+          // If child exists, use its position as reference
+          if (!childId.startsWith('orphan_')) {
+            const childInfo = nodeMap.get(childId);
+            if (childInfo) {
+              // For a single parent, align directly with child
+              if (totalParents === 1) {
+                parentInfo.y = childInfo.y;
+              } 
+              // For multiple parents, distribute them around the child's position
+              else {
+                const offset = (index - (totalParents - 1) / 2) * MIN_NODE_SPACING;
+                parentInfo.y = childInfo.y + offset;
+              }
+            }
+          } else {
+            // For orphan nodes, place them at the top
+            parentInfo.y = currentLevel * MIN_NODE_SPACING;
+          }
+        });
+        
+        currentLevel += totalParents;
+      });
+      
+      // Update totalLevels for all nodes in this generation
+      currentGenNodes.forEach(nodeId => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (nodeInfo) {
+          nodeInfo.totalLevels = currentLevel;
+        }
+      });
+    }
+    
+    // Process positive generations (descendants) - work from generation 0 toward more positive
+    for (let gen = 1; gen <= maxGeneration; gen++) {
+      if (!nodesByGeneration.has(gen)) continue;
+      
+      const currentGenNodes = nodesByGeneration.get(gen)!;
+      
+      // Group nodes by their parents for proper positioning
+      const nodesByParents = new Map<string, string[]>();
+      
+      currentGenNodes.forEach(nodeId => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (!nodeInfo) return;
+        
+        // Check if this node has parents in the previous generation
+        const parentsInPrevGen = nodeInfo.parents.filter(parentId => {
+          const parentInfo = nodeMap.get(parentId);
+          return parentInfo && parentInfo.node.generation === gen - 1;
+        });
+        
+        if (parentsInPrevGen.length > 0) {
+          // Use the first parent as a grouping key
+          const primaryParentId = parentsInPrevGen[0];
+          if (!nodesByParents.has(primaryParentId)) {
+            nodesByParents.set(primaryParentId, []);
+          }
+          nodesByParents.get(primaryParentId)!.push(nodeId);
+        } else {
+          // Node has no parents in prev gen, treat it as an independent group
+          nodesByParents.set(`orphan_${nodeId}`, [nodeId]);
+        }
+      });
+      
+      // Assign levels based on parent positions
+      let currentLevel = 0;
+      
+      // Sort nodesByParents by the Y position of their parents
+      const sortedParentGroups = Array.from(nodesByParents.entries())
+        .sort((a, b) => {
+          const aParentInfo = nodeMap.get(a[0].startsWith('orphan_') ? a[0].substring(7) : a[0]);
+          const bParentInfo = nodeMap.get(b[0].startsWith('orphan_') ? b[0].substring(7) : b[0]);
+          
+          if (!aParentInfo || !bParentInfo) return 0;
+          return aParentInfo.y - bParentInfo.y;
+        });
+      
+      // Now assign levels and calculate positions
+      sortedParentGroups.forEach(([parentId, childIds]) => {
+        // Sort children for consistent ordering
+        childIds.sort((a, b) => a.localeCompare(b));
+        
+        const totalChildren = childIds.length;
+        
+        // Position children based on the parent's position
+        childIds.forEach((childId, index) => {
+          const childInfo = nodeMap.get(childId);
+          if (!childInfo) return;
+          
+          childInfo.level = currentLevel + index;
+          
+          // If parent exists, use its position as reference
+          if (!parentId.startsWith('orphan_')) {
+            const parentInfo = nodeMap.get(parentId);
+            if (parentInfo) {
+              // For a single child, align directly with parent
+              if (totalChildren === 1) {
+                childInfo.y = parentInfo.y;
+              } 
+              // For multiple children, distribute them around the parent's position
+              else {
+                const offset = (index - (totalChildren - 1) / 2) * MIN_NODE_SPACING;
+                childInfo.y = parentInfo.y + offset;
+              }
+            }
+          } else {
+            // For orphan nodes, place them at the top
+            childInfo.y = currentLevel * MIN_NODE_SPACING;
+          }
+        });
+        
+        currentLevel += totalChildren;
+      });
+      
+      // Update totalLevels for all nodes in this generation
+      currentGenNodes.forEach(nodeId => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (nodeInfo) {
+          nodeInfo.totalLevels = currentLevel;
+        }
+      });
+    }
+    
+    // STEP 6: Normalize vertical positions to center the graph
+    // Find the min and max Y values
+    let minY = Infinity;
+    let maxY = -Infinity;
+    
+    nodeMap.forEach(info => {
+      minY = Math.min(minY, info.y);
+      maxY = Math.max(maxY, info.y);
+    });
+    
+    // Calculate the vertical center offset
+    const heightRange = maxY - minY;
+    const centerY = innerHeight / 2;
+    const verticalOffset = centerY - (minY + heightRange / 2);
+    
+    // Apply the offset to center the graph vertically
+    nodeMap.forEach(info => {
+      info.y += verticalOffset;
+    });
+    
+    // STEP 7: Apply the calculated positions to each node
+    graphData.nodes.forEach(node => {
+      const nodeInfo = nodeMap.get(node.id);
+      if (nodeInfo) {
+        // Update node position
+        node.x = nodeInfo.x;
+        node.y = nodeInfo.y;
+        
+        // Store position for future reference
+        fixedPositions[node.id] = { x: nodeInfo.x, y: nodeInfo.y };
+      }
+    });
+    
+    // =========================================================================
+    // END OF NEW LAYOUT ALGORITHM
+    // =========================================================================
     
     // Create links - straight lines for 1-1, curved for others
     const link = g.append("g")
@@ -755,39 +989,30 @@ export default function WorkflowGraph({
       .data(graphData.links)
       .join("path")
       .attr("d", (d: any) => {
-        const source = typeof d.source === 'object' ? d.source : nodesWithPositions.find(n => n.id === d.source);
-        const target = typeof d.target === 'object' ? d.target : nodesWithPositions.find(n => n.id === d.target);
+        const source = typeof d.source === 'object' ? d.source : graphData.nodes.find(n => n.id === d.source);
+        const target = typeof d.target === 'object' ? d.target : graphData.nodes.find(n => n.id === d.target);
         
         if (!source || !target) return '';
         
-        // Get node radius for positioning
-        const nodeRadius = 24;
+        // Define constants for node sizing and connections
+        const NODE_RADIUS = 24;
+        const CONNECTION_OFFSET = NODE_RADIUS * 0.6; // 60% of the node radius for connections
         
         // Determine if this is a parent-child relationship
-        const isParentToChild = source.group === 0 && target.group === 1 || // Parent to focus
-                               source.group === 1 && target.group === 2;    // Focus to child
+        const sourceGen = source.generation || 0;
+        const targetGen = target.generation || 0;
+        const isParentToChild = sourceGen < targetGen;
+        const isChildToParent = sourceGen > targetGen;
                                
-        const isChildToParent = source.group === 2 && target.group === 1 || // Child to focus
-                               source.group === 1 && target.group === 0;    // Focus to parent
+        // Determine relationship type for styling
+        const relationType = 
+          (source.type === 'bot' && target.type === 'queue') ? 'write' as const :
+          (source.type === 'queue' && target.type === 'bot') ? 'read' as const : 
+          'default' as const;
+        
+        // Store relationship type on the link data for later use
+        d.relationType = relationType;
                                
-        // Count siblings for positioning
-        let siblings = [];
-        let siblingIndex = -1;
-        let totalSiblings = 0;
-        let isMidline = false;
-        
-        if (isParentToChild && target.group === 2) {
-          // Target is a child, count all children
-          siblings = children;
-          siblingIndex = children.findIndex(n => n.id === target.id);
-          totalSiblings = children.length;
-        } else if (isChildToParent && source.group === 0) {
-          // Source is a parent, count all parents
-          siblings = parents;
-          siblingIndex = parents.findIndex(n => n.id === source.id);
-          totalSiblings = parents.length;
-        }
-        
         // Basic coordinates
         const x1 = source.x;
         const y1 = source.y;
@@ -803,63 +1028,76 @@ export default function WorkflowGraph({
         const nx = dx / distance;
         const ny = dy / distance;
         
-        // Calculate points at the edge of the circles
-        const sourceX = x1 + (nx * nodeRadius);
-        const sourceY = y1 + (ny * nodeRadius);
-        const targetX = x2 - (nx * nodeRadius);
-        const targetY = y2 - (ny * nodeRadius);
+        // Calculate points closer to the center of the circles
+        const sourceX = x1 + (nx * CONNECTION_OFFSET);
+        const sourceY = y1 + (ny * CONNECTION_OFFSET);
+        const targetX = x2 - (nx * CONNECTION_OFFSET);
+        const targetY = y2 - (ny * CONNECTION_OFFSET);
         
-        // Case 1: Single child or parent - draw straight horizontal line
-        if ((isParentToChild || isChildToParent) && totalSiblings === 1) {
-          return `M${sourceX},${sourceY}L${targetX},${targetY}`;
-        }
+        // Check if this is a straight path (parent to single child or vice versa)
+        const sourceNodeInfo = nodeMap.get(source.id);
+        const targetNodeInfo = nodeMap.get(target.id);
         
-        // Case 2: Multiple children/parents - determine position relative to midline
-        if ((isParentToChild || isChildToParent) && totalSiblings > 1) {
-          const midIndex = Math.floor(totalSiblings / 2);
+        if (sourceNodeInfo && targetNodeInfo) {
+          const isDirectParentChild = 
+            (isParentToChild && sourceNodeInfo.children.length === 1) ||
+            (isChildToParent && targetNodeInfo.children.length === 1);
           
-          // Check if this node should be on the midline (when odd number of siblings)
-          if (totalSiblings % 2 !== 0 && siblingIndex === midIndex) {
-            // This is the middle child/parent, draw straight line
+          const isDirectChildParent = 
+            (isParentToChild && targetNodeInfo.parents.length === 1) ||
+            (isChildToParent && sourceNodeInfo.parents.length === 1);
+          
+          // For direct parent-child relationships use straight lines
+          if ((isDirectParentChild || isDirectChildParent) && Math.abs(sourceY - targetY) < 10) {
             return `M${sourceX},${sourceY}L${targetX},${targetY}`;
           }
-          
-          // Determine if above or below midline
-          const isAboveMidline = siblingIndex < midIndex;
-          
-          // Calculate control points for S-curve or reverse S-curve
-          const midX = (sourceX + targetX) / 2;
-          
-          // Control point offset scales with distance between nodes
-          const controlOffset = distance * 0.3; // 30% of the distance
-          
-          if (isAboveMidline) {
-            // S-curve for nodes above midline
-            return `M${sourceX},${sourceY} C${sourceX + controlOffset},${sourceY - controlOffset} ${targetX - controlOffset},${targetY - controlOffset} ${targetX},${targetY}`;
-          } else {
-            // Reverse S-curve for nodes below midline
-            return `M${sourceX},${sourceY} C${sourceX + controlOffset},${sourceY + controlOffset} ${targetX - controlOffset},${targetY + controlOffset} ${targetX},${targetY}`;
-          }
         }
         
-        const newDx = targetX - sourceX;
-        const newDy = targetY - sourceY;
-        const newDr = Math.sqrt(newDx * newDx + newDy * newDy) * 6.5; // Adjust curve
+        // For all other cases, use curved paths
+        // Calculate curve intensity - use more curve when vertical difference is larger
+        const verticalDifference = Math.abs(sourceY - targetY);
+        const curveIntensity = Math.max(0.3, Math.min(0.6, verticalDifference / 300));
         
-        return `M${sourceX},${sourceY}A${newDr},${newDr} 0 0,1 ${targetX},${targetY}`;
+        // S-curve for smooth transitions
+        // Create control points for a smooth S-curve
+        const cp1x = sourceX + (targetX - sourceX) * 0.3;
+        const cp1y = sourceY;
+        const cp2x = sourceX + (targetX - sourceX) * 0.7;
+        const cp2y = targetY;
+        
+        return `M${sourceX},${sourceY} C${cp1x},${cp1y} ${cp2x},${cp2y} ${targetX},${targetY}`;
       })
       .attr("fill", "none")
-      .attr("stroke", "#3182ce") // Blue links
+      .attr("stroke", (d: any) => {
+        // Different colors based on relationship type
+        const relationType = d.relationType || 'default';
+        const colorMap: Record<string, string> = {
+          'write': '#3182ce', // Blue for write relationships (bot->queue)
+          'read': '#3182ce',  // Purple for read relationships (queue->bot)
+          'default': '#3182ce' // Default blue
+        };
+        return colorMap[relationType];
+      })
       .attr("stroke-opacity", 0.8)
       .attr("stroke-width", 2)
-    
+      .attr("stroke-dasharray", (d: any) => {
+        // Different line styles based on relationship type
+        const relationType = d.relationType || 'default';
+        const dashMap: Record<string, string> = {
+          'write': '0',      // Solid line for write (bot->queue)
+          'read': '0',     // Dashed line for read (queue->bot)
+          'default': '0'     // Solid line for default
+        };
+        return dashMap[relationType];
+      });
+      
     // Add connection stats if stats toggle is on
     if (stats) {
       // Add stats above and below the link
       link.each(function(d: any) {
         const linkElement = d3.select(this);
-        const source = typeof d.source === 'object' ? d.source : nodesWithPositions.find(n => n.id === d.source);
-        const target = typeof d.target === 'object' ? d.target : nodesWithPositions.find(n => n.id === d.target);
+        const source = typeof d.source === 'object' ? d.source : graphData.nodes.find(n => n.id === d.source);
+        const target = typeof d.target === 'object' ? d.target : graphData.nodes.find(n => n.id === d.target);
         
         if (!source || !target) return;
         
@@ -870,40 +1108,56 @@ export default function WorkflowGraph({
         const pathLength = path.getTotalLength();
         const midPoint = path.getPointAtLength(pathLength / 2);
         
-        const sourceNode = source as Node;
-        const targetNode = target as Node;
+        // Determine relationship type for styling
+        const relationType = d.relationType || 'default';
+        const relationColor = relationType === 'write' ? '#3182ce' : relationType === 'read' ? '#805ad5' : '#3182ce';
+        
+        // Create a group for this link's stats
+        const statsGroup = g.append("g")
+          .attr("class", "link-stats")
+          .attr("transform", `translate(${midPoint.x},${midPoint.y})`);
+          
+        // Add background rect for better readability
+        statsGroup.append("rect")
+          .attr("x", -30)
+          .attr("y", -18)
+          .attr("width", 60)
+          .attr("height", 36)
+          .attr("rx", 4)
+          .attr("fill", "white")
+          .attr("fill-opacity", 0.8)
+          .attr("stroke", relationColor)
+          .attr("stroke-width", 1)
+          .attr("stroke-opacity", 0.5);
         
         // Add count (events) above the line
         const count = d.stats?.count || 0;
-        g.append("text")
-          .attr("x", midPoint.x)
-          .attr("y", midPoint.y - 10)
+        statsGroup.append("text")
           .attr("text-anchor", "middle")
           .attr("font-size", "10px")
-          .attr("fill", "#3182ce")
-          .text(`${count}`);
+          .attr("fill", relationColor)
+          .attr("y", -5)
+          .text(`Events: ${count}`);
         
         // Add timing or lag information below the line
-        if (sourceNode.type === 'bot' && targetNode.type === 'queue') {
+        if (relationType === 'write') {
           // Bot -> Queue shows last write time
           const timeAgo = d.stats?.last_time ? formatTimeAgo(d.stats.last_time) : '-';
-          g.append("text")
-            .attr("x", midPoint.x)
-            .attr("y", midPoint.y + 15)
+          statsGroup.append("text")
             .attr("text-anchor", "middle")
             .attr("font-size", "10px")
-            .attr("fill", "#3182ce")
-            .text(timeAgo);
-        } else if (sourceNode.type === 'queue' && targetNode.type === 'bot') {
+            .attr("fill", relationColor)
+            .attr("y", 12)
+            .text(`Last: ${timeAgo}`);
+        } else if (relationType === 'read') {
           // Queue -> Bot shows lag
           const lag = d.stats?.lag || 0;
-          g.append("text")
-            .attr("x", midPoint.x)
-            .attr("y", midPoint.y + 15)
+          statsGroup.append("text")
             .attr("text-anchor", "middle")
             .attr("font-size", "10px")
-            .attr("fill", lag > 1000 ? "#e53e3e" : "#3182ce")
-            .text(lag > 0 ? `${lag}ms lag` : '-');
+            .attr("fill", lag > 1000 ? "#e53e3e" : relationColor)
+            .attr("y", 12)
+            .text(`Lag: ${lag}ms`);
         }
       });
     }
@@ -917,10 +1171,13 @@ export default function WorkflowGraph({
     const nodeGroup = g.append("g")
       .attr("class", "nodes")
       .selectAll("g")
-      .data(nodesWithPositions)
+      .data(graphData.nodes)
       .join("g")
       .attr("cursor", "pointer")
-      .attr("transform", (d: any) => `translate(${d.x},${d.y})`)
+      .attr("transform", (d: any) => {
+        // Use the positions calculated by our hierarchical layout
+        return `translate(${d.x},${d.y})`;
+      })
       .on("mouseover", (event, d) => {
         setHoveredNode(d.id);
         
@@ -930,6 +1187,7 @@ export default function WorkflowGraph({
           .html(`
             <div class="font-medium">${d.id}</div>
             <div>Type: ${d.type}</div>
+            <div>Generation: ${d.generation || 0}</div>
             <div>Status: ${d.status}</div>
             <div>Executions: ${d.executions || 0}</div>
             <div>Errors: ${d.errors || 0}</div>
@@ -940,6 +1198,11 @@ export default function WorkflowGraph({
       .on("mouseout", () => {
         setHoveredNode(null);
         d3.select(tooltipRef.current).style("display", "none");
+      })
+      .on("click", (event, d) => {
+        if (!event.defaultPrevented) {
+          openNodeSettingsDialog(d.id);
+        }
       });
     
     // Add hover detection area FIRST (larger than the visible node)
@@ -999,6 +1262,42 @@ export default function WorkflowGraph({
         }
       }
     });
+
+    // Define node shape utility functions
+    const getNodeShape = (status: string): string => {
+      const shapes: Record<string, string> = {
+        danger: 'delta',
+        blocked: 'octogon',
+        rogue: 'octogon'
+      };
+      return shapes[status?.toLowerCase()] || 'circle';
+    };
+    
+    // Add shape path definition function
+    const getShapePath = (shape: string, radius: number): string => {
+      switch (shape) {
+        case 'delta': // Triangle shape for danger status
+          return `M 0,-${radius} L ${radius * 0.866},${radius * 0.5} L -${radius * 0.866},${radius * 0.5} Z`;
+        
+        case 'octogon': // Octagon shape for blocked or rogue status
+          const octRadius = radius * 0.7071; // cos(45°) to keep octagon size similar to circle
+          return `
+            M ${octRadius},${octRadius * 0.4142} 
+            L ${octRadius * 0.4142},${octRadius} 
+            L -${octRadius * 0.4142},${octRadius} 
+            L -${octRadius},${octRadius * 0.4142} 
+            L -${octRadius},-${octRadius * 0.4142} 
+            L -${octRadius * 0.4142},-${octRadius} 
+            L ${octRadius * 0.4142},-${octRadius} 
+            L ${octRadius},-${octRadius * 0.4142} 
+            Z
+          `;
+        
+        case 'circle':
+        default:
+          return ''; // No path for circle, we'll use the circle element
+      }
+    };
     
     // Add circle around node for queue nodes and all active bots
     nodeGroup.each(function(d: any) {
@@ -1014,6 +1313,26 @@ export default function WorkflowGraph({
           .attr("stroke", "#3182ce")
           .attr("stroke-width", d.id === primaryNode ? 6 : 1.5) // Doubled thickness for selected node (from 3 to 6)
           .attr("opacity", 1.0); // Full opacity to hide shadow circles
+      } else {
+        // For nodes with special status, use the appropriate shape
+        const nodeShape = getNodeShape(d.status);
+        
+        if (nodeShape === 'circle') {
+          nodeGroup.append("circle")
+            .attr("r", 24)
+            .attr("fill", "var(--bg-color, #ffffff)")
+            .attr("stroke", d.status === 'danger' ? "#e53e3e" : "#3182ce") // Red stroke for danger
+            .attr("stroke-width", d.id === primaryNode ? 6 : 1.5)
+            .attr("opacity", 1.0);
+        } else {
+          // Draw shape based on status
+          nodeGroup.append("path")
+            .attr("d", getShapePath(nodeShape, 24))
+            .attr("fill", "var(--bg-color, #ffffff)")
+            .attr("stroke", nodeShape === 'delta' ? "#e53e3e" : "#3182ce") // Different stroke for different shapes
+            .attr("stroke-width", d.id === primaryNode ? 6 : 1.5)
+            .attr("opacity", 1.0);
+        }
       }
     });
     
@@ -1306,71 +1625,6 @@ export default function WorkflowGraph({
         });
       }
     });
-        
-    // Fix node dragging to only work with specific drag handlers
-    function dragstarted(event: any, d: any) {
-      d.isDragging = true;
-    }
-    
-    function dragged(event: any, d: any) {
-      // Directly update position
-      d.x = event.x;
-      d.y = event.y;
-      
-      // Update fixed position during drag
-      d.fx = event.x;
-      d.fy = event.y;
-      
-      // Use the event source element
-      const draggedNode = d3.select(event.sourceEvent.target.closest('.nodes > g'));
-      draggedNode.attr("transform", `translate(${event.x},${event.y})`);
-      
-      // Update connected links
-      link.filter((l: any) => {
-        const sourceId = typeof l.source === 'object' ? l.source.id : l.source;
-        const targetId = typeof l.target === 'object' ? l.target.id : l.target;
-        return sourceId === d.id || targetId === d.id;
-      }).attr("d", (l: any) => {
-        const source = typeof l.source === 'object' ? l.source : nodesWithPositions.find(n => n.id === l.source);
-        const target = typeof l.target === 'object' ? l.target : nodesWithPositions.find(n => n.id === l.target);
-        
-        // Update source or target position based on which node is being dragged
-        const x1 = source.id === d.id ? d.x : source.x;
-        const y1 = source.id === d.id ? d.y : source.y;
-        const x2 = target.id === d.id ? d.x : target.x;
-        const y2 = target.id === d.id ? d.y : target.y;
-        
-        // Calculate direction vector
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Normalize direction vector
-        const nx = dx / distance;
-        const ny = dy / distance;
-        
-        // Calculate points at the edge of the circles (radius = 24)
-        const nodeRadius = 24;
-        const sourceX = x1 + (nx * nodeRadius);
-        const sourceY = y1 + (ny * nodeRadius);
-        const targetX = x2 - (nx * nodeRadius);
-        const targetY = y2 - (ny * nodeRadius);
-        
-        // Calculate curve
-        const newDx = targetX - sourceX;
-        const newDy = targetY - sourceY;
-        const newDr = Math.sqrt(newDx * newDx + newDy * newDy) * 1.5;
-        
-        return `M${sourceX},${sourceY}A${newDr},${newDr} 0 0,1 ${targetX},${targetY}`;
-      });
-    }
-    
-    function dragended(event: any, d: any) {
-      d.isDragging = false;
-      
-      // Update stored position
-      fixedPositions[d.id] = { x: d.x, y: d.y };
-    }
   };
   
   if (state.updatingStats && !graphData.nodes.length) {
@@ -1386,7 +1640,7 @@ export default function WorkflowGraph({
   
   // Show message when no focus node is selected
   if (noFocusMessage) {
-    return (
+  return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center max-w-md">
           <h3 className="text-xl font-medium text-gray-700 dark:text-gray-300 mb-2">Select a Focus Node</h3>
