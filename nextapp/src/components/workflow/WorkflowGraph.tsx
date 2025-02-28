@@ -208,13 +208,18 @@ export default function WorkflowGraph({
       hashData.collapsed = updatedCollapsed;
       hashData.expanded = updatedExpanded;
       
+      // Ensure stats parameter is preserved
+      if (hashData.stats === undefined) {
+        hashData.stats = stats; // Default to current stats value
+      }
+      
       // Update the URL hash
       const hashStr = JSON.stringify(hashData);
       window.location.hash = encodeURIComponent(hashStr);
     } catch (error) {
       console.error('Error updating URL hash:', error);
     }
-  }, [localOffset, localZoom, collapsedState]);
+  }, [localOffset, localZoom, collapsedState, stats]);
   
   // Debounced update function for smooth updates
   const debouncedUpdateUrl = useCallback(
@@ -239,7 +244,7 @@ export default function WorkflowGraph({
       const newZoom = Math.max(0.1, Math.min(5, localZoom * zoomFactor)); // Clamp between 0.1 and 5
       
       setLocalZoom(newZoom);
-      debouncedUpdateUrl(localOffset, newZoom);
+      debouncedUpdateUrl(localOffset, newZoom, collapsedState.collapsed, collapsedState.expanded);
     };
     
     const container = containerRef.current;
@@ -252,7 +257,7 @@ export default function WorkflowGraph({
         container.removeEventListener('wheel', handleWheel);
       }
     };
-  }, [localZoom, localOffset, debouncedUpdateUrl]);
+  }, [localZoom, localOffset, debouncedUpdateUrl, collapsedState]);
 
   // Handle mouse events for dragging the canvas - MOVED TO BEFORE CONDITIONAL RETURNS but AFTER debouncedUpdateUrl
   useEffect(() => {
@@ -300,7 +305,7 @@ export default function WorkflowGraph({
         document.body.style.cursor = 'default';
         
         // Update URL when drag ends
-        debouncedUpdateUrl(localOffset, localZoom);
+        debouncedUpdateUrl(localOffset, localZoom, collapsedState.collapsed, collapsedState.expanded);
       }
     };
     
@@ -313,7 +318,7 @@ export default function WorkflowGraph({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [localOffset, localZoom, debouncedUpdateUrl]);
+  }, [localOffset, localZoom, debouncedUpdateUrl, collapsedState]);
   
   // Helper function to check if a node is collapsed
   const isNodeCollapsed = useCallback((nodeId: string, direction: 'left' | 'right'): boolean => {
@@ -1224,41 +1229,39 @@ export default function WorkflowGraph({
       const nodeGroup = d3.select(this);
       
       // Add shadow circles for collapsed nodes
-      if (d.id === primaryNode) {
-        const hasCollapsedParents = collapsedState.collapsed.left.includes(d.id) && 
-          d.link_to?.parent && Object.keys(d.link_to.parent).length > 0;
-        
-        const hasCollapsedChildren = collapsedState.collapsed.right.includes(d.id) && 
-          d.link_to?.children && Object.keys(d.link_to.children).length > 0;
-        
-        if (hasCollapsedParents) {
-          // Add shadow circles for collapsed parents
-          const parentCount = Object.keys(d.link_to.parent).length;
-          for (let i = 0; i < Math.min(3, parentCount); i++) {
-            nodeGroup.append("circle")
-              .attr("r", 24)
-              .attr("cx", -8 - (i * 5))
-              .attr("cy", -8 - (i * 5))
-              .attr("fill", "none")
-              .attr("stroke", "#3182ce")
-              .attr("stroke-width", 2)
-              .attr("opacity", 0.5 - (i * 0.1));
-          }
+      const hasCollapsedParents = collapsedState.collapsed.left.includes(d.id) && 
+        d.link_to?.parent && Object.keys(d.link_to.parent).length > 0;
+      
+      const hasCollapsedChildren = collapsedState.collapsed.right.includes(d.id) && 
+        d.link_to?.children && Object.keys(d.link_to.children).length > 0;
+      
+      if (hasCollapsedParents) {
+        // Add shadow circles for collapsed parents
+        const parentCount = Object.keys(d.link_to.parent).length;
+        for (let i = 0; i < Math.min(3, parentCount); i++) {
+          nodeGroup.append("circle")
+            .attr("r", 24)
+            .attr("cx", -8 - (i * 5))
+            .attr("cy", -8 - (i * 5))
+            .attr("fill", "none")
+            .attr("stroke", "#3182ce")
+            .attr("stroke-width", 2)
+            .attr("opacity", 0.5 - (i * 0.1));
         }
-        
-        if (hasCollapsedChildren) {
-          // Add shadow circles for collapsed children
-          const childCount = Object.keys(d.link_to.children).length;
-          for (let i = 0; i < Math.min(3, childCount); i++) {
-            nodeGroup.append("circle")
-              .attr("r", 24)
-              .attr("cx", 8 + (i * 5))
-              .attr("cy", 8 + (i * 5))
-              .attr("fill", "none")
-              .attr("stroke", "#3182ce")
-              .attr("stroke-width", 2)
-              .attr("opacity", 0.5 - (i * 0.1));
-          }
+      }
+      
+      if (hasCollapsedChildren) {
+        // Add shadow circles for collapsed children
+        const childCount = Object.keys(d.link_to.children).length;
+        for (let i = 0; i < Math.min(3, childCount); i++) {
+          nodeGroup.append("circle")
+            .attr("r", 24)
+            .attr("cx", 8 + (i * 5))
+            .attr("cy", 8 + (i * 5))
+            .attr("fill", "none")
+            .attr("stroke", "#3182ce")
+            .attr("stroke-width", 2)
+            .attr("opacity", 0.5 - (i * 0.1));
         }
       }
     });
@@ -1448,13 +1451,15 @@ export default function WorkflowGraph({
       const lineCount = tspans.size() || 1; // At least 1 line
       
       // Add stats with position adjusted based on line count
-      nodeGroup.append("text")
-        .attr("text-anchor", "middle")
-        .attr("y", 36 + (lineCount * 14)) // Base position + adjustment for each line
-        .attr("font-size", "10px")
-        .html(() => {
-          return `<tspan fill="#3182ce">${d.executions || 0}</tspan>/<tspan fill="#e53e3e">${d.errors || 0}</tspan>`;
-        });
+      if(d.type === 'bot') {
+        nodeGroup.append("text")
+      .attr("text-anchor", "middle")
+          .attr("y", 36 + (lineCount * 14)) // Base position + adjustment for each line
+      .attr("font-size", "10px")
+          .html(() => {
+            return `<tspan fill="#3182ce">${d.executions || 0}</tspan>/<tspan fill="#e53e3e">${d.errors || 0}</tspan>`;
+          });
+      }
     });
     
     // Add floating action buttons that appear on hover
@@ -1549,7 +1554,7 @@ export default function WorkflowGraph({
       settingsButton.append("path")
         .attr("d", "M9.594 3.094A1.5 1.5 0 0 1 11.07 4.5h.164a1.5 1.5 0 0 1 1.477 1.256l.133.792a1.5 1.5 0 0 0 1.732 1.132l.316-.07a1.5 1.5 0 0 1 1.706.8l.082.16a1.5 1.5 0 0 1-.292 1.841l-.63.54a1.5 1.5 0 0 0 0 2.25l.63.54a1.5 1.5 0 0 1 .292 1.841l-.082.16a1.5 1.5 0 0 1-1.706.8l-.316-.07a1.5 1.5 0 0 0-1.732 1.132l-.133.792A1.5 1.5 0 0 1 11.234 19h-.164a1.5 1.5 0 0 1-1.477-1.256l-.133-.792a1.5 1.5 0 0 0-1.732-1.132l-.316.07a1.5 1.5 0 0 1-1.706-.8l-.082-.16a1.5 1.5 0 0 1 .292-1.841l.63-.54a1.5 1.5 0 0 0 0-2.25l-.63-.54a1.5 1.5 0 0 1-.292-1.841l.082-.16a1.5 1.5 0 0 1 1.706-.8l.316.07a1.5 1.5 0 0 0 1.732-1.132l.133-.792ZM11 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z")
         .attr("transform", "translate(-10, -10) scale(0.85)") // Increased scale from 0.45
-        .attr("fill", "white")
+      .attr("fill", "white")
         .attr("stroke", "white")
         .attr("stroke-width", "0.2");
       
@@ -1560,72 +1565,311 @@ export default function WorkflowGraph({
       });
       
       // 3. Children collapse/expand button at 3 o'clock (only for nodes with children)
-      if (d.id === primaryNode && d.link_to?.children && Object.keys(d.link_to.children).length > 0) {
-        const pos3 = positionButton(Math.PI * 0.5);
-        const childrenButton = actionGroup.append("g")
-          .attr("transform", `translate(${pos3.x},${pos3.y})`)
-          .attr("cursor", "pointer");
+      if (d.link_to?.children && Object.keys(d.link_to.children).length > 0) {
+        // Instead of checking for all children, we need to check for branches
+        // in the actual displayed graph nodes
         
-        childrenButton.append("circle")
-          .attr("r", buttonRadius)
-          .attr("fill", "#ed8936")
-          .attr("opacity", 0.9);
+        // First identify if this node has any descendants in the displayed graph
+        let hasDescendantsInGraph = false;
         
-        // Add chevron icon using SVG path (right for expand, left for collapse) - made thicker
-        const isCollapsed = collapsedState.collapsed.right.includes(d.id);
-        childrenButton.append("path")
-          .attr("d", isCollapsed 
-            ? "M8.25 4.5l7.5 7.5-7.5 7.5" // Right chevron (expand)
-            : "M15.75 19.5L8.25 12l7.5-7.5" // Left chevron (collapse)
-          )
-          .attr("transform", "translate(-10, -10) scale(0.65)") // Increased scale from 0.5
-          .attr("fill", "none")
-          .attr("stroke", "white")
-          .attr("stroke-width", "4") // Increased from 3
-          .attr("stroke-linecap", "round")
-          .attr("stroke-linejoin", "round");
+        // Find descendants that are actually in the current graph
+        const descendantsInGraph = graphData.nodes.filter(node => 
+          node.generation !== undefined && 
+          node.generation > 0 && 
+          d.link_to?.children && 
+          Object.keys(d.link_to.children).includes(node.id)
+        );
         
-        // On click, toggle children collapse state
-        childrenButton.on("click", (event) => {
-          event.stopPropagation();
-          toggleChildrenCollapse(d.id);
-        });
+        if (descendantsInGraph.length > 0) {
+          hasDescendantsInGraph = true;
+        }
+        
+        // Now check if any of those descendants have siblings that are also displayed in the graph
+        let allDescendantsHaveNoSiblingsInGraph = true;
+        
+        // For each link in our graph, check if any of our descendants have siblings
+        if (hasDescendantsInGraph) {
+          // First, create a map of nodes by generation to easily find siblings
+          const nodesByGeneration = new Map<number, string[]>();
+          
+          graphData.nodes.forEach(node => {
+            const generation = node.generation || 0;
+            if (!nodesByGeneration.has(generation)) {
+              nodesByGeneration.set(generation, []);
+            }
+            nodesByGeneration.get(generation)!.push(node.id);
+          });
+          
+          // Trace path down through descendants
+          let currentNode = d;
+          let currentGeneration = currentNode.generation || 0;
+          
+          // Keep track of visited nodes to avoid infinite loops
+          const visited = new Set<string>();
+          visited.add(currentNode.id);
+          
+          // While we're not at the newest generation and the node has children
+          while (currentGeneration < graphData.nodes.reduce((max, n) => 
+            (n.generation !== undefined && n.generation > max) ? n.generation : max, 0)) {
+            
+            // Find the child generation
+            const childGeneration = currentGeneration + 1;
+            
+            // Get all nodes in the child generation
+            const nodesInChildGeneration = nodesByGeneration.get(childGeneration) || [];
+            
+            // Find children of current node that are in the graph
+            const childrenInGraph = nodesInChildGeneration.filter(nodeId => {
+              // Check if this node is a child of the current node by checking links
+              return graphData.links.some(link => {
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                return sourceId === currentNode.id && targetId === nodeId;
+              });
+            });
+            
+            // If we have more than one child in the graph, we have branches
+            if (childrenInGraph.length > 1) {
+              allDescendantsHaveNoSiblingsInGraph = false;
+              break;
+            }
+            
+            // If we have no children in the graph, we're done
+            if (childrenInGraph.length === 0) {
+              break;
+            }
+            
+            // Move down to the child node
+            const childId = childrenInGraph[0];
+            const childNode = graphData.nodes.find(n => n.id === childId);
+            
+            // If we can't find the child or we've already visited it, stop
+            if (!childNode || visited.has(childId)) {
+              break;
+            }
+            
+            // For each child, check if it has multiple parents in the graph
+            const parentsInGraph = graphData.links
+              .filter(link => {
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                return targetId === childId;
+              })
+              .map(link => typeof link.source === 'object' ? link.source.id : link.source);
+            
+            // If the child has multiple parents in the graph, we have branches
+            if (parentsInGraph.length > 1) {
+              allDescendantsHaveNoSiblingsInGraph = false;
+              break;
+            }
+            
+            // Update for next iteration
+            currentNode = childNode;
+            currentGeneration = childNode.generation || 0;
+            visited.add(childNode.id);
+          }
+        }
+        
+        // Determine if node has potential descendants that are collapsed
+        const hasCollapsedDescendants = collapsedState.collapsed.right.includes(d.id) || 
+          Object.keys(d.link_to.children).some(childId => 
+            !graphData.nodes.some(node => node.id === childId)
+          );
+        
+        // Show the button if:
+        // 1. Node has descendants in the graph that form a linear path
+        // OR
+        // 2. Node has potential descendants that are collapsed (not shown in the graph)
+        if ((hasDescendantsInGraph && allDescendantsHaveNoSiblingsInGraph) || hasCollapsedDescendants) {
+          const pos3 = positionButton(Math.PI * 0.5);
+          const childrenButton = actionGroup.append("g")
+            .attr("transform", `translate(${pos3.x},${pos3.y})`)
+            .attr("cursor", "pointer");
+          
+          childrenButton.append("circle")
+            .attr("r", buttonRadius)
+            .attr("fill", "#ed8936")
+            .attr("opacity", 0.9);
+          
+          // Add chevron icon using SVG path (right for expand, left for collapse) - made thicker
+          const isCollapsed = collapsedState.collapsed.right.includes(d.id);
+          childrenButton.append("path")
+            .attr("d", isCollapsed 
+              ? "M8.25 4.5l7.5 7.5-7.5 7.5" // Right chevron (expand)
+              : "M15.75 19.5L8.25 12l7.5-7.5" // Left chevron (collapse)
+            )
+            .attr("transform", "translate(-10, -10) scale(0.65)") // Increased scale from 0.5
+            .attr("fill", "none")
+            .attr("stroke", "white")
+            .attr("stroke-width", "4") // Increased from 3
+            .attr("stroke-linecap", "round")
+            .attr("stroke-linejoin", "round");
+          
+          // On click, toggle children collapse state
+          childrenButton.on("click", (event) => {
+            event.stopPropagation();
+            toggleChildrenCollapse(d.id);
+          });
+        }
       }
       
       // 4. Parents collapse/expand button at 9 o'clock (only for nodes with parents)
-      if (d.id === primaryNode && d.link_to?.parent && Object.keys(d.link_to.parent).length > 0) {
-        const pos4 = positionButton(Math.PI * 1.5);
-        const parentsButton = actionGroup.append("g")
-          .attr("transform", `translate(${pos4.x},${pos4.y})`)
-          .attr("cursor", "pointer");
+      if (d.link_to?.parent && Object.keys(d.link_to.parent).length > 0) {
+        // Instead of checking for siblings in the data, we need to check for siblings
+        // in the actual displayed graph nodes
         
-        parentsButton.append("circle")
-          .attr("r", buttonRadius)
-          .attr("fill", "#38b2ac")
-          .attr("opacity", 0.9);
+        // First identify if this node has any ancestors in the displayed graph
+        let hasAncestorsInGraph = false;
         
-        // Add chevron icon using SVG path (left for expand, right for collapse) - made thicker
-        const isCollapsed = collapsedState.collapsed.left.includes(d.id);
-        parentsButton.append("path")
-          .attr("d", isCollapsed 
-            ? "M15.75 19.5L8.25 12l7.5-7.5" // Left chevron (expand)
-            : "M8.25 4.5l7.5 7.5-7.5 7.5" // Right chevron (collapse)
-          )
-          .attr("transform", "translate(-10, -10) scale(0.65)") // Increased scale from 0.5
-          .attr("fill", "none")
-          .attr("stroke", "white")
-          .attr("stroke-width", "4") // Increased from 3
-          .attr("stroke-linecap", "round")
-          .attr("stroke-linejoin", "round");
+        // Find ancestors that are actually in the current graph
+        const ancestorsInGraph = graphData.nodes.filter(node => 
+          node.generation !== undefined && 
+          node.generation < 0 && 
+          d.link_to?.parent && 
+          Object.keys(d.link_to.parent).includes(node.id)
+        );
         
-        // On click, toggle parents collapse state
-        parentsButton.on("click", (event) => {
-          event.stopPropagation();
-          toggleParentsCollapse(d.id);
-        });
+        if (ancestorsInGraph.length > 0) {
+          hasAncestorsInGraph = true;
+        }
+        
+        // Now check if any of those ancestors have siblings that are also displayed in the graph
+        let allAncestorsHaveNoSiblingsInGraph = true;
+        
+        // For each link in our graph, check if any of our ancestors have siblings
+        if (hasAncestorsInGraph) {
+          // First, create a map of nodes by generation to easily find siblings
+          const nodesByGeneration = new Map<number, string[]>();
+          
+          graphData.nodes.forEach(node => {
+            const generation = node.generation || 0;
+            if (!nodesByGeneration.has(generation)) {
+              nodesByGeneration.set(generation, []);
+            }
+            nodesByGeneration.get(generation)!.push(node.id);
+          });
+          
+          // Trace path up through ancestors
+          let currentNode = d;
+          let currentGeneration = currentNode.generation || 0;
+          
+          // Keep track of visited nodes to avoid infinite loops
+          const visited = new Set<string>();
+          visited.add(currentNode.id);
+          
+          // While we're not at the oldest generation and the node has parents
+          while (currentGeneration > graphData.nodes.reduce((min, n) => 
+            (n.generation !== undefined && n.generation < min) ? n.generation : min, 0)) {
+            
+            // Find the parent generation
+            const parentGeneration = currentGeneration - 1;
+            
+            // Get all nodes in the parent generation
+            const nodesInParentGeneration = nodesByGeneration.get(parentGeneration) || [];
+            
+            // Find parents of current node that are in the graph
+            const parentsInGraph = nodesInParentGeneration.filter(nodeId => {
+              // Check if this node is a parent of the current node by checking links
+              return graphData.links.some(link => {
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
+                return sourceId === nodeId && targetId === currentNode.id;
+              });
+            });
+            
+            // If we have more than one parent in the graph, we have branches
+            if (parentsInGraph.length > 1) {
+              allAncestorsHaveNoSiblingsInGraph = false;
+              break;
+            }
+            
+            // If we have no parents in the graph, we're done
+            if (parentsInGraph.length === 0) {
+              break;
+            }
+            
+            // Move up to the parent node
+            const parentId = parentsInGraph[0];
+            const parentNode = graphData.nodes.find(n => n.id === parentId);
+            
+            // If we can't find the parent or we've already visited it, stop
+            if (!parentNode || visited.has(parentId)) {
+              break;
+            }
+            
+            // For each parent, check if it has multiple children in the graph
+            const childrenInGraph = graphData.links
+              .filter(link => {
+                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+                return sourceId === parentId;
+              })
+              .map(link => typeof link.target === 'object' ? link.target.id : link.target);
+            
+            // If the parent has multiple children in the graph, we have branches
+            if (childrenInGraph.length > 1) {
+              allAncestorsHaveNoSiblingsInGraph = false;
+              break;
+            }
+            
+            // Update for next iteration
+            currentNode = parentNode;
+            currentGeneration = parentNode.generation || 0;
+            visited.add(parentNode.id);
+          }
+        }
+        
+        // Determine if node has potential ancestors that are collapsed
+        const hasCollapsedAncestors = collapsedState.collapsed.left.includes(d.id) || 
+          Object.keys(d.link_to.parent).some(parentId => 
+            !graphData.nodes.some(node => node.id === parentId)
+          );
+        
+        // Show the button if:
+        // 1. Node has ancestors in the graph that form a linear path
+        // OR
+        // 2. Node has potential ancestors that are collapsed (not shown in the graph)
+        if ((hasAncestorsInGraph && allAncestorsHaveNoSiblingsInGraph) || hasCollapsedAncestors) {
+          const pos4 = positionButton(Math.PI * 1.5);
+          const parentsButton = actionGroup.append("g")
+            .attr("transform", `translate(${pos4.x},${pos4.y})`)
+            .attr("cursor", "pointer");
+          
+          parentsButton.append("circle")
+            .attr("r", buttonRadius)
+            .attr("fill", "#38b2ac")
+            .attr("opacity", 0.9);
+          
+          // Add chevron icon using SVG path (left for expand, right for collapse) - made thicker
+          const isCollapsed = collapsedState.collapsed.left.includes(d.id);
+          parentsButton.append("path")
+            .attr("d", isCollapsed 
+              ? "M15.75 19.5L8.25 12l7.5-7.5" // Left chevron (expand)
+              : "M8.25 4.5l7.5 7.5-7.5 7.5" // Right chevron (collapse)
+            )
+            .attr("transform", "translate(-10, -10) scale(0.65)") // Increased scale from 0.5
+            .attr("fill", "none")
+            .attr("stroke", "white")
+            .attr("stroke-width", "4") // Increased from 3
+            .attr("stroke-linecap", "round")
+            .attr("stroke-linejoin", "round");
+          
+          // On click, toggle parents collapse state
+          parentsButton.on("click", (event) => {
+            event.stopPropagation();
+            toggleParentsCollapse(d.id);
+          });
+        }
       }
     });
   };
+  
+  // Effect to update URL hash when stats change to preserve collapsed/expanded state
+  useEffect(() => {
+    // Only update if there are actual nodes in the graph
+    if (graphData.nodes.length > 0) {
+      // Update hash with current state to preserve collapse/expand state when stats change
+      debouncedUpdateUrl(localOffset, localZoom, collapsedState.collapsed, collapsedState.expanded);
+    }
+  }, [stats, debouncedUpdateUrl, localOffset, localZoom, collapsedState, graphData.nodes.length]);
   
   if (state.updatingStats && !graphData.nodes.length) {
     return (

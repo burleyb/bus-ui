@@ -144,7 +144,17 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
   const handleStatsToggle = () => {
     const currentParams = getUrlParams();
     const currentStats = currentParams.stats || false;
-    updateUrlHash({ stats: !currentStats });
+    
+    // Preserve collapsed and expanded state
+    const collapsed = currentParams.collapsed || { left: [], right: [] };
+    const expanded = currentParams.expanded || { left: [], right: [] };
+    
+    // Update with new stats value while preserving other state
+    updateUrlHash({ 
+      stats: !currentStats,
+      collapsed,
+      expanded
+    });
   };
   
   // Save bookmark

@@ -102,7 +102,7 @@ export default function BotDashboardTab({ nodeData }: BotDashboardTabProps) {
           type="text"
           id="botTags"
           name="tags"
-          defaultValue={(nodeData.tags || []).join(', ')}
+          defaultValue={Array.isArray(nodeData.tags) ? nodeData.tags.join(', ') : ''}
           className="w-full rounded-md border border-gray-300 dark:border-gray-700 
                     bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
                     focus:ring-2 focus:ring-blue-500"

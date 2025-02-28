@@ -29,7 +29,7 @@ const QueueDashboardTab: React.FC<QueueDashboardTabProps> = ({ nodeData }) => {
         </label>
         <input
           type="text"
-          value={nodeData.name || ''}
+          defaultValue={nodeData.name || ''}
           className="w-full rounded-md border border-gray-300 dark:border-gray-700 
                     bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
                     focus:ring-2 focus:ring-blue-500"
@@ -42,7 +42,7 @@ const QueueDashboardTab: React.FC<QueueDashboardTabProps> = ({ nodeData }) => {
           Description
         </label>
         <textarea
-          value={nodeData.description || ''}
+          defaultValue={nodeData.description || ''}
           rows={3}
           className="w-full rounded-md border border-gray-300 dark:border-gray-700 
                     bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
@@ -56,7 +56,7 @@ const QueueDashboardTab: React.FC<QueueDashboardTabProps> = ({ nodeData }) => {
           Status
         </label>
         <select
-          value={nodeData.status || 'active'}
+          defaultValue={nodeData.status || 'active'}
           className="w-full rounded-md border border-gray-300 dark:border-gray-700 
                     bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
                     focus:ring-2 focus:ring-blue-500"
@@ -109,7 +109,7 @@ const QueueDashboardTab: React.FC<QueueDashboardTabProps> = ({ nodeData }) => {
         </label>
         <input
           type="number"
-          value={nodeData.retentionPeriod || 86400}
+          defaultValue={nodeData.retentionPeriod || 86400}
           className="w-full rounded-md border border-gray-300 dark:border-gray-700 
                     bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
                     focus:ring-2 focus:ring-blue-500"
@@ -126,7 +126,7 @@ const QueueDashboardTab: React.FC<QueueDashboardTabProps> = ({ nodeData }) => {
           Queue Type
         </label>
         <select
-          value={nodeData.queueType || 'standard'}
+          defaultValue={nodeData.queueType || 'standard'}
           className="w-full rounded-md border border-gray-300 dark:border-gray-700 
                     bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
                     focus:ring-2 focus:ring-blue-500"
