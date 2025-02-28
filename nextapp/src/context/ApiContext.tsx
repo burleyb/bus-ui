@@ -279,7 +279,7 @@ function ApiInitializer() {
   useSettings();
   
   // Initialize SDK configuration
-  useSdkConfig();
+  // useSdkConfig();
   
   // Initialize bots data
   // This is conditional since it may depend on other data being loaded first
