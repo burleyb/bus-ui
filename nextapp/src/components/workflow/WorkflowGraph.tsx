@@ -668,7 +668,7 @@ export default function WorkflowGraph({
     
     // STEP 1: Define constants for spacing and dimensions
     const NODE_RADIUS = 24;
-    const MIN_NODE_SPACING = 240; // Increased vertical spacing between nodes (pixels)
+    const MIN_NODE_SPACING = 240; // Fixed vertical spacing between sibling nodes (pixels)
     const GENERATION_SPACING = 220; // Horizontal spacing between generations (pixels)
     
     // STEP 2: Build hierarchical tree structure
@@ -680,6 +680,7 @@ export default function WorkflowGraph({
       y: number,
       level: number, // Vertical level within a generation
       totalLevels: number, // Total number of levels in this node's generation
+      branchHeight: number, // Height of the branch starting from this node
     }>();
     
     // Initialize nodeMap with all nodes
@@ -691,7 +692,8 @@ export default function WorkflowGraph({
         x: 0,
         y: 0,
         level: 0,
-        totalLevels: 1
+        totalLevels: 1,
+        branchHeight: 1, // Initially, each node has a branch height of 1 (itself)
       });
     });
     
@@ -763,25 +765,142 @@ export default function WorkflowGraph({
         if (nodeInfo) {
           nodeInfo.level = index;
           nodeInfo.totalLevels = totalNodes;
-          nodeInfo.y = innerHeight / 2 + (index - totalNodes / 2 + 0.5) * MIN_NODE_SPACING;
+          nodeInfo.y = (index - totalNodes / 2 + 0.5) * MIN_NODE_SPACING;
         }
       });
     }
     
-    // Process negative generations (ancestors) - work from generation 0 toward more negative
+    // FIRST PASS: Calculate branch heights from leaf nodes to roots
+    // Start from the maximum generation (leaf nodes) and work backwards
+    
+    // Process positive generations (descendants) first
+    for (let gen = maxGeneration; gen > 0; gen--) {
+      if (!nodesByGeneration.has(gen)) continue;
+      
+      const currentGenNodes = nodesByGeneration.get(gen)!;
+      
+      // For each node in this generation
+      currentGenNodes.forEach(nodeId => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (!nodeInfo) return;
+        
+        // For leaf nodes, branch height is 1 (already set)
+        // For non-leaf nodes, branch height is the sum of children's branch heights
+        if (nodeInfo.children.length === 0) {
+          nodeInfo.branchHeight = 1;
+        } else {
+          let totalChildBranchHeight = 0;
+          nodeInfo.children.forEach(childId => {
+            const childInfo = nodeMap.get(childId);
+            if (childInfo && childInfo.node.generation! > nodeInfo.node.generation!) {
+              totalChildBranchHeight += childInfo.branchHeight;
+            }
+          });
+          // If no forward children found, set minimum height of 1
+          nodeInfo.branchHeight = Math.max(1, totalChildBranchHeight);
+        }
+        
+        // Propagate branch height to parents
+        nodeInfo.parents.forEach(parentId => {
+          const parentInfo = nodeMap.get(parentId);
+          if (parentInfo && parentInfo.node.generation! < nodeInfo.node.generation!) {
+            // Parent's branch height will be updated when its generation is processed
+          }
+        });
+      });
+    }
+    
+    // Then process generation 0
+    if (nodesByGeneration.has(0)) {
+      const gen0Nodes = nodesByGeneration.get(0)!;
+      gen0Nodes.forEach(nodeId => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (!nodeInfo) return;
+        
+        // Calculate descendant branch height
+        let descendantBranchHeight = 0;
+        nodeInfo.children.forEach(childId => {
+          const childInfo = nodeMap.get(childId);
+          if (childInfo && childInfo.node.generation! > 0) {
+            descendantBranchHeight += childInfo.branchHeight;
+          }
+        });
+        
+        // Calculate ancestor branch height
+        let ancestorBranchHeight = 0;
+        nodeInfo.parents.forEach(parentId => {
+          const parentInfo = nodeMap.get(parentId);
+          if (parentInfo && parentInfo.node.generation! < 0) {
+            ancestorBranchHeight += parentInfo.branchHeight;
+          }
+        });
+        
+        // Branch height should account for both directions
+        nodeInfo.branchHeight = Math.max(1, Math.max(descendantBranchHeight, ancestorBranchHeight));
+      });
+    }
+    
+    // Finally process negative generations (ancestors)
     for (let gen = -1; gen >= minGeneration; gen--) {
       if (!nodesByGeneration.has(gen)) continue;
       
       const currentGenNodes = nodesByGeneration.get(gen)!;
       
-      // Group nodes by their children for proper positioning
+      // For each node in this generation
+      currentGenNodes.forEach(nodeId => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (!nodeInfo) return;
+        
+        // For leaf nodes, branch height is 1 (already set)
+        // For non-leaf nodes, branch height is the sum of children's branch heights
+        if (nodeInfo.parents.length === 0) {
+          nodeInfo.branchHeight = 1;
+        } else {
+          let totalParentBranchHeight = 0;
+          nodeInfo.parents.forEach(parentId => {
+            const parentInfo = nodeMap.get(parentId);
+            if (parentInfo && parentInfo.node.generation! < nodeInfo.node.generation!) {
+              totalParentBranchHeight += parentInfo.branchHeight;
+            }
+          });
+          // If no backward parents found, set minimum height of 1
+          nodeInfo.branchHeight = Math.max(1, totalParentBranchHeight);
+        }
+      });
+    }
+    
+    // SECOND PASS: Position nodes using branch heights for spacing
+    
+    // First, position generation 0 nodes (usually just one focus node)
+    if (nodesByGeneration.has(0)) {
+      const gen0Nodes = nodesByGeneration.get(0)!;
+      const totalNodes = gen0Nodes.length;
+      
+      let yOffset = 0;
+      gen0Nodes.forEach((nodeId, index) => {
+        const nodeInfo = nodeMap.get(nodeId);
+        if (nodeInfo) {
+          nodeInfo.y = yOffset;
+          // Add the node's branch height to the offset for the next node
+          yOffset += nodeInfo.branchHeight * MIN_NODE_SPACING;
+        }
+      });
+    }
+    
+    // Position negative generations (ancestors)
+    for (let gen = -1; gen >= minGeneration; gen--) {
+      if (!nodesByGeneration.has(gen)) continue;
+      
+      const currentGenNodes = nodesByGeneration.get(gen)!;
+      
+      // Group nodes by their children
       const nodesByChildren = new Map<string, string[]>();
       
       currentGenNodes.forEach(nodeId => {
         const nodeInfo = nodeMap.get(nodeId);
         if (!nodeInfo) return;
         
-        // Check if this node has children in the next generation
+        // Find children in the next generation
         const childrenInNextGen = nodeInfo.children.filter(childId => {
           const childInfo = nodeMap.get(childId);
           return childInfo && childInfo.node.generation === gen + 1;
@@ -800,79 +919,86 @@ export default function WorkflowGraph({
         }
       });
       
-      // Assign levels based on child positions
-      let currentLevel = 0;
-      
-      // Sort nodesByChildren by the Y position of their children
+      // Position nodes based on their relationships
       const sortedChildGroups = Array.from(nodesByChildren.entries())
         .sort((a, b) => {
-          const aChildInfo = nodeMap.get(a[0].startsWith('orphan_') ? a[0].substring(7) : a[0]);
-          const bChildInfo = nodeMap.get(b[0].startsWith('orphan_') ? b[0].substring(7) : b[0]);
+          const aChildId = a[0].startsWith('orphan_') ? a[0].substring(7) : a[0];
+          const bChildId = b[0].startsWith('orphan_') ? b[0].substring(7) : b[0];
+          
+          const aChildInfo = nodeMap.get(aChildId);
+          const bChildInfo = nodeMap.get(bChildId);
           
           if (!aChildInfo || !bChildInfo) return 0;
           return aChildInfo.y - bChildInfo.y;
         });
       
-      // Now assign levels and calculate positions
+      // Now position the parents
       sortedChildGroups.forEach(([childId, parentIds]) => {
         // Sort parents for consistent ordering
         parentIds.sort((a, b) => a.localeCompare(b));
         
-        const totalParents = parentIds.length;
-        
-        // Position parents based on the child's position
-        parentIds.forEach((parentId, index) => {
-          const parentInfo = nodeMap.get(parentId);
-          if (!parentInfo) return;
-          
-          parentInfo.level = currentLevel + index;
-          
-          // If child exists, use its position as reference
-          if (!childId.startsWith('orphan_')) {
-            const childInfo = nodeMap.get(childId);
-            if (childInfo) {
-              // For a single parent, align directly with child
-              if (totalParents === 1) {
+        if (!childId.startsWith('orphan_')) {
+          const childInfo = nodeMap.get(childId);
+          if (childInfo) {
+            // If only one parent, align directly with child
+            if (parentIds.length === 1) {
+              const parentInfo = nodeMap.get(parentIds[0]);
+              if (parentInfo) {
                 parentInfo.y = childInfo.y;
-              } 
-              // For multiple parents, distribute them around the child's position
-              else {
-                const offset = (index - (totalParents - 1) / 2) * MIN_NODE_SPACING;
-                parentInfo.y = childInfo.y + offset;
               }
+            } 
+            // If multiple parents, distribute based on branch heights
+            else {
+              // Calculate total branch height needed
+              let totalBranchHeight = 0;
+              parentIds.forEach(parentId => {
+                const parentInfo = nodeMap.get(parentId);
+                if (parentInfo) {
+                  totalBranchHeight += parentInfo.branchHeight;
+                }
+              });
+              
+              // Calculate starting Y position to center around the child
+              let startY = childInfo.y - (totalBranchHeight * MIN_NODE_SPACING) / 2;
+              
+              // Position each parent
+              parentIds.forEach(parentId => {
+                const parentInfo = nodeMap.get(parentId);
+                if (parentInfo) {
+                  parentInfo.y = startY + (parentInfo.branchHeight * MIN_NODE_SPACING) / 2;
+                  startY += parentInfo.branchHeight * MIN_NODE_SPACING;
+                }
+              });
             }
-          } else {
-            // For orphan nodes, place them at the top
-            parentInfo.y = currentLevel * MIN_NODE_SPACING;
           }
-        });
-        
-        currentLevel += totalParents;
-      });
-      
-      // Update totalLevels for all nodes in this generation
-      currentGenNodes.forEach(nodeId => {
-        const nodeInfo = nodeMap.get(nodeId);
-        if (nodeInfo) {
-          nodeInfo.totalLevels = currentLevel;
+        } else {
+          // For orphan nodes, place them with enough spacing
+          let currentY = 0;
+          parentIds.forEach(parentId => {
+            const parentInfo = nodeMap.get(parentId);
+            if (parentInfo) {
+              parentInfo.y = currentY;
+              currentY += parentInfo.branchHeight * MIN_NODE_SPACING;
+            }
+          });
         }
       });
     }
     
-    // Process positive generations (descendants) - work from generation 0 toward more positive
+    // Position positive generations (descendants)
     for (let gen = 1; gen <= maxGeneration; gen++) {
       if (!nodesByGeneration.has(gen)) continue;
       
       const currentGenNodes = nodesByGeneration.get(gen)!;
       
-      // Group nodes by their parents for proper positioning
+      // Group nodes by their parents
       const nodesByParents = new Map<string, string[]>();
       
       currentGenNodes.forEach(nodeId => {
         const nodeInfo = nodeMap.get(nodeId);
         if (!nodeInfo) return;
         
-        // Check if this node has parents in the previous generation
+        // Find parents in the previous generation
         const parentsInPrevGen = nodeInfo.parents.filter(parentId => {
           const parentInfo = nodeMap.get(parentId);
           return parentInfo && parentInfo.node.generation === gen - 1;
@@ -891,66 +1017,73 @@ export default function WorkflowGraph({
         }
       });
       
-      // Assign levels based on parent positions
-      let currentLevel = 0;
-      
-      // Sort nodesByParents by the Y position of their parents
+      // Position nodes based on their relationships
       const sortedParentGroups = Array.from(nodesByParents.entries())
         .sort((a, b) => {
-          const aParentInfo = nodeMap.get(a[0].startsWith('orphan_') ? a[0].substring(7) : a[0]);
-          const bParentInfo = nodeMap.get(b[0].startsWith('orphan_') ? b[0].substring(7) : b[0]);
+          const aParentId = a[0].startsWith('orphan_') ? a[0].substring(7) : a[0];
+          const bParentId = b[0].startsWith('orphan_') ? b[0].substring(7) : b[0];
+          
+          const aParentInfo = nodeMap.get(aParentId);
+          const bParentInfo = nodeMap.get(bParentId);
           
           if (!aParentInfo || !bParentInfo) return 0;
           return aParentInfo.y - bParentInfo.y;
         });
       
-      // Now assign levels and calculate positions
+      // Now position the children
       sortedParentGroups.forEach(([parentId, childIds]) => {
         // Sort children for consistent ordering
         childIds.sort((a, b) => a.localeCompare(b));
         
-        const totalChildren = childIds.length;
-        
-        // Position children based on the parent's position
-        childIds.forEach((childId, index) => {
-          const childInfo = nodeMap.get(childId);
-          if (!childInfo) return;
-          
-          childInfo.level = currentLevel + index;
-          
-          // If parent exists, use its position as reference
-          if (!parentId.startsWith('orphan_')) {
-            const parentInfo = nodeMap.get(parentId);
-            if (parentInfo) {
-              // For a single child, align directly with parent
-              if (totalChildren === 1) {
+        if (!parentId.startsWith('orphan_')) {
+          const parentInfo = nodeMap.get(parentId);
+          if (parentInfo) {
+            // If only one child, align directly with parent
+            if (childIds.length === 1) {
+              const childInfo = nodeMap.get(childIds[0]);
+              if (childInfo) {
                 childInfo.y = parentInfo.y;
-              } 
-              // For multiple children, distribute them around the parent's position
-              else {
-                const offset = (index - (totalChildren - 1) / 2) * MIN_NODE_SPACING;
-                childInfo.y = parentInfo.y + offset;
               }
+            } 
+            // If multiple children, distribute based on branch heights
+            else {
+              // Calculate total branch height needed
+              let totalBranchHeight = 0;
+              childIds.forEach(childId => {
+                const childInfo = nodeMap.get(childId);
+                if (childInfo) {
+                  totalBranchHeight += childInfo.branchHeight;
+                }
+              });
+              
+              // Calculate starting Y position to center around the parent
+              let startY = parentInfo.y - (totalBranchHeight * MIN_NODE_SPACING) / 2;
+              
+              // Position each child
+              childIds.forEach(childId => {
+                const childInfo = nodeMap.get(childId);
+                if (childInfo) {
+                  childInfo.y = startY + (childInfo.branchHeight * MIN_NODE_SPACING) / 2;
+                  startY += childInfo.branchHeight * MIN_NODE_SPACING;
+                }
+              });
             }
-          } else {
-            // For orphan nodes, place them at the top
-            childInfo.y = currentLevel * MIN_NODE_SPACING;
           }
-        });
-        
-        currentLevel += totalChildren;
-      });
-      
-      // Update totalLevels for all nodes in this generation
-      currentGenNodes.forEach(nodeId => {
-        const nodeInfo = nodeMap.get(nodeId);
-        if (nodeInfo) {
-          nodeInfo.totalLevels = currentLevel;
+        } else {
+          // For orphan nodes, place them with enough spacing
+          let currentY = 0;
+          childIds.forEach(childId => {
+            const childInfo = nodeMap.get(childId);
+            if (childInfo) {
+              childInfo.y = currentY;
+              currentY += childInfo.branchHeight * MIN_NODE_SPACING;
+            }
+          });
         }
       });
     }
     
-    // STEP 6: Normalize vertical positions to center the graph
+    // STEP 7: Normalize vertical positions to center the graph
     // Find the min and max Y values
     let minY = Infinity;
     let maxY = -Infinity;
@@ -960,17 +1093,16 @@ export default function WorkflowGraph({
       maxY = Math.max(maxY, info.y);
     });
     
-    // Calculate the vertical center offset
+    // Calculate the vertical offset to center the graph
     const heightRange = maxY - minY;
-    const centerY = innerHeight / 2;
-    const verticalOffset = centerY - (minY + heightRange / 2);
+    const verticalOffset = 100 - minY; // Start with a padding of 100px from the top
     
     // Apply the offset to center the graph vertically
     nodeMap.forEach(info => {
       info.y += verticalOffset;
     });
     
-    // STEP 7: Apply the calculated positions to each node
+    // STEP 8: Apply the calculated positions to each node
     graphData.nodes.forEach(node => {
       const nodeInfo = nodeMap.get(node.id);
       if (nodeInfo) {
@@ -1566,145 +1698,33 @@ export default function WorkflowGraph({
       
       // 3. Children collapse/expand button at 3 o'clock (only for nodes with children)
       if (d.link_to?.children && Object.keys(d.link_to.children).length > 0) {
-        // Instead of checking for all children, we need to check for branches
-        // in the actual displayed graph nodes
-        
-        // First identify if this node has any descendants in the displayed graph
-        let hasDescendantsInGraph = false;
-        
-        // Find descendants that are actually in the current graph
-        const descendantsInGraph = graphData.nodes.filter(node => 
-          node.generation !== undefined && 
-          node.generation > 0 && 
-          d.link_to?.children && 
-          Object.keys(d.link_to.children).includes(node.id)
-        );
-        
-        if (descendantsInGraph.length > 0) {
-          hasDescendantsInGraph = true;
-        }
-        
-        // Now check if any of those descendants have siblings that are also displayed in the graph
-        let allDescendantsHaveNoSiblingsInGraph = true;
-        
-        // For each link in our graph, check if any of our descendants have siblings
-        if (hasDescendantsInGraph) {
-          // First, create a map of nodes by generation to easily find siblings
-          const nodesByGeneration = new Map<number, string[]>();
-          
-          graphData.nodes.forEach(node => {
-            const generation = node.generation || 0;
-            if (!nodesByGeneration.has(generation)) {
-              nodesByGeneration.set(generation, []);
-            }
-            nodesByGeneration.get(generation)!.push(node.id);
-          });
-          
-          // Trace path down through descendants
-          let currentNode = d;
-          let currentGeneration = currentNode.generation || 0;
-          
-          // Keep track of visited nodes to avoid infinite loops
-          const visited = new Set<string>();
-          visited.add(currentNode.id);
-          
-          // While we're not at the newest generation and the node has children
-          while (currentGeneration < graphData.nodes.reduce((max, n) => 
-            (n.generation !== undefined && n.generation > max) ? n.generation : max, 0)) {
-            
-            // Find the child generation
-            const childGeneration = currentGeneration + 1;
-            
-            // Get all nodes in the child generation
-            const nodesInChildGeneration = nodesByGeneration.get(childGeneration) || [];
-            
-            // Find children of current node that are in the graph
-            const childrenInGraph = nodesInChildGeneration.filter(nodeId => {
-              // Check if this node is a child of the current node by checking links
-              return graphData.links.some(link => {
-                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-                return sourceId === currentNode.id && targetId === nodeId;
-              });
-            });
-            
-            // If we have more than one child in the graph, we have branches
-            if (childrenInGraph.length > 1) {
-              allDescendantsHaveNoSiblingsInGraph = false;
-              break;
-            }
-            
-            // If we have no children in the graph, we're done
-            if (childrenInGraph.length === 0) {
-              break;
-            }
-            
-            // Move down to the child node
-            const childId = childrenInGraph[0];
-            const childNode = graphData.nodes.find(n => n.id === childId);
-            
-            // If we can't find the child or we've already visited it, stop
-            if (!childNode || visited.has(childId)) {
-              break;
-            }
-            
-            // For each child, check if it has multiple parents in the graph
-            const parentsInGraph = graphData.links
-              .filter(link => {
-                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-                return targetId === childId;
-              })
-              .map(link => typeof link.source === 'object' ? link.source.id : link.source);
-            
-            // If the child has multiple parents in the graph, we have branches
-            if (parentsInGraph.length > 1) {
-              allDescendantsHaveNoSiblingsInGraph = false;
-              break;
-            }
-            
-            // Update for next iteration
-            currentNode = childNode;
-            currentGeneration = childNode.generation || 0;
-            visited.add(childNode.id);
-          }
-        }
-        
-        // Determine if node has potential descendants that are collapsed
-        const hasCollapsedDescendants = collapsedState.collapsed.right.includes(d.id) || 
-          Object.keys(d.link_to.children).some(childId => 
-            !graphData.nodes.some(node => node.id === childId)
-          );
-        
-        // Show the button if:
-        // 1. Node has descendants in the graph that form a linear path
-        // OR
-        // 2. Node has potential descendants that are collapsed (not shown in the graph)
-        if ((hasDescendantsInGraph && allDescendantsHaveNoSiblingsInGraph) || hasCollapsedDescendants) {
+        // Simplified button visibility rule:
+        // Show 3 o'clock button if node is in generation 0 or positive generation
+        const generation = d.generation || 0;
+        if (generation >= 0) {
           const pos3 = positionButton(Math.PI * 0.5);
           const childrenButton = actionGroup.append("g")
-            .attr("transform", `translate(${pos3.x},${pos3.y})`)
+            .attr("class", "action-button children-button")
+            .attr("transform", `translate(${pos3.x}, ${pos3.y})`)
             .attr("cursor", "pointer");
-          
+            
           childrenButton.append("circle")
             .attr("r", buttonRadius)
-            .attr("fill", "#ed8936")
-            .attr("opacity", 0.9);
-          
-          // Add chevron icon using SVG path (right for expand, left for collapse) - made thicker
-          const isCollapsed = collapsedState.collapsed.right.includes(d.id);
-          childrenButton.append("path")
-            .attr("d", isCollapsed 
-              ? "M8.25 4.5l7.5 7.5-7.5 7.5" // Right chevron (expand)
-              : "M15.75 19.5L8.25 12l7.5-7.5" // Left chevron (collapse)
-            )
-            .attr("transform", "translate(-10, -10) scale(0.65)") // Increased scale from 0.5
-            .attr("fill", "none")
+            .attr("fill", "#3b82f6") // Blue background
             .attr("stroke", "white")
-            .attr("stroke-width", "4") // Increased from 3
-            .attr("stroke-linecap", "round")
-            .attr("stroke-linejoin", "round");
+            .attr("stroke-width", 1.5);
           
-          // On click, toggle children collapse state
+          // Different icons for collapsed vs expanded (right chevron or X)
+          childrenButton.append("path")
+            .attr("d", collapsedState.collapsed.right.includes(d.id) 
+              ? "M-4,-6 L4,0 L-4,6" // Right-pointing chevron for collapsed
+              : "M4,-6 L-4,0 L4,6" // Left-pointing chevron for expanded
+            )
+            .attr("fill", collapsedState.collapsed.right.includes(d.id) ? "white" : "none")
+            .attr("stroke", "white")
+            .attr("stroke-width", 2)
+            .attr("stroke-linecap", "round");
+          
           childrenButton.on("click", (event) => {
             event.stopPropagation();
             toggleChildrenCollapse(d.id);
@@ -1714,145 +1734,33 @@ export default function WorkflowGraph({
       
       // 4. Parents collapse/expand button at 9 o'clock (only for nodes with parents)
       if (d.link_to?.parent && Object.keys(d.link_to.parent).length > 0) {
-        // Instead of checking for siblings in the data, we need to check for siblings
-        // in the actual displayed graph nodes
-        
-        // First identify if this node has any ancestors in the displayed graph
-        let hasAncestorsInGraph = false;
-        
-        // Find ancestors that are actually in the current graph
-        const ancestorsInGraph = graphData.nodes.filter(node => 
-          node.generation !== undefined && 
-          node.generation < 0 && 
-          d.link_to?.parent && 
-          Object.keys(d.link_to.parent).includes(node.id)
-        );
-        
-        if (ancestorsInGraph.length > 0) {
-          hasAncestorsInGraph = true;
-        }
-        
-        // Now check if any of those ancestors have siblings that are also displayed in the graph
-        let allAncestorsHaveNoSiblingsInGraph = true;
-        
-        // For each link in our graph, check if any of our ancestors have siblings
-        if (hasAncestorsInGraph) {
-          // First, create a map of nodes by generation to easily find siblings
-          const nodesByGeneration = new Map<number, string[]>();
-          
-          graphData.nodes.forEach(node => {
-            const generation = node.generation || 0;
-            if (!nodesByGeneration.has(generation)) {
-              nodesByGeneration.set(generation, []);
-            }
-            nodesByGeneration.get(generation)!.push(node.id);
-          });
-          
-          // Trace path up through ancestors
-          let currentNode = d;
-          let currentGeneration = currentNode.generation || 0;
-          
-          // Keep track of visited nodes to avoid infinite loops
-          const visited = new Set<string>();
-          visited.add(currentNode.id);
-          
-          // While we're not at the oldest generation and the node has parents
-          while (currentGeneration > graphData.nodes.reduce((min, n) => 
-            (n.generation !== undefined && n.generation < min) ? n.generation : min, 0)) {
-            
-            // Find the parent generation
-            const parentGeneration = currentGeneration - 1;
-            
-            // Get all nodes in the parent generation
-            const nodesInParentGeneration = nodesByGeneration.get(parentGeneration) || [];
-            
-            // Find parents of current node that are in the graph
-            const parentsInGraph = nodesInParentGeneration.filter(nodeId => {
-              // Check if this node is a parent of the current node by checking links
-              return graphData.links.some(link => {
-                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-                const targetId = typeof link.target === 'object' ? link.target.id : link.target;
-                return sourceId === nodeId && targetId === currentNode.id;
-              });
-            });
-            
-            // If we have more than one parent in the graph, we have branches
-            if (parentsInGraph.length > 1) {
-              allAncestorsHaveNoSiblingsInGraph = false;
-              break;
-            }
-            
-            // If we have no parents in the graph, we're done
-            if (parentsInGraph.length === 0) {
-              break;
-            }
-            
-            // Move up to the parent node
-            const parentId = parentsInGraph[0];
-            const parentNode = graphData.nodes.find(n => n.id === parentId);
-            
-            // If we can't find the parent or we've already visited it, stop
-            if (!parentNode || visited.has(parentId)) {
-              break;
-            }
-            
-            // For each parent, check if it has multiple children in the graph
-            const childrenInGraph = graphData.links
-              .filter(link => {
-                const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
-                return sourceId === parentId;
-              })
-              .map(link => typeof link.target === 'object' ? link.target.id : link.target);
-            
-            // If the parent has multiple children in the graph, we have branches
-            if (childrenInGraph.length > 1) {
-              allAncestorsHaveNoSiblingsInGraph = false;
-              break;
-            }
-            
-            // Update for next iteration
-            currentNode = parentNode;
-            currentGeneration = parentNode.generation || 0;
-            visited.add(parentNode.id);
-          }
-        }
-        
-        // Determine if node has potential ancestors that are collapsed
-        const hasCollapsedAncestors = collapsedState.collapsed.left.includes(d.id) || 
-          Object.keys(d.link_to.parent).some(parentId => 
-            !graphData.nodes.some(node => node.id === parentId)
-          );
-        
-        // Show the button if:
-        // 1. Node has ancestors in the graph that form a linear path
-        // OR
-        // 2. Node has potential ancestors that are collapsed (not shown in the graph)
-        if ((hasAncestorsInGraph && allAncestorsHaveNoSiblingsInGraph) || hasCollapsedAncestors) {
+        // Simplified button visibility rule:
+        // Show 9 o'clock button if node is in generation 0 or negative generation
+        const generation = d.generation || 0;
+        if (generation <= 0) {
           const pos4 = positionButton(Math.PI * 1.5);
           const parentsButton = actionGroup.append("g")
-            .attr("transform", `translate(${pos4.x},${pos4.y})`)
+            .attr("class", "action-button parents-button")
+            .attr("transform", `translate(${pos4.x}, ${pos4.y})`)
             .attr("cursor", "pointer");
-          
+            
           parentsButton.append("circle")
             .attr("r", buttonRadius)
-            .attr("fill", "#38b2ac")
-            .attr("opacity", 0.9);
-          
-          // Add chevron icon using SVG path (left for expand, right for collapse) - made thicker
-          const isCollapsed = collapsedState.collapsed.left.includes(d.id);
-          parentsButton.append("path")
-            .attr("d", isCollapsed 
-              ? "M15.75 19.5L8.25 12l7.5-7.5" // Left chevron (expand)
-              : "M8.25 4.5l7.5 7.5-7.5 7.5" // Right chevron (collapse)
-            )
-            .attr("transform", "translate(-10, -10) scale(0.65)") // Increased scale from 0.5
-            .attr("fill", "none")
+            .attr("fill", "#3b82f6") // Blue background
             .attr("stroke", "white")
-            .attr("stroke-width", "4") // Increased from 3
-            .attr("stroke-linecap", "round")
-            .attr("stroke-linejoin", "round");
+            .attr("stroke-width", 1.5);
+            
+            // Different icons for collapsed vs expanded (left chevron or X)
+            parentsButton.append("path")
+              .attr("d", collapsedState.collapsed.left.includes(d.id) 
+                ? "M4,-6 L-4,0 L4,6" // Left-pointing chevron for collapsed
+                : "M-4,-6 L4,0 L-4,6" // Right-pointing chevron for expanded
+              )
+              .attr("fill", collapsedState.collapsed.left.includes(d.id) ? "white" : "none")
+              .attr("stroke", "white")
+              .attr("stroke-width", 2)
+              .attr("stroke-linecap", "round");
           
-          // On click, toggle parents collapse state
           parentsButton.on("click", (event) => {
             event.stopPropagation();
             toggleParentsCollapse(d.id);
