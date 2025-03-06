@@ -547,6 +547,7 @@ export function WorkflowGraphRenderer({
       // Get node data including links
       const nodeData = state.nodes?.[d.originalId || d.id];
       const nodeId = d.originalId || d.id;
+      const isPrimaryNode = nodeId === primaryNode;
       
       // 1. Focus button (Crosshair icon) at 1 o'clock - should trigger double-click
       const pos1 = positionButton(Math.PI * 0.08);
@@ -614,6 +615,9 @@ export function WorkflowGraphRenderer({
         // Only show for generation 0 or positive
         const generation = d.generation || 0;
         if (generation >= 0) {
+          // Don't allow collapsing the primary node
+          if (isPrimaryNode) return;
+          
           const pos3 = positionButton(Math.PI * 0.5);
           const childrenButton = controls.append('g')
             .attr('class', 'children-button')
@@ -654,6 +658,9 @@ export function WorkflowGraphRenderer({
         // Only show for generation 0 or negative
         const generation = d.generation || 0;
         if (generation <= 0) {
+          // Don't allow collapsing the primary node
+          if (isPrimaryNode) return;
+          
           const pos4 = positionButton(Math.PI * 1.5);
           const parentsButton = controls.append('g')
             .attr('class', 'parents-button')
@@ -771,6 +778,26 @@ export function WorkflowGraphRenderer({
     onHoveredNodeChange,
     state.nodes
   ]);
+  
+  // Also, let's add a safeguard in the useEffect to always make sure the primary node isn't in collapsedState
+  useEffect(() => {
+    // Safeguard: ensure primary node is never in the collapsed state
+    if (primaryNode) {
+      // If the primary node is in collapsedState.collapsed.left or right, we need to notify parent
+      const isCollapsedLeft = collapsedState.collapsed.left.includes(primaryNode);
+      const isCollapsedRight = collapsedState.collapsed.right.includes(primaryNode);
+      
+      if (isCollapsedLeft) {
+        console.warn('Primary node was in collapsed left state - expanding');
+        onExpand(primaryNode, 'left');
+      }
+      
+      if (isCollapsedRight) {
+        console.warn('Primary node was in collapsed right state - expanding');
+        onExpand(primaryNode, 'right');
+      }
+    }
+  }, [primaryNode, collapsedState, onExpand]);
   
   return null; // This is a logic-only component, no rendering needed
 } 
