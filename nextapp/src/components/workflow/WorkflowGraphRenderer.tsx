@@ -8,6 +8,69 @@ import { getNodeShape, getShapePath, formatTimeAgo, fixedPositions } from '@/uti
 import { Crosshair, Settings, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 
+/**
+ * Helper function to wrap text with proper line breaks
+ * @param text The D3 text selection
+ * @param nodeId The text to wrap
+ */
+const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, nodeId: string) => {
+  // If text is very short, just add it directly
+  if (nodeId.length <= 5) {
+    text.text(nodeId);
+    return;
+  }
+  
+  // Clear text element for appending tspans
+  text.text(null);
+  
+  // Set up text wrapping parameters
+  const maxWidth = 48 * 3; // Max width in pixels
+  const charWidth = 7; // Approximate character width
+  const maxCharsPerLine = Math.floor(maxWidth / charWidth);
+  
+  // Natural break characters
+  const breakChars = [' ', '-', '_'];
+  const lines: string[] = [];
+  let startIndex = 0;
+  let lastBreakIndex = -1;
+  
+  // Scan through text looking for natural break points
+  for (let i = 0; i < nodeId.length; i++) {
+    // Update the last break position when we encounter a break character
+    if (breakChars.includes(nodeId[i])) {
+      lastBreakIndex = i;
+    }
+    
+    // If we're approaching max width, decide where to break
+    if (i - startIndex + 1 >= maxCharsPerLine) {
+      if (lastBreakIndex > startIndex) {
+        // Break at the last natural break point if we found one
+        lines.push(nodeId.substring(startIndex, lastBreakIndex + 1));
+        startIndex = lastBreakIndex + 1;
+      } else {
+        // Hard break if no natural break point was found
+        lines.push(nodeId.substring(startIndex, i + 1));
+        startIndex = i + 1;
+      }
+      // Reset last break index since we're starting a new line
+      lastBreakIndex = -1;
+    }
+  }
+  
+  // Add any remaining text as the last line
+  if (startIndex < nodeId.length) {
+    lines.push(nodeId.substring(startIndex));
+  }
+  
+  // Add all lines as tspans with proper positioning
+  lines.forEach((line, i) => {
+    text.append("tspan")
+      .attr("x", 0) // Center each line horizontally (text-anchor: middle applied to parent)
+      .attr("dy", i === 0 ? 0 : "1.2em") // Add line spacing after the first line
+      .text(line);
+  });
+};
+
 interface WorkflowGraphRendererProps {
   svgRef: React.RefObject<SVGSVGElement | null>;
   tooltipRef: React.RefObject<HTMLDivElement | null>;
@@ -71,6 +134,18 @@ export function WorkflowGraphRenderer({
     // Create SVG elements
     const svg = d3.select(svgRef.current);
     
+    // Define arrowhead marker for link directionality
+    svg.append('defs').append('marker')
+      .attr('id', 'arrowhead')
+      .attr('viewBox', '0 -5 10 10')
+      .attr('refX', 26) // Offset slightly to prevent overlap with node
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M0,-5L10,0L0,5')
+      .attr('fill', '#888');
+    
     // Add legend
     const legend = svg.append('g')
       .attr('class', 'legend')
@@ -125,8 +200,103 @@ export function WorkflowGraphRenderer({
       .append('path')
       .attr('stroke', '#888')
       .attr('fill', 'none')
-      .attr('stroke-width', 2)
-      .attr('marker-end', 'url(#arrowhead)');
+      .attr('stroke-width', 2);
+    
+    // Set link paths
+    link.attr('d', function(d) {
+      const source = typeof d.source === 'object' ? d.source : graphData.nodes.find(n => n.id === d.source);
+      const target = typeof d.target === 'object' ? d.target : graphData.nodes.find(n => n.id === d.target);
+      
+      if (!source || !target) return '';
+      
+      const sourceX = source.x || 0;
+      const sourceY = source.y || 0;
+      const targetX = target.x || 0;
+      const targetY = target.y || 0;
+
+        // Determine relationship type for styling
+        const relationType = 
+        (source.type === 'bot' && target.type === 'queue') ? 'write' as const :
+        (source.type === 'queue' && target.type === 'bot') ? 'read' as const : 
+        'default' as const;
+
+        // Store relationship type on the link data for later use
+        d.relationType = relationType;
+      
+      // Create a straight line with slight curve for aesthetics
+      return `M${sourceX},${sourceY} C${(sourceX + targetX) / 2},${sourceY} ${(sourceX + targetX) / 2},${targetY} ${targetX},${targetY}`;
+    });
+    
+    // Add link stats if enabled
+    if (showStats) {
+      // Create a group for each link to hold its statistics
+      const linkLabels = g
+        .append('g')
+        .attr('class', 'link-stats')
+        .selectAll('g')
+        .data(graphData.links)
+        .enter()
+        .append('g');
+      
+      // Find midpoint of each link for positioning stats
+      linkLabels.attr('transform', function(d) {
+        const source = typeof d.source === 'object' ? d.source : graphData.nodes.find(n => n.id === d.source);
+        const target = typeof d.target === 'object' ? d.target : graphData.nodes.find(n => n.id === d.target);
+        
+        if (!source || !target) return '';
+
+        const sourceX = source.x || 0;
+        const sourceY = source.y || 0;
+        const targetX = target.x || 0;
+        const targetY = target.y || 0;
+        
+        // Position text at midpoint of the link
+        const midX = (sourceX + targetX) / 2;
+        const midY = (sourceY + targetY) / 2;
+        
+        return `translate(${midX}, ${midY})`;
+      });
+      
+      // Add background for better readability
+      linkLabels
+        .append('rect')
+        .attr('x', -30)
+        .attr('y', -18)
+        .attr('width', 60)
+        .attr('height', 36)
+        .attr('fill', 'white')
+        .attr('fill-opacity', 0)
+        .attr('rx', 4);
+      
+      // Add count stats
+      linkLabels
+        .append('text')
+        .attr('text-anchor', 'middle')
+        .attr('y', -8)
+        .attr('font-size', '10px')
+        .attr('fill', '#374151')
+        .text(function(d) {
+          if (!d.stats) return '';
+          return d.stats.count ? `${d.stats.count}` : '0';
+        });
+      
+      // Add timing stats (lag or last time)
+      linkLabels
+        .append('text')
+        .attr('text-anchor', 'middle')
+        .attr('y', 15)
+        .attr('font-size', '10px')
+        .attr('fill', '#374151')
+        .text(function(d) {
+          if (!d.stats) return '';
+          if (d.stats.lag !== undefined) {
+            return `Lag: ${d.stats.lag.toFixed(0)}s`;
+          } else if (d.stats.last_time) {
+            return `Last: ${formatTimeAgo(d.stats.last_time)}`;
+          }
+          return '';
+        });
+    }
     
     // Create nodes group
     const node = g
@@ -190,45 +360,28 @@ export function WorkflowGraphRenderer({
     // Add node labels
     node
       .append('text')
-      .attr('dy', 35)
+      .attr('y', 36)
+      .attr('dy', null)
       .attr('text-anchor', 'middle')
       .attr('class', 'node-label')
       .style('fill', '#374151')
       .style('font-size', '12px')
-      .text((d) => d.id.split(':').slice(1).join(':'));
+      .each(function(d) {
+        const text = d3.select(this);
+        const nodeId = d.id.split(':').slice(1).join(':') || d.id;
+        wrapNodeLabel(text, nodeId);
+      });
     
     // Add stats text if enabled
     if (showStats) {
       node
         .append('text')
-        .attr('dy', 45)
+        .attr('dy', 65)
         .attr('text-anchor', 'middle')
         .attr('fill', 'currentColor')
         .style('font-size', '10px')
         .text((d) => {
-          if (d.executions !== undefined) {
-            return `${d.executions} runs${d.errors ? ` (${d.errors} errors)` : ''}`;
-          } else if (d.queues?.write?.count !== undefined) {
-            return `${d.queues.write.count} writes`;
-          } else if (d.queues?.read?.count !== undefined) {
-            return `${d.queues.read.count} reads`;
-          }
-          return '';
-        });
-      
-      node
-        .append('text')
-        .attr('dy', 57)
-        .attr('text-anchor', 'middle')
-        .attr('fill', 'currentColor')
-        .style('font-size', '10px')
-        .text((d) => {
-          if (d.queues?.write?.last_write) {
-            return `Last: ${formatTimeAgo(d.queues.write.last_write)}`;
-          } else if (d.queues?.read?.last_source_lag) {
-            return `Lag: ${d.queues.read.last_source_lag.toFixed(2)}s`;
-          }
-          return '';
+            return `${d.executions ? `${d.executions}` : '0'} / ${d.errors ? `${d.errors}` : '0'}`;
         });
     }
     
@@ -384,42 +537,8 @@ export function WorkflowGraphRenderer({
       });
     }
     
-    // Update link paths to connect nodes
-    link.attr('d', (d) => {
-      const sourceNode = graphData.nodes.find(n => n.id === (typeof d.source === 'string' ? d.source : d.source.id));
-      const targetNode = graphData.nodes.find(n => n.id === (typeof d.target === 'string' ? d.target : d.target.id));
-      
-      if (!sourceNode || !targetNode) return '';
-      
-      // Calculate the path between source and target nodes
-      const sourceX = sourceNode.x || 0;
-      const sourceY = sourceNode.y || 0;
-      const targetX = targetNode.x || 0;
-      const targetY = targetNode.y || 0;
-      
-      // Make the links look nicer with a slight curve
-      // Adjust the control points based on the direction
-      const dx = targetX - sourceX;
-      const controlX1 = sourceX + dx / 3;
-      const controlX2 = sourceX + dx * 2 / 3;
-      
-      return `M${sourceX},${sourceY} C${controlX1},${sourceY} ${controlX2},${targetY} ${targetX},${targetY}`;
-    });
-    
     // Position nodes based on their x, y coordinates
     node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
-    
-    // Add arrowhead marker for links
-    svg.append('defs').append('marker')
-      .attr('id', 'arrowhead')
-      .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 20) // Position of the arrowhead on the path
-      .attr('markerWidth', 6)
-      .attr('markerHeight', 6)
-      .attr('orient', 'auto')
-      .append('path')
-      .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#888');
     
     // Initial layout is complete
     initialLayoutComplete.current = true;

@@ -56,9 +56,7 @@ export function WorkflowGraphData({
 
     // Initialize data structures
     const newGraphData: GraphData = { nodes: [], links: [] };
-    const nodesInGraph = new Set<string>(); // Track nodes already added to the graph
-    const processedLinks = new Set<string>(); // Track processed links to prevent duplicates
-    const processedPaths = new Set<string>(); // Track processed paths for cycle detection
+    const visited = new Set<string>();
     
     // Track farthest nodes for layout calculation
     let maxLeftGeneration = 0;
@@ -66,8 +64,12 @@ export function WorkflowGraphData({
     
     // Add primary node to graph
     const addNodeToGraph = (nodeId: string, generation: number, group: number) => {
+      if (visited.has(nodeId)) return;
+
       const nodeData = state.nodes?.[nodeId];
       if (!nodeData) return false;
+
+      visited.add(nodeId);
       
       // Create node object with all necessary properties
       const node: Node = {
@@ -78,129 +80,76 @@ export function WorkflowGraphData({
         generation: generation,
         executions: nodeData.stats?.executions,
         errors: nodeData.stats?.errors,
-        queues: nodeData.queues
+        queues: nodeData.queues,
+        link_to: nodeData.link_to
       };
       
       // Add node to graph
       newGraphData.nodes.push(node);
-      nodesInGraph.add(nodeId);
       return true;
     };
     
-    // Add infinity node (just an icon, no circle or label)
-    const addInfinityNode = (connectedNodeId: string, generation: number, group: number) => {
-      const infinityNodeId = `${connectedNodeId}_infinity_${generation}`;
-      
-      // Add the infinity node
-      newGraphData.nodes.push({
-        id: infinityNodeId,
-        status: 'infinity',
-        type: 'infinity',
-        group: group,
-        generation: generation
-      });
-      
-      return infinityNodeId;
-    };
-    
     // Add ancestors (inputs) to the graph recursively
-    const addAncestors = (nodeId: string, generation: number, pathIds: string[] = []) => {
-      // Stop if we're beyond the max left generation limit or the node is in the collapsed list
+    const addAncestors = (nodeId: string, generation: number) => {
+
       if (collapsedState.collapsed.left.includes(nodeId)) {
         return;
       }
   
       // Get node data
       const nodeData = state.nodes?.[nodeId];
-      if (!nodeData) return;
+      if (!nodeData || !nodeData.link_to?.parent) return;
       
-      // Check for cycles in the current path
-      if (pathIds.includes(nodeId)) {
-        // We have a cycle - Add an infinity node and stop
-        if (generation !== 0) { // Don't add infinity for primary node
-          const infinityNodeId = addInfinityNode(nodeId, generation - 1, 0);
+      Object.keys(nodeData.link_to.parent).forEach(parentId => {
+        const parentNode = state.nodes[parentId];
+        if (!parentNode) return;
+        
+        // Check if we've already visited this node
+        if (!visited.has(parentId)) {
+          // Add parent node with generation - 1 (moving left)
+          addNodeToGraph(parentId, generation - 1, 0);
           
-          // Link infinity node to the current node
+          // Add link from parent to child
+          const linkStats = {
+            count: 0,
+            last_time: '',
+            lag: 0
+          };
+          
+          // For queue->bot connection, get stats from bot's read queue data
+          if (parentNode.type === 'queue' && nodeData.type === 'bot' && nodeData.queues?.read) {
+            const readStats = nodeData.queues.read[parentId];
+            if (readStats) {
+              linkStats.count = readStats.count || 0;
+              linkStats.lag = readStats.last_source_lag || 0;
+            }
+          }
+          
+          // For bot->queue connection, get stats from bot's write queue data
+          if (parentNode.type === 'bot' && nodeData.type === 'queue' && parentNode.queues?.write) {
+            const writeStats = parentNode.queues.write[nodeId];
+            if (writeStats) {
+              linkStats.count = writeStats.count || 0;
+              linkStats.last_time = writeStats.last_write || '';
+            }
+          }
+          
           newGraphData.links.push({
-            source: infinityNodeId,
+            source: parentId,
             target: nodeId,
-            value: 1
+            value: 1,
+            stats: linkStats
           });
+          
+          // Recursively add ancestors of this parent
+          addAncestors(parentId, generation - 1);
         }
-        return;
-      }
+      });
       
-      // Track this node in our current path
-      const currentPath = [...pathIds, nodeId];
-      
-      // Only add the node to the graph if it's not the primary node
-      if (generation !== 0) {
-        addNodeToGraph(nodeId, generation, 0); // Group 0 for ancestors
-      }
-
-      // Track farthest generation for layout purposes
-      maxLeftGeneration = Math.min(maxLeftGeneration, generation);
-  
-      // Add parent nodes (inputs) - these are the left-side nodes
-      if (nodeData.link_to?.parent) {
-        Object.keys(nodeData.link_to.parent).forEach((parentId) => {
-          // Create a unique link ID to track processed links
-          const linkId = `${parentId}->${nodeId}`;
-          
-          // Skip duplicate links
-          if (processedLinks.has(linkId)) {
-            return;
-          }
-          processedLinks.add(linkId);
-          
-          // Check for queue-to-bot cycles (in ancestors direction)
-          const parentNodeData = state.nodes?.[parentId];
-          if (!parentNodeData) return;
-          
-          const isParentQueue = parentNodeData.type?.includes('queue');
-          const isBotNode = nodeData.type?.includes('bot');
-          const isQueueToBotLink = isParentQueue && isBotNode;
-          
-          // Check if we've seen this combination before
-          const pathKey = `${parentId}->${nodeId}`;
-          if (isQueueToBotLink && processedPaths.has(pathKey)) {
-            // This is a queue-to-bot cycle in ancestors
-            const infinityNodeId = addInfinityNode(parentId, generation - 1, 0);
-            
-            // Link infinity node to parent
-            newGraphData.links.push({
-              source: infinityNodeId,
-              target: parentId,
-              value: 1
-            });
-            
-            // Still add the link from parent to current node
-            newGraphData.links.push({
-              source: parentId,
-              target: nodeId,
-              value: 1
-            });
-            
-            return; // Stop recursion for this branch to prevent cycles
-          }
-          
-          processedPaths.add(pathKey);
-          
-          // Add link to graph (always add the direct link)
-          newGraphData.links.push({
-            source: parentId, 
-            target: nodeId,
-            value: 1
-          });
-          
-          // Only recurse further for direct parents (no grandparents in ancestors)
-          addAncestors(parentId, generation - 1, currentPath);
-        });
-      }
     };
     
     // Add descendants (outputs) to the graph recursively
-    const addDescendants = (nodeId: string, generation: number, pathIds: string[] = []) => {
+    const addDescendants = (nodeId: string, generation: number) => {
       // Stop if we're beyond the max right generation limit or the node is in the collapsed list
       if (collapsedState.collapsed.right.includes(nodeId)) {
         return;
@@ -208,109 +157,55 @@ export function WorkflowGraphData({
       
       // Get node data
       const nodeData = state.nodes?.[nodeId];
-      if (!nodeData) return;
+      if (!nodeData || !nodeData.link_to?.children) return;
       
-      // Check for cycles in the current path
-      if (pathIds.includes(nodeId)) {
-        // We have a cycle - Add an infinity node connected to the last valid node
-        if (generation !== 0) { // Don't add infinity for primary node
-          const lastValidNodeId = pathIds[pathIds.length - 1];
-          const infinityNodeId = addInfinityNode(lastValidNodeId, generation + 1, 2);
+      // Add each child
+      Object.keys(nodeData.link_to.children).forEach(childId => {
+        const childNode = state.nodes[childId];
+        if (!childNode) return;
+        
+        // Check if we've already visited this node
+        if (!visited.has(childId)) {
+          // Add child node with generation + 1 (moving right)
+          addNodeToGraph(childId, generation + 1, 2);
           
-          // Link last valid node to infinity
-          newGraphData.links.push({
-            source: lastValidNodeId,
-            target: infinityNodeId,
-            value: 1
-          });
-        }
-        return;
-      }
-      
-      // Track this node in our current path
-      const currentPath = [...pathIds, nodeId];
-      
-      // Only add the node to the graph if it's not the primary node
-      if (generation !== 0) {
-        addNodeToGraph(nodeId, generation, 2); // Group 2 for descendants
-      }
-      
-      // Track farthest generation for layout purposes
-      maxRightGeneration = Math.max(maxRightGeneration, generation);
-      
-      // Add child nodes (outputs) - these are the right-side nodes
-      if (nodeData.link_to?.children) {
-        Object.keys(nodeData.link_to.children).forEach((childId) => {
-          const childNodeData = state.nodes?.[childId];
-          if (!childNodeData) return;
+          // Add link from parent to child
+          const linkStats = {
+            count: 0,
+            last_time: '',
+            lag: 0
+          };
           
-          // Check if this is a bot-to-queue link
-          const isBotNode = nodeData.type?.includes('bot');
-          const isChildQueue = childNodeData.type?.includes('queue');
-          const isBotToQueueLink = isBotNode && isChildQueue;
-          
-          // Create a unique ID for this child if it's a queue with multiple bot parents
-          let targetNodeId = childId;
-          
-          if (isBotToQueueLink) {
-            // For bot->queue links, create alias nodes for each bot->queue relationship
-            // This ensures each bot writes to its own instance of the queue
-            const aliasId = `${childId}_from_${nodeId}`;
-            
-            // Create an alias node with the same properties as the original
-            const aliasNode: Node = {
-              id: aliasId,
-              status: childNodeData.status || 'unknown',
-              type: childNodeData.type || 'unknown',
-              group: 2, // Output group
-              generation: generation + 1,
-              executions: childNodeData.stats?.executions,
-              errors: childNodeData.stats?.errors,
-              queues: childNodeData.queues
-            };
-            
-            // Add the alias node to the graph
-            newGraphData.nodes.push(aliasNode);
-            
-            // Use the alias ID as the target
-            targetNodeId = aliasId;
-          } else {
-            // For non-bot-to-queue links, just add the node normally if not already in graph
-            if (!nodesInGraph.has(childId)) {
-              addNodeToGraph(childId, generation + 1, 2);
+          // For bot->queue connection, get stats from bot's write queue data
+          if (nodeData.type === 'bot' && childNode.type === 'queue' && nodeData.queues?.write) {
+            const writeStats = nodeData.queues.write[childId];
+            if (writeStats) {
+              linkStats.count = writeStats.count || 0;
+              linkStats.last_time = writeStats.last_write || '';
             }
           }
           
-          // Add link to graph - from current node to target (original or alias)
-          newGraphData.links.push({
-            source: nodeId, 
-            target: targetNodeId,
-            value: 1
-          });
-          
-          // Check for cycles in bot->queue->bot paths
-          const pathKey = `${nodeId}->${childId}`;
-          if (processedPaths.has(pathKey)) {
-            // This path has been seen before, add infinity node
-            const infinityNodeId = addInfinityNode(targetNodeId, generation + 2, 2);
-            
-            // Link target to infinity
-            newGraphData.links.push({
-              source: targetNodeId,
-              target: infinityNodeId,
-              value: 1
-            });
-            
-            return; // Stop recursion for this branch
+          // For queue->bot connection, get stats from bot's read queue data
+          if (nodeData.type === 'queue' && childNode.type === 'bot' && childNode.queues?.read) {
+            const readStats = childNode.queues.read[nodeId];
+            if (readStats) {
+              linkStats.count = readStats.count || 0;
+              linkStats.lag = readStats.last_source_lag || 0;
+            }
           }
           
-          processedPaths.add(pathKey);
+          newGraphData.links.push({
+            source: nodeId,
+            target: childId,
+            value: 1,
+            stats: linkStats
+          });
           
-          // Recursively add descendants with incremented generation, using the target ID
-          // This handles both original nodes and alias nodes correctly
-          addDescendants(targetNodeId, generation + 1, currentPath);
-        });
-      }
+          // Recursively add descendants of this child
+          addDescendants(childId, generation + 1);
+        }
+      });
+      
     };
     
     // Start building the graph from the primary node
@@ -319,10 +214,10 @@ export function WorkflowGraphData({
       addNodeToGraph(primaryNode, 0, 1);
       
       // Add ancestors (inputs) at generation -1
-      addAncestors(primaryNode, 0, []);
+      addAncestors(primaryNode, 0);
       
       // Add descendants (outputs) at generation 1
-      addDescendants(primaryNode, 0, []);
+      addDescendants(primaryNode, 0);
       
       // Calculate positions and update graph data
       calculateNodePositions(newGraphData);
@@ -365,35 +260,390 @@ export function WorkflowGraphData({
     const xCenter = window.innerWidth / 2;
     const yCenter = window.innerHeight / 2;
     
-    // Horizontal spacing between generations
-    const xSpacing = 200;
+    // STEP 1: Define constants for spacing and dimensions
+    const NODE_RADIUS = 24;
+    const MIN_NODE_SPACING = 100; // Vertical spacing between sibling nodes
+    const GENERATION_SPACING = 220; // Horizontal spacing between generations
     
-    // Process each generation
-    for (let gen = minGeneration; gen <= maxGeneration; gen++) {
-      const nodesInGeneration = nodesByGeneration[gen] || [];
-      
-      // Skip if no nodes in this generation
-      if (nodesInGeneration.length === 0) continue;
-      
-      // Calculate vertical spacing
-      const ySpacing = 100;
-      
-      // Position nodes in this generation
-      positionNodesInGeneration(nodesInGeneration, gen, xSpacing, ySpacing, xCenter, yCenter);
-    }
+    // STEP 2: Build hierarchical tree structure with branch heights
+    const nodeMap = new Map<string, {
+      node: Node,
+      children: string[],
+      parents: string[],
+      x: number,
+      y: number,
+      branchHeight: number, // Height of the branch starting from this node
+    }>();
     
-    // Apply fixed positions from previous layouts if available
+    // Initialize nodeMap with all nodes
     data.nodes.forEach(node => {
-      if (fixedPositions[node.id]) {
-        node.x = fixedPositions[node.id].x;
-        node.y = fixedPositions[node.id].y;
-      }
+      nodeMap.set(node.id, {
+        node,
+        children: [],
+        parents: [],
+        x: 0,
+        y: 0,
+        branchHeight: 1, // Initially, each node has a branch height of 1 (itself)
+      });
+    });
+    
+    // Populate parent-child relationships from links
+    data.links.forEach(link => {
+      const sourceId = typeof link.source === 'object' ? link.source.id : link.source;
+      const targetId = typeof link.target === 'object' ? link.target.id : link.target;
       
-      // Store current positions for future use
-      if (node.x !== undefined && node.y !== undefined) {
-        fixedPositions[node.id] = { x: node.x, y: node.y };
+      const sourceNode = nodeMap.get(sourceId);
+      const targetNode = nodeMap.get(targetId);
+      
+      if (sourceNode && targetNode) {
+        const sourceGen = sourceNode.node.generation || 0;
+        const targetGen = targetNode.node.generation || 0;
+        
+        // Determine direction based on generation
+        if (sourceGen < targetGen) {
+          // Source is parent of target
+          sourceNode.children.push(targetId);
+          targetNode.parents.push(sourceId);
+        } else if (targetGen < sourceGen) {
+          // Target is parent of source
+          targetNode.children.push(sourceId);
+          sourceNode.parents.push(targetId);
+        }
       }
     });
+    
+    // FIRST PASS: Calculate branch heights from leaf nodes to roots
+    // Start from the maximum generation (leaf nodes) and work backwards
+    
+    // Process positive generations (descendants) first
+    for (let gen = maxGeneration; gen > 0; gen--) {
+      if (!nodesByGeneration[gen]) continue;
+      
+      const currentGenNodes = nodesByGeneration[gen];
+      
+      // For each node in this generation
+      currentGenNodes.forEach(node => {
+        const nodeInfo = nodeMap.get(node.id);
+        if (!nodeInfo) return;
+        
+        // For leaf nodes, branch height is 1 (already set)
+        // For non-leaf nodes, branch height is the sum of children's branch heights
+        if (nodeInfo.children.length === 0) {
+          nodeInfo.branchHeight = 1;
+        } else {
+          let totalChildBranchHeight = 0;
+          nodeInfo.children.forEach(childId => {
+            const childInfo = nodeMap.get(childId);
+            if (childInfo && childInfo.node.generation! > nodeInfo.node.generation!) {
+              totalChildBranchHeight += childInfo.branchHeight;
+            }
+          });
+          // If no forward children found, set minimum height of 1
+          nodeInfo.branchHeight = Math.max(1, totalChildBranchHeight);
+        }
+      });
+    }
+    
+    // Then process generation 0
+    if (nodesByGeneration[0]) {
+      nodesByGeneration[0].forEach(node => {
+        const nodeInfo = nodeMap.get(node.id);
+        if (!nodeInfo) return;
+        
+        // Calculate descendant branch height
+        let descendantBranchHeight = 0;
+        nodeInfo.children.forEach(childId => {
+          const childInfo = nodeMap.get(childId);
+          if (childInfo && childInfo.node.generation! > 0) {
+            descendantBranchHeight += childInfo.branchHeight;
+          }
+        });
+        
+        // Calculate ancestor branch height
+        let ancestorBranchHeight = 0;
+        nodeInfo.parents.forEach(parentId => {
+          const parentInfo = nodeMap.get(parentId);
+          if (parentInfo && parentInfo.node.generation! < 0) {
+            ancestorBranchHeight += parentInfo.branchHeight;
+          }
+        });
+        
+        // Branch height should account for both directions
+        nodeInfo.branchHeight = Math.max(1, Math.max(descendantBranchHeight, ancestorBranchHeight));
+      });
+    }
+    
+    // Finally process negative generations (ancestors)
+    for (let gen = -1; gen >= minGeneration; gen--) {
+      if (!nodesByGeneration[gen]) continue;
+      
+      const currentGenNodes = nodesByGeneration[gen];
+      
+      // For each node in this generation
+      currentGenNodes.forEach(node => {
+        const nodeInfo = nodeMap.get(node.id);
+        if (!nodeInfo) return;
+        
+        // For leaf nodes, branch height is 1 (already set)
+        // For non-leaf nodes, branch height is the sum of children's branch heights
+        if (nodeInfo.parents.length === 0) {
+          nodeInfo.branchHeight = 1;
+        } else {
+          let totalParentBranchHeight = 0;
+          nodeInfo.parents.forEach(parentId => {
+            const parentInfo = nodeMap.get(parentId);
+            if (parentInfo && parentInfo.node.generation! < nodeInfo.node.generation!) {
+              totalParentBranchHeight += parentInfo.branchHeight;
+            }
+          });
+          // If no backward parents found, set minimum height of 1
+          nodeInfo.branchHeight = Math.max(1, totalParentBranchHeight);
+        }
+      });
+    }
+    
+    // SECOND PASS: Position nodes using branch heights for spacing
+    
+    // Set horizontal positions based on generation
+    for (let gen = minGeneration; gen <= maxGeneration; gen++) {
+      if (!nodesByGeneration[gen]) continue;
+      
+      nodesByGeneration[gen].forEach(node => {
+        // Calculate x position based on generation
+        node.x = xCenter + (gen * GENERATION_SPACING);
+      });
+    }
+    
+    // First, position generation 0 nodes (usually just one focus node)
+    if (nodesByGeneration[0]) {
+      const gen0Nodes = nodesByGeneration[0];
+      
+      let yOffset = yCenter - (gen0Nodes.length * MIN_NODE_SPACING) / 2;
+      gen0Nodes.forEach(node => {
+        const nodeInfo = nodeMap.get(node.id);
+        if (nodeInfo) {
+          node.y = yOffset;
+          // Add the node's branch height to the offset for the next node
+          yOffset += nodeInfo.branchHeight * MIN_NODE_SPACING;
+        }
+      });
+    }
+    
+    // Position negative generations (ancestors)
+    for (let gen = -1; gen >= minGeneration; gen--) {
+      if (!nodesByGeneration[gen]) continue;
+      
+      const currentGenNodes = nodesByGeneration[gen];
+      
+      // Group nodes by their children
+      const nodesByChildren = new Map<string, Node[]>();
+      
+      currentGenNodes.forEach(node => {
+        const nodeInfo = nodeMap.get(node.id);
+        if (!nodeInfo) return;
+        
+        // Find children in the next generation
+        const childrenInNextGen = nodeInfo.children.filter(childId => {
+          const childInfo = nodeMap.get(childId);
+          return childInfo && childInfo.node.generation === gen + 1;
+        });
+        
+        if (childrenInNextGen.length > 0) {
+          // Use the first child as a grouping key
+          const primaryChildId = childrenInNextGen[0];
+          if (!nodesByChildren.has(primaryChildId)) {
+            nodesByChildren.set(primaryChildId, []);
+          }
+          nodesByChildren.get(primaryChildId)!.push(node);
+        } else {
+          // Node has no children in next gen, treat it as an independent group
+          nodesByChildren.set(`orphan_${node.id}`, [node]);
+        }
+      });
+      
+      // Position nodes based on their relationships
+      const sortedChildGroups = Array.from(nodesByChildren.entries())
+        .sort((a, b) => {
+          const aChildId = a[0].startsWith('orphan_') ? a[0].substring(7) : a[0];
+          const bChildId = b[0].startsWith('orphan_') ? b[0].substring(7) : b[0];
+          
+          const aChildInfo = nodeMap.get(aChildId);
+          const bChildInfo = nodeMap.get(bChildId);
+          
+          if (!aChildInfo || !bChildInfo) return 0;
+          return aChildInfo.node.y! - bChildInfo.node.y!;
+        });
+      
+      // Now position the parents
+      sortedChildGroups.forEach(([childId, parentNodes]) => {
+        // Sort parents for consistent ordering
+        parentNodes.sort((a, b) => a.id.localeCompare(b.id));
+        
+        if (!childId.startsWith('orphan_')) {
+          const childInfo = nodeMap.get(childId);
+          if (childInfo) {
+            // If only one parent, align directly with child
+            if (parentNodes.length === 1) {
+              parentNodes[0].y = childInfo.node.y!;
+            } 
+            // If multiple parents, distribute based on branch heights
+            else {
+              // Calculate total branch height needed
+              let totalBranchHeight = 0;
+              parentNodes.forEach(parentNode => {
+                const parentInfo = nodeMap.get(parentNode.id);
+                if (parentInfo) {
+                  totalBranchHeight += parentInfo.branchHeight;
+                }
+              });
+              
+              // Calculate starting Y position to center around the child
+              let startY = childInfo.node.y! - (totalBranchHeight * MIN_NODE_SPACING) / 2;
+              
+              // Position each parent
+              parentNodes.forEach(parentNode => {
+                const parentInfo = nodeMap.get(parentNode.id);
+                if (parentInfo) {
+                  parentNode.y = startY + (parentInfo.branchHeight * MIN_NODE_SPACING) / 2;
+                  startY += parentInfo.branchHeight * MIN_NODE_SPACING;
+                }
+              });
+            }
+          }
+        } else {
+          // For orphan nodes, place them with enough spacing
+          let currentY = yCenter - (parentNodes.length * MIN_NODE_SPACING) / 2;
+          parentNodes.forEach(parentNode => {
+            const parentInfo = nodeMap.get(parentNode.id);
+            if (parentInfo) {
+              parentNode.y = currentY;
+              currentY += parentInfo.branchHeight * MIN_NODE_SPACING;
+            }
+          });
+        }
+      });
+    }
+    
+    // Position positive generations (descendants)
+    for (let gen = 1; gen <= maxGeneration; gen++) {
+      if (!nodesByGeneration[gen]) continue;
+      
+      const currentGenNodes = nodesByGeneration[gen];
+      
+      // Group nodes by their parents
+      const nodesByParents = new Map<string, Node[]>();
+      
+      currentGenNodes.forEach(node => {
+        const nodeInfo = nodeMap.get(node.id);
+        if (!nodeInfo) return;
+        
+        // Find parents in the previous generation
+        const parentsInPrevGen = nodeInfo.parents.filter(parentId => {
+          const parentInfo = nodeMap.get(parentId);
+          return parentInfo && parentInfo.node.generation === gen - 1;
+        });
+        
+        if (parentsInPrevGen.length > 0) {
+          // Use the first parent as a grouping key
+          const primaryParentId = parentsInPrevGen[0];
+          if (!nodesByParents.has(primaryParentId)) {
+            nodesByParents.set(primaryParentId, []);
+          }
+          nodesByParents.get(primaryParentId)!.push(node);
+        } else {
+          // Node has no parents in prev gen, treat it as an independent group
+          nodesByParents.set(`orphan_${node.id}`, [node]);
+        }
+      });
+      
+      // Position nodes based on their relationships
+      const sortedParentGroups = Array.from(nodesByParents.entries())
+        .sort((a, b) => {
+          const aParentId = a[0].startsWith('orphan_') ? a[0].substring(7) : a[0];
+          const bParentId = b[0].startsWith('orphan_') ? b[0].substring(7) : b[0];
+          
+          const aParentInfo = nodeMap.get(aParentId);
+          const bParentInfo = nodeMap.get(bParentId);
+          
+          if (!aParentInfo || !bParentInfo) return 0;
+          return aParentInfo.node.y! - bParentInfo.node.y!;
+        });
+      
+      // Now position the children
+      sortedParentGroups.forEach(([parentId, childNodes]) => {
+        // Sort children for consistent ordering
+        childNodes.sort((a, b) => a.id.localeCompare(b.id));
+        
+        if (!parentId.startsWith('orphan_')) {
+          const parentInfo = nodeMap.get(parentId);
+          if (parentInfo) {
+            // If only one child, align directly with parent
+            if (childNodes.length === 1) {
+              childNodes[0].y = parentInfo.node.y!;
+            } 
+            // If multiple children, distribute based on branch heights
+            else {
+              // Calculate total branch height needed
+              let totalBranchHeight = 0;
+              childNodes.forEach(childNode => {
+                const childInfo = nodeMap.get(childNode.id);
+                if (childInfo) {
+                  totalBranchHeight += childInfo.branchHeight;
+                }
+              });
+              
+              // Calculate starting Y position to center around the parent
+              let startY = parentInfo.node.y! - (totalBranchHeight * MIN_NODE_SPACING) / 2;
+              
+              // Position each child
+              childNodes.forEach(childNode => {
+                const childInfo = nodeMap.get(childNode.id);
+                if (childInfo) {
+                  childNode.y = startY + (childInfo.branchHeight * MIN_NODE_SPACING) / 2;
+                  startY += childInfo.branchHeight * MIN_NODE_SPACING;
+                }
+              });
+            }
+          }
+        } else {
+          // For orphan nodes, place them with enough spacing
+          let currentY = yCenter - (childNodes.length * MIN_NODE_SPACING) / 2;
+          childNodes.forEach(childNode => {
+            const childInfo = nodeMap.get(childNode.id);
+            if (childInfo) {
+              childNode.y = currentY;
+              currentY += childInfo.branchHeight * MIN_NODE_SPACING;
+            }
+          });
+        }
+      });
+    }
+    
+    // FINAL STEP: Normalize vertical positions to center the graph
+    // Find the min and max Y values
+    let minY = Infinity;
+    let maxY = -Infinity;
+    
+    data.nodes.forEach(node => {
+      if (node.y !== undefined) {
+        minY = Math.min(minY, node.y);
+        maxY = Math.max(maxY, node.y);
+      }
+    });
+    
+    // Calculate the vertical offset to center the graph
+    const heightRange = maxY - minY;
+    const verticalOffset = 100 - minY; // Start with a padding of 100px from the top
+    
+    // Apply the offset to center the graph vertically
+    data.nodes.forEach(node => {
+      if (node.y !== undefined) {
+        node.y += verticalOffset;
+      }
+    });
+    
+    // Horizontal spacing between generations
+    const xSpacing = GENERATION_SPACING;
   }, []);
   
   // Position nodes within a generation

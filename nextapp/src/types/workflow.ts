@@ -45,6 +45,7 @@ export interface Node {
 }
 
 export interface Link {
+  relationType: string;
   source: string | Node;
   target: string | Node;
   value: number;

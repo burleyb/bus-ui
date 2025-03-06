@@ -6,7 +6,7 @@ export interface NodeData {
   checkpoints: any;
   id: string;
   name?: string;
-  type: 'bot' | 'queue' | 'system' | 'unknown';
+  type: 'bot' | 'queue' | 'system' | 'infinity' | 'unknown';
   status?: string;
   description?: string;
   paused?: boolean;
