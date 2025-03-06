@@ -144,6 +144,233 @@ export function WorkflowGraphRenderer({
   // Flag to prevent multiple animations from running
   const isAnimating = useRef(false);
   
+  // Track if context menu is active
+  const isContextMenuActive = useRef(false);
+
+  // Function to update the tooltip content and position
+  const updateTooltip = useCallback((nodeId: string | null, event?: MouseEvent) => {
+    if (!tooltipRef.current || !nodeId) {
+      // Hide tooltip if no node ID or tooltip ref
+      if (tooltipRef.current && !isContextMenuActive.current) {
+        tooltipRef.current.style.display = 'none';
+      }
+      return;
+    }
+
+    // Don't show tooltip if context menu is active
+    if (isContextMenuActive.current) {
+      return;
+    }
+
+    // Find the node data
+    const nodeData = graphData.nodes.find(n => (n.originalId || n.id) === nodeId);
+    if (!nodeData) return;
+
+    // Create tooltip content based on node type
+    let tooltipContent = '';
+    
+    // Differentiate between bot and queue nodes
+    if (nodeData.type === 'bot') {
+      // Bot node
+      // Access properties safely - some may come from the API but not be in the TypeScript definition
+      const description = (nodeData as any).description || '';
+      const lambdaName = (nodeData as any).lambdaName || '';
+      
+      tooltipContent = `
+        <div class="font-medium">${nodeId}</div>
+        <div class="mt-1">Status: ${nodeData.status || 'Unknown'}</div>
+        ${description ? `<div class="mt-1">Description: ${description}</div>` : ''}
+        ${lambdaName ? `<div class="mt-1">Lambda: ${lambdaName}</div>` : ''}
+      `;
+    } else if (nodeData.type === 'queue') {
+      // Queue node
+      const lastWrite = nodeData.queues?.write?.last_write ? 
+        formatTimeAgo(nodeData.queues.write.last_write) : 'Unknown';
+      
+      // Checkpoint may come from the API but not be in the TypeScript definition
+      const checkpoint = (nodeData as any).checkpoint || '';
+      
+      tooltipContent = `
+        <div class="font-medium">${nodeId}</div>
+        <div class="mt-1">Last Write: ${lastWrite}</div>
+        ${checkpoint ? `<div class="mt-1">Latest Checkpoint: ${checkpoint}</div>` : ''}
+      `;
+    } else {
+      // Default tooltip for other node types
+      tooltipContent = `
+        <div class="font-medium">${nodeId}</div>
+        <div class="mt-1">Type: ${nodeData.type || 'Unknown'}</div>
+        <div class="mt-1">Status: ${nodeData.status || 'Unknown'}</div>
+      `;
+    }
+
+    // Update tooltip content
+    tooltipRef.current.innerHTML = tooltipContent;
+    
+    // Apply tooltip styling
+    tooltipRef.current.className = 'absolute bg-white dark:bg-gray-900 p-2 rounded shadow-lg border border-gray-200 dark:border-gray-700 text-xs z-10';
+    tooltipRef.current.style.display = 'block';
+
+    // Position tooltip relative to current mouse position or node
+    if (event) {
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (rect) {
+        tooltipRef.current.style.left = `${event.clientX - rect.left + 10}px`;
+        tooltipRef.current.style.top = `${event.clientY - rect.top - 10}px`;
+      }
+    }
+  }, [graphData.nodes, tooltipRef, svgRef]);
+
+  // Function to show context menu on right click
+  const showContextMenu = useCallback((nodeId: string, event: MouseEvent) => {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    if (!tooltipRef.current) return;
+    
+    // Hide any existing tooltip
+    tooltipRef.current.style.display = 'none';
+    
+    // Set context menu active flag
+    isContextMenuActive.current = true;
+    
+    // Find the node data
+    const nodeData = graphData.nodes.find(n => (n.originalId || n.id) === nodeId);
+    if (!nodeData) return;
+    
+    // Create context menu content based on node type
+    let menuContent = '';
+    
+    // Common menu items
+    const commonItems = `
+      <div class="context-menu-item" data-action="focus" data-node-id="${nodeId}">
+        Focus Node
+      </div>
+      <div class="context-menu-item" data-action="details" data-node-id="${nodeId}">
+        Node Details
+      </div>
+      <div class="context-menu-item" data-action="copy-name" data-node-id="${nodeId}">
+        Copy Node Name
+      </div>
+    `;
+    
+    if (nodeData.type === 'bot') {
+      // Bot-specific menu items
+      menuContent = `
+        ${commonItems}
+        <div class="context-menu-item" data-action="force-run" data-node-id="${nodeId}">
+          Force Run
+        </div>
+      `;
+    } else if (nodeData.type === 'queue') {
+      // Queue-specific menu items
+      menuContent = `
+        ${commonItems}
+        <div class="context-menu-item" data-action="copy-event" data-node-id="${nodeId}">
+          Copy Last Event
+        </div>
+      `;
+    } else {
+      // Default menu for other node types
+      menuContent = commonItems;
+    }
+    
+    // Create the context menu
+    tooltipRef.current.innerHTML = `
+      <div class="context-menu p-1">
+        ${menuContent}
+      </div>
+    `;
+    
+    // Add styles for the context menu
+    tooltipRef.current.className = 'absolute bg-white dark:bg-gray-900 rounded shadow-lg border border-gray-200 dark:border-gray-700 text-xs z-20';
+    
+    // Position context menu at mouse position
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (rect) {
+      tooltipRef.current.style.left = `${event.clientX - rect.left}px`;
+      tooltipRef.current.style.top = `${event.clientY - rect.top}px`;
+    }
+    
+    // Make tooltip visible after all setup
+    tooltipRef.current.style.display = 'block';
+    
+    // Add event listeners for menu items
+    const menuItems = tooltipRef.current.querySelectorAll('.context-menu-item');
+    menuItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        const action = (item as HTMLElement).dataset.action;
+        const targetNodeId = (item as HTMLElement).dataset.nodeId || '';
+        
+        // Hide the context menu
+        if (tooltipRef.current) {
+          tooltipRef.current.style.display = 'none';
+          isContextMenuActive.current = false;
+        }
+        
+        // Handle different actions
+        switch (action) {
+          case 'focus':
+            onNodeDoubleClick(targetNodeId);
+            break;
+          case 'details':
+            onNodeSettingsClick(targetNodeId);
+            break;
+          case 'copy-name':
+            navigator.clipboard.writeText(targetNodeId);
+            break;
+          case 'force-run':
+            // You'll need to implement this or call the appropriate function
+            console.log(`Force run for node: ${targetNodeId}`);
+            break;
+          case 'copy-event':
+            // You'll need to implement this to get and copy the last event
+            console.log(`Copy last event for queue: ${targetNodeId}`);
+            break;
+        }
+      });
+      
+      // Add hover styling
+      (item as HTMLElement).style.padding = '8px 12px';
+      (item as HTMLElement).style.cursor = 'pointer';
+      (item as HTMLElement).style.margin = '2px 0';
+      (item as HTMLElement).style.borderRadius = '4px';
+      
+      item.addEventListener('mouseover', () => {
+        (item as HTMLElement).style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+      });
+      
+      item.addEventListener('mouseout', () => {
+        (item as HTMLElement).style.backgroundColor = 'transparent';
+      });
+    });
+    
+    // Define closeContextMenu function before using it
+    const closeContextMenu = (e: MouseEvent) => {
+      // Don't close if clicking inside the menu
+      if (tooltipRef.current && tooltipRef.current.contains(e.target as HTMLElement)) {
+        return;
+      }
+      
+      if (tooltipRef.current) {
+        tooltipRef.current.style.display = 'none';
+        isContextMenuActive.current = false;
+        document.removeEventListener('click', closeContextMenu);
+      }
+    };
+    
+    // Clear any existing event handlers to prevent multiple registrations
+    document.removeEventListener('click', closeContextMenu);
+    
+    // Add a longer delay before adding the event listener to ensure user can interact with menu
+    setTimeout(() => {
+      document.addEventListener('click', closeContextMenu);
+    }, 100);
+    
+  }, [graphData.nodes, tooltipRef, svgRef, onNodeDoubleClick, onNodeSettingsClick]);
+
   // Render the graph with D3
   const renderGraph = useCallback(() => {
     if (!svgRef.current || !graphData.nodes.length) return;
@@ -428,9 +655,14 @@ export function WorkflowGraphRenderer({
       });
     }
     
-    // Update the hover behavior for nodes
+    // Update the node events
     node
       .on('mouseover', function(event, d) {
+        // Don't show tooltip if context menu is visible
+        if (isContextMenuActive.current) {
+          return;
+        }
+          
         // Notify parent of hovered node
         onHoveredNodeChange(d.originalId || d.id);
         
@@ -438,6 +670,9 @@ export function WorkflowGraphRenderer({
         d3.select(this).select('.node-shape')
           .attr('stroke', '#3b82f6')
           .attr('stroke-width', 3);
+        
+        // Show tooltip
+        updateTooltip(d.originalId || d.id, event);
         
         // Show node control buttons with a slight delay
         setTimeout(() => {
@@ -447,13 +682,30 @@ export function WorkflowGraphRenderer({
           addNodeControls(d3.select(this), d);
         }, 100);
       })
+      .on('mousemove', function(event, d) {
+        // Don't update tooltip if context menu is visible
+        if (isContextMenuActive.current) {
+          return;
+        }
+          
+        // Update tooltip position
+        updateTooltip(d.originalId || d.id, event);
+      })
       .on('mouseout', function(event, d) {
+        // Don't hide tooltip if it's being used as context menu
+        if (isContextMenuActive.current) {
+          return;
+        }
+          
         onHoveredNodeChange(null);
         
         // Remove hover effect from node
         d3.select(this).select('.node-shape')
           .attr('stroke', '#ffffff')
           .attr('stroke-width', 2);
+        
+        // Hide tooltip
+        updateTooltip(null);
         
         // Remove hovered class but keep controls visible briefly
         d3.select(this).classed('hovered', false);
@@ -469,12 +721,29 @@ export function WorkflowGraphRenderer({
         }
       })
       .on('click', (event, d) => {
+        // Close context menu if open
+        if (isContextMenuActive.current && tooltipRef.current) {
+          tooltipRef.current.style.display = 'none';
+          isContextMenuActive.current = false;
+        }
+          
         event.stopPropagation();
         onNodeClick(d.originalId || d.id);
       })
       .on('dblclick', (event, d) => {
+        // Close context menu if open
+        if (isContextMenuActive.current && tooltipRef.current) {
+          tooltipRef.current.style.display = 'none';
+          isContextMenuActive.current = false;
+        }
+          
         event.stopPropagation();
         onNodeDoubleClick(d.originalId || d.id);
+      })
+      .on('contextmenu', function(event, d) {
+        event.preventDefault();
+        event.stopPropagation();
+        showContextMenu(d.originalId || d.id, event);
       });
     
     // Update the function to add node controls with improved behavior
@@ -714,9 +983,30 @@ export function WorkflowGraphRenderer({
       }
     }
     
+    // Also add a click handler to the SVG to hide the context menu when clicking outside nodes
+    svg.on('click', () => {
+      if (tooltipRef.current && isContextMenuActive.current) {
+        tooltipRef.current.style.display = 'none';
+        isContextMenuActive.current = false;
+      }
+    });
+    
     // Initial layout is complete
     initialLayoutComplete.current = true;
-  }, [primaryNode, graphData, offset, zoom, collapsedState, showStats, onNodeClick, onNodeDoubleClick, onNodeSettingsClick, onCollapse, onExpand, onFocusClick, onHoveredNodeChange, state.nodes]);
+  }, [
+    primaryNode, 
+    graphData, 
+    offset, 
+    zoom, 
+    collapsedState, 
+    showStats, 
+    onNodeClick, 
+    onNodeDoubleClick, 
+    onNodeSettingsClick,
+    onHoveredNodeChange,
+    updateTooltip,
+    showContextMenu
+  ]);
   
   // Main rendering function
   useEffect(() => {
