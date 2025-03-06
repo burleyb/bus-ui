@@ -19,6 +19,8 @@ const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, nodeId: string) =
     text.text(nodeId);
     return;
   }
+
+  nodeId = nodeId.split(':').pop() || nodeId;
   
   // Clear text element for appending tspans
   text.text(null);
@@ -27,6 +29,7 @@ const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, nodeId: string) =
   const maxWidth = 48 * 3; // Max width in pixels
   const charWidth = 7; // Approximate character width
   const maxCharsPerLine = Math.floor(maxWidth / charWidth);
+  const maxLines = 2; // Limit to 2 lines to avoid excessive height
   
   // Natural break characters
   const breakChars = [' ', '-', '_'];
@@ -54,12 +57,24 @@ const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, nodeId: string) =
       }
       // Reset last break index since we're starting a new line
       lastBreakIndex = -1;
+      
+      // Stop if we've reached max lines (save the rest for last line with ellipsis)
+      if (lines.length >= maxLines - 1) {
+        break;
+      }
     }
   }
   
-  // Add any remaining text as the last line
+  // Add any remaining text as the last line, with ellipsis if it was cut
   if (startIndex < nodeId.length) {
-    lines.push(nodeId.substring(startIndex));
+    let remainingText = nodeId.substring(startIndex);
+    
+    // Add ellipsis if we are at max lines and the text is too long
+    if (lines.length >= maxLines - 1 && remainingText.length > maxCharsPerLine) {
+      remainingText = remainingText.substring(0, maxCharsPerLine - 3) + '...';
+    }
+    
+    lines.push(remainingText);
   }
   
   // Add all lines as tspans with proper positioning
@@ -69,6 +84,9 @@ const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, nodeId: string) =
       .attr("dy", i === 0 ? 0 : "1.2em") // Add line spacing after the first line
       .text(line);
   });
+  
+  // Return the number of lines for positioning other elements
+  return lines.length;
 };
 
 interface WorkflowGraphRendererProps {
@@ -358,32 +376,45 @@ export function WorkflowGraphRenderer({
         return iconSvg;
       });
     
-    // Add node labels
-    node
-      .append('text')
-      .attr('y', 36)
-      .attr('dy', null)
-      .attr('text-anchor', 'middle')
-      .attr('class', 'node-label')
-      .style('fill', '#374151')
-      .style('font-size', '12px')
-      .each(function(d) {
-        const text = d3.select(this);
-        const nodeId = d.originalId || (d.id.includes(':') ? d.id.split(':').pop() : d.id);
-        wrapNodeLabel(text, nodeId || '');
-      });
+    // Add node labels and get their height
+    const nodeLabelLineCount = new Map<string, number>();
     
-    // Add stats text if enabled
-    if (showStats) {
-      node
+    node.each(function(d) {
+      const nodeSelection = d3.select(this);
+      const labelGroup = nodeSelection
         .append('text')
-        .attr('dy', 65)
+        .attr('y', 36)  // Set absolute y position below the node
+        .attr('x', 0)   // Center horizontally
         .attr('text-anchor', 'middle')
-        .attr('fill', 'currentColor')
-        .style('font-size', '10px')
-        .text((d) => {
+        .attr('class', 'node-label')
+        .style('fill', '#374151')
+        .style('font-size', '12px');  // Increased font size for better visibility
+      
+      // Store the rendered height for positioning stats
+      const nodeId = d.originalId || (d.id.includes(':') ? d.id.split(':').pop() : d.id);
+      const lineCount = wrapNodeLabel(labelGroup, nodeId || '');
+      
+      // Store the line count in a map instead of on the node
+      nodeLabelLineCount.set(d.id, lineCount || 1);
+    });
+    
+    // Add stats text if enabled, positioned based on label height
+    if (showStats) {
+      node.each(function(d) {
+        const lineCount = nodeLabelLineCount.get(d.id) || 1;
+        const statsY = 36 + (lineCount * 15); // Base position + line height adjustment
+        
+        d3.select(this)
+          .append('text')
+          .attr('y', statsY)  // Position based on label height
+          .attr('x', 0)   // Center horizontally
+          .attr('text-anchor', 'middle')
+          .attr('fill', '#4B5563')  // Slightly lighter color for stats
+          .style('font-size', '10px')  // Smaller font size for stats
+          .text(() => {
             return `${d.executions ? `${d.executions}` : '0'} / ${d.errors ? `${d.errors}` : '0'}`;
-        });
+          });
+      });
     }
     
     // Add hover functionality for nodes

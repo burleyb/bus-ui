@@ -300,7 +300,7 @@ export function WorkflowGraphData({
     
     // STEP 1: Define constants for spacing and dimensions
     const NODE_RADIUS = 24;
-    const MIN_NODE_SPACING = 100; // Vertical spacing between sibling nodes
+    const MIN_NODE_SPACING = 150; // Vertical spacing between sibling nodes
     const GENERATION_SPACING = 220; // Horizontal spacing between generations
     
     // STEP 2: Build hierarchical tree structure with branch heights
