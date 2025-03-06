@@ -175,7 +175,7 @@ export function WorkflowGraphRenderer({
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#888');
+      .attr('fill', '#3b82f6');
     
     // Main graph container
     const g = svg.append('g');
@@ -190,7 +190,7 @@ export function WorkflowGraphRenderer({
       .data(graphData.links)
       .enter()
       .append('path')
-      .attr('stroke', '#888')
+      .attr('stroke', '#3b82f6')
       .attr('fill', 'none')
       .attr('stroke-width', 2);
     
@@ -759,40 +759,5 @@ export function WorkflowGraphRenderer({
     }
   }, [primaryNode, collapsedState, onExpand]);
   
-  return (
-    <div className="relative h-full w-full">
-      {/* The SVG is handled by the ref, so we don't need any JSX here */}
-      
-      {/* Legend - positioned at bottom right */}
-      <div className="absolute bottom-2 right-2 bg-white dark:bg-gray-800 p-2 rounded shadow border border-gray-200 dark:border-gray-700">
-        <div className="text-xs text-gray-700 dark:text-gray-300 font-semibold mb-1">Legend</div>
-        <div className="grid grid-cols-1 gap-2 text-xs">
-          <div className="flex items-center">
-            <div className="h-4 w-4 mr-1">
-              <svg viewBox="0 0 20 20" width="20" height="20">
-                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot.png`} width="100%" height="100%" />
-              </svg>
-            </div>
-            <span className="text-gray-700 dark:text-gray-300">Bot</span>
-          </div>
-          <div className="flex items-center">
-            <div className="h-4 w-4 mr-1">
-              <svg viewBox="0 0 20 20" width="20" height="20">
-                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/queue.png`} width="100%" height="100%" />
-              </svg>
-            </div>
-            <span className="text-gray-700 dark:text-gray-300">Queue</span>
-          </div>
-          <div className="flex items-center">
-            <div className="h-4 w-4 mr-1">
-              <svg viewBox="0 0 20 20" width="20" height="20">
-                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/system.png`} width="100%" height="100%" />
-              </svg>
-            </div>
-            <span className="text-gray-700 dark:text-gray-300">System</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return null; // This is a logic-only component, no rendering needed
 } 

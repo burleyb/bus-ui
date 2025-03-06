@@ -176,6 +176,37 @@ export default function WorkflowGraph({
         style={{ userSelect: 'none' }} // Prevent text selection during drag
       ></svg>
       
+      {/* Legend - positioned at bottom right */}
+      <div className="absolute bottom-2 right-2 bg-white dark:bg-gray-800 p-2 rounded shadow border border-gray-200 dark:border-gray-700">
+        <div className="text-xs text-gray-700 dark:text-gray-300 font-semibold mb-1">Legend</div>
+        <div className="grid grid-cols-1 gap-2 text-xs">
+          <div className="flex items-center">
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot.png`} width="100%" height="100%" />
+              </svg>
+            </div>
+            <span className="text-gray-700 dark:text-gray-300">Bot</span>
+          </div>
+          <div className="flex items-center">
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/queue.png`} width="100%" height="100%" />
+              </svg>
+            </div>
+            <span className="text-gray-700 dark:text-gray-300">Queue</span>
+          </div>
+          <div className="flex items-center">
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/system.png`} width="100%" height="100%" />
+              </svg>
+            </div>
+            <span className="text-gray-700 dark:text-gray-300">System</span>
+          </div>
+        </div>
+      </div>
+      
       {/* Event handlers */}
       <WorkflowGraphEvents
         containerRef={containerRef}
