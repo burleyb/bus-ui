@@ -314,10 +314,10 @@ export function WorkflowGraphRenderer({
     node
       .append('circle')
       .attr('class', 'node-shape')
-      .attr('r', 22)
+      .attr('r', (d) => (d.originalId || d.id) === primaryNode ? 24 : 22)
       .attr('fill', (d) => {
         // Focus node is highlighted
-        if (d.id === primaryNode) return '#3b82f6';
+        if ((d.originalId || d.id) === primaryNode) return '#3b82f6';
         
         // Color based on status
         switch (d.status) {
@@ -325,6 +325,7 @@ export function WorkflowGraphRenderer({
           case 'starting': return '#f59e0b';
           case 'stopped': return '#6b7280';
           case 'error': return '#ef4444';
+          case 'infinity': return '#9333ea'; // Special color for infinity nodes
           default: return '#6b7280';
         }
       })
@@ -368,8 +369,8 @@ export function WorkflowGraphRenderer({
       .style('font-size', '12px')
       .each(function(d) {
         const text = d3.select(this);
-        const nodeId = d.id.split(':').slice(1).join(':') || d.id;
-        wrapNodeLabel(text, nodeId);
+        const nodeId = d.originalId || (d.id.includes(':') ? d.id.split(':').pop() : d.id);
+        wrapNodeLabel(text, nodeId || '');
       });
     
     // Add stats text if enabled
@@ -388,7 +389,7 @@ export function WorkflowGraphRenderer({
     // Add hover functionality for nodes
     node
       .on('mouseover', function(event, d) {
-        onHoveredNodeChange(d.id);
+        onHoveredNodeChange(d.originalId || d.id);
         
         // Add hover effect to node
         d3.select(this).select('.node-shape')
@@ -418,11 +419,11 @@ export function WorkflowGraphRenderer({
       })
       .on('click', (event, d) => {
         event.stopPropagation();
-        onNodeClick(d.id);
+        onNodeClick(d.originalId || d.id);
       })
       .on('dblclick', (event, d) => {
         event.stopPropagation();
-        onNodeDoubleClick(d.id);
+        onNodeDoubleClick(d.originalId || d.id);
       });
     
     // Function to add node control buttons on hover
@@ -472,8 +473,9 @@ export function WorkflowGraphRenderer({
         // Handle collapse/expand icons based on current state
         if (pos.action === 'collapse') {
           const direction = pos.direction as 'left' | 'right';
-          const isCollapsed = collapsedState.collapsed[direction].includes(d.id);
-          const isExpanded = collapsedState.expanded[direction].includes(d.id);
+          const nodeIdentifier = d.originalId || d.id;
+          const isCollapsed = collapsedState.collapsed[direction].includes(nodeIdentifier);
+          const isExpanded = collapsedState.expanded[direction].includes(nodeIdentifier);
           
           // Create custom SVG for expand/collapse
           button
@@ -499,11 +501,11 @@ export function WorkflowGraphRenderer({
             
             // Toggle state based on current state
             if (isCollapsed) {
-              onExpand(d.id, direction);
+              onExpand(nodeIdentifier, direction);
             } else if (isExpanded) {
-              onCollapse(d.id, direction);
+              onCollapse(nodeIdentifier, direction);
             } else {
-              onExpand(d.id, direction);
+              onExpand(nodeIdentifier, direction);
             }
           });
         } else {
@@ -528,9 +530,9 @@ export function WorkflowGraphRenderer({
             event.stopPropagation();
             
             if (pos.action === 'focus') {
-              onFocusClick(d.id);
+              onFocusClick(d.originalId || d.id);
             } else if (pos.action === 'settings') {
-              onNodeSettingsClick(d.id);
+              onNodeSettingsClick(d.originalId || d.id);
             }
           });
         }

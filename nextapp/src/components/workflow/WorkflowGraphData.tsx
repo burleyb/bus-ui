@@ -56,24 +56,32 @@ export function WorkflowGraphData({
 
     // Initialize data structures
     const newGraphData: GraphData = { nodes: [], links: [] };
+    
+    // Track nodes we've seen in different branches
     const visited = new Set<string>();
     
-    // Track farthest nodes for layout calculation
-    let maxLeftGeneration = 0;
-    let maxRightGeneration = 0;
+    // Track paths to detect cycles
+    const pathTracker = new Map<string, Set<string>>();
     
-    // Add primary node to graph
-    const addNodeToGraph = (nodeId: string, generation: number, group: number) => {
-      if (visited.has(nodeId)) return;
-
+    // Maximum depth for traversal as a safety measure
+    const MAX_DEPTH = 20;
+    
+    // Add node to graph
+    const addNodeToGraph = (nodeId: string, generation: number, group: number, branchId: string) => {
       const nodeData = state.nodes?.[nodeId];
-      if (!nodeData) return false;
-
-      visited.add(nodeId);
+      if (!nodeData) return null;
+      
+      // Create a unique ID for this node within its branch
+      const uniqueNodeId = `${branchId}:${nodeId}`;
+      
+      // Skip if we've already added this exact node instance
+      if (visited.has(uniqueNodeId)) return uniqueNodeId;
+      visited.add(uniqueNodeId);
       
       // Create node object with all necessary properties
       const node: Node = {
-        id: nodeId,
+        id: uniqueNodeId,
+        originalId: nodeId, // Store the original ID for reference
         status: nodeData.status || 'unknown',
         type: nodeData.type || 'unknown',
         group: group, // 0 = input, 1 = focus, 2 = output
@@ -86,38 +94,53 @@ export function WorkflowGraphData({
       
       // Add node to graph
       newGraphData.nodes.push(node);
-      return true;
+      
+      return uniqueNodeId;
     };
     
     // Add ancestors (inputs) to the graph recursively
-    const addAncestors = (nodeId: string, generation: number) => {
-
-      if (collapsedState.collapsed.left.includes(nodeId)) {
-        return;
-      }
-  
+    const addAncestors = (nodeId: string, generation: number, branchId: string, path: string[] = [], depth: number = 0) => {
+      // Safety measures to prevent stack overflow
+      if (depth > MAX_DEPTH) return;
+      if (collapsedState.collapsed.left.includes(nodeId)) return;
+      
+      // Check for cycles in the current path
+      if (path.includes(nodeId)) return;
+      
+      // Create a new path with this node
+      const newPath = [...path, nodeId];
+      
       // Get node data
       const nodeData = state.nodes?.[nodeId];
       if (!nodeData || !nodeData.link_to?.parent) return;
       
+      // Process each parent
       Object.keys(nodeData.link_to.parent).forEach(parentId => {
         const parentNode = state.nodes[parentId];
         if (!parentNode) return;
         
-        // Check if we've already visited this node
-        if (!visited.has(parentId)) {
-          // Add parent node with generation - 1 (moving left)
-          addNodeToGraph(parentId, generation - 1, 0);
-          
+        // Create a unique branch ID for this parent
+        const parentBranchId = `${branchId}:${parentId}`;
+        
+        // Add parent node to graph
+        const parentNodeId = addNodeToGraph(parentId, generation - 1, 0, parentBranchId);
+        
+        if (parentNodeId) {
           // Add link from parent to child
           const linkStats = {
             count: 0,
             last_time: '',
             lag: 0
           };
+
+        const relationType = 
+          (parentNode.type === 'bot' && nodeData.type === 'queue') ? 'write' as const :
+          (parentNode.type === 'queue' && nodeData.type === 'bot') ? 'read' as const : 
+          'default' as const;
+        
           
           // For queue->bot connection, get stats from bot's read queue data
-          if (parentNode.type === 'queue' && nodeData.type === 'bot' && nodeData.queues?.read) {
+          if (relationType === 'read' && nodeData.queues?.read) {
             const readStats = nodeData.queues.read[parentId];
             if (readStats) {
               linkStats.count = readStats.count || 0;
@@ -126,7 +149,7 @@ export function WorkflowGraphData({
           }
           
           // For bot->queue connection, get stats from bot's write queue data
-          if (parentNode.type === 'bot' && nodeData.type === 'queue' && parentNode.queues?.write) {
+          if (relationType === 'write' && parentNode.queues?.write) {
             const writeStats = parentNode.queues.write[nodeId];
             if (writeStats) {
               linkStats.count = writeStats.count || 0;
@@ -135,49 +158,61 @@ export function WorkflowGraphData({
           }
           
           newGraphData.links.push({
-            source: parentId,
-            target: nodeId,
+            source: parentNodeId,
+            target: `${branchId}:${nodeId}`,
             value: 1,
+            relationType: relationType,
             stats: linkStats
           });
           
-          // Recursively add ancestors of this parent
-          addAncestors(parentId, generation - 1);
+          // Recursively add ancestors of this parent (with cycle detection)
+          addAncestors(parentId, generation - 1, parentBranchId, newPath, depth + 1);
         }
       });
-      
     };
     
     // Add descendants (outputs) to the graph recursively
-    const addDescendants = (nodeId: string, generation: number) => {
-      // Stop if we're beyond the max right generation limit or the node is in the collapsed list
-      if (collapsedState.collapsed.right.includes(nodeId)) {
-        return;
-      }
+    const addDescendants = (nodeId: string, generation: number, branchId: string, path: string[] = [], depth: number = 0) => {
+      // Safety measures to prevent stack overflow
+      if (depth > MAX_DEPTH) return;
+      if (collapsedState.collapsed.right.includes(nodeId)) return;
+      
+      // Check for cycles in the current path
+      if (path.includes(nodeId)) return;
+      
+      // Create a new path with this node
+      const newPath = [...path, nodeId];
       
       // Get node data
       const nodeData = state.nodes?.[nodeId];
       if (!nodeData || !nodeData.link_to?.children) return;
       
-      // Add each child
+      // Process each child
       Object.keys(nodeData.link_to.children).forEach(childId => {
         const childNode = state.nodes[childId];
         if (!childNode) return;
         
-        // Check if we've already visited this node
-        if (!visited.has(childId)) {
-          // Add child node with generation + 1 (moving right)
-          addNodeToGraph(childId, generation + 1, 2);
-          
+        // Create a unique branch ID for this child
+        const childBranchId = `${branchId}:${childId}`;
+        
+        // Add child node to graph
+        const childNodeId = addNodeToGraph(childId, generation + 1, 2, childBranchId);
+        
+        if (childNodeId) {
           // Add link from parent to child
           const linkStats = {
             count: 0,
             last_time: '',
             lag: 0
           };
+
+          const relationType = 
+          (nodeData.type === 'bot' && childNode.type === 'queue') ? 'write' as const :
+          (nodeData.type === 'queue' && childNode.type === 'bot') ? 'read' as const : 
+          'default' as const;
           
           // For bot->queue connection, get stats from bot's write queue data
-          if (nodeData.type === 'bot' && childNode.type === 'queue' && nodeData.queues?.write) {
+          if (relationType === 'write' && nodeData.queues?.write) {
             const writeStats = nodeData.queues.write[childId];
             if (writeStats) {
               linkStats.count = writeStats.count || 0;
@@ -186,7 +221,7 @@ export function WorkflowGraphData({
           }
           
           // For queue->bot connection, get stats from bot's read queue data
-          if (nodeData.type === 'queue' && childNode.type === 'bot' && childNode.queues?.read) {
+          if (relationType === 'read' && childNode.queues?.read) {
             const readStats = childNode.queues.read[nodeId];
             if (readStats) {
               linkStats.count = readStats.count || 0;
@@ -195,37 +230,40 @@ export function WorkflowGraphData({
           }
           
           newGraphData.links.push({
-            source: nodeId,
-            target: childId,
+            source: `${branchId}:${nodeId}`,
+            target: childNodeId,
             value: 1,
+            relationType,
             stats: linkStats
           });
           
-          // Recursively add descendants of this child
-          addDescendants(childId, generation + 1);
+          // Recursively add descendants of this child (with cycle detection)
+          addDescendants(childId, generation + 1, childBranchId, newPath, depth + 1);
         }
       });
-      
     };
     
     // Start building the graph from the primary node
     if (state.nodes && primaryNode && state.nodes[primaryNode]) {
       // Always add the primary (focus) node first
-      addNodeToGraph(primaryNode, 0, 1);
+      const rootBranchId = "branch0";
+      const primaryNodeId = addNodeToGraph(primaryNode, 0, 1, rootBranchId);
       
-      // Add ancestors (inputs) at generation -1
-      addAncestors(primaryNode, 0);
-      
-      // Add descendants (outputs) at generation 1
-      addDescendants(primaryNode, 0);
-      
-      // Calculate positions and update graph data
-      calculateNodePositions(newGraphData);
-      
-      // Update state and notify parent
-      console.log('Generated graph with', newGraphData.nodes.length, 'nodes and', newGraphData.links.length, 'links', newGraphData);
-      setGraphData(newGraphData);
-      onDataReady(newGraphData);
+      if (primaryNodeId) {
+        // Add ancestors (inputs) at generation -1
+        addAncestors(primaryNode, 0, rootBranchId, []);
+        
+        // Add descendants (outputs) at generation 1
+        addDescendants(primaryNode, 0, rootBranchId, []);
+        
+        // Calculate positions and update graph data
+        calculateNodePositions(newGraphData);
+        
+        // Update state and notify parent
+        console.log('Generated graph with', newGraphData.nodes.length, 'nodes and', newGraphData.links.length, 'links', newGraphData);
+        setGraphData(newGraphData);
+        onDataReady(newGraphData);
+      }
     }
   }, [primaryNode, state.nodes, timePeriod, collapsedState, onDataReady]);
   
@@ -344,37 +382,8 @@ export function WorkflowGraphData({
       });
     }
     
-    // Then process generation 0
-    if (nodesByGeneration[0]) {
-      nodesByGeneration[0].forEach(node => {
-        const nodeInfo = nodeMap.get(node.id);
-        if (!nodeInfo) return;
-        
-        // Calculate descendant branch height
-        let descendantBranchHeight = 0;
-        nodeInfo.children.forEach(childId => {
-          const childInfo = nodeMap.get(childId);
-          if (childInfo && childInfo.node.generation! > 0) {
-            descendantBranchHeight += childInfo.branchHeight;
-          }
-        });
-        
-        // Calculate ancestor branch height
-        let ancestorBranchHeight = 0;
-        nodeInfo.parents.forEach(parentId => {
-          const parentInfo = nodeMap.get(parentId);
-          if (parentInfo && parentInfo.node.generation! < 0) {
-            ancestorBranchHeight += parentInfo.branchHeight;
-          }
-        });
-        
-        // Branch height should account for both directions
-        nodeInfo.branchHeight = Math.max(1, Math.max(descendantBranchHeight, ancestorBranchHeight));
-      });
-    }
-    
-    // Finally process negative generations (ancestors)
-    for (let gen = -1; gen >= minGeneration; gen--) {
+    // Process negative generations (ancestors) next, also from furthest to closest
+    for (let gen = minGeneration; gen < 0; gen++) {
       if (!nodesByGeneration[gen]) continue;
       
       const currentGenNodes = nodesByGeneration[gen];
@@ -386,7 +395,7 @@ export function WorkflowGraphData({
         
         // For leaf nodes, branch height is 1 (already set)
         // For non-leaf nodes, branch height is the sum of children's branch heights
-        if (nodeInfo.parents.length === 0) {
+        if (nodeInfo.children.length === 0) {
           nodeInfo.branchHeight = 1;
         } else {
           let totalParentBranchHeight = 0;
@@ -396,9 +405,38 @@ export function WorkflowGraphData({
               totalParentBranchHeight += parentInfo.branchHeight;
             }
           });
-          // If no backward parents found, set minimum height of 1
+          // If no forward children found, set minimum height of 1
           nodeInfo.branchHeight = Math.max(1, totalParentBranchHeight);
         }
+      });
+    }
+    
+    // Process generation 0 nodes last, considering both ancestors and descendants
+    if (nodesByGeneration[0]) {
+      nodesByGeneration[0].forEach(node => {
+        const nodeInfo = nodeMap.get(node.id);
+        if (!nodeInfo) return;
+        
+        let totalBranchHeight = 0;
+        
+        // Add up branch heights of descendants (positive generation)
+        nodeInfo.children.forEach(childId => {
+          const childInfo = nodeMap.get(childId);
+          if (childInfo && childInfo.node.generation! > 0) {
+            totalBranchHeight += childInfo.branchHeight;
+          }
+        });
+        
+        // Add up branch heights of ancestors (negative generation)
+        nodeInfo.parents.forEach(parentId => {
+          const parentInfo = nodeMap.get(parentId);
+          if (parentInfo && parentInfo.node.generation! < 0) {
+            totalBranchHeight += parentInfo.branchHeight;
+          }
+        });
+        
+        // If no children/parents found, set minimum height of 1
+        nodeInfo.branchHeight = Math.max(1, totalBranchHeight);
       });
     }
     

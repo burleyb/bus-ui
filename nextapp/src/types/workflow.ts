@@ -18,6 +18,7 @@ export interface WorkflowGraphProps {
 
 export interface Node {
   id: string;
+  originalId?: string; // Original node ID when node is duplicated in different branches
   status: string;
   type?: string;
   group?: number; // 0 = input, 1 = focus, 2 = output
