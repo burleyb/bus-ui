@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Node, Link, GraphData } from '@/types/workflow';
 import { getNodeImagesSvgString } from '@/components/node/NodeIcon';
 import { getNodeShape, getShapePath, formatTimeAgo, fixedPositions } from '@/utils/workflowUtils';
 import { Crosshair, Settings, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
+import ReactDOM from 'react-dom';
 
 /**
  * Helper function to wrap text with proper line breaks
@@ -131,33 +132,32 @@ export function WorkflowGraphRenderer({
   onFocusClick,
   onHoveredNodeChange
 }: WorkflowGraphRendererProps) {
-  const initialLayoutComplete = useRef<boolean>(false);
-  const previousPrimaryNode = useRef<string | null>(null);
-  const previousCollapsedState = useRef<typeof collapsedState | null>(null);
   const { state } = useAppContext();
   
-  // Main rendering function
-  useEffect(() => {
-    if (!svgRef.current || !graphData.nodes.length) {
-      console.log('Not rendering graph: SVG ref or nodes missing', {
-        hasSvgRef: !!svgRef.current,
-        nodeCount: graphData.nodes.length
-      });
-      return;
-    }
+  // Track if initial layout has been done
+  const initialLayoutComplete = useRef(false);
+  
+  // Track previous primary node and collapsed state for detecting changes
+  const previousPrimaryNode = useRef<string | null>(null);
+  const previousCollapsedState = useRef<any>(null);
+  
+  // Flag to prevent multiple animations from running
+  const isAnimating = useRef(false);
+  
+  // Render the graph with D3
+  const renderGraph = useCallback(() => {
+    if (!svgRef.current || !graphData.nodes.length) return;
     
     console.log('Rendering workflow graph with', graphData.nodes.length, 'nodes and', graphData.links.length, 'links');
     
     // Check if primary node has changed or if collapsed state has changed
-    const primaryNodeChanged = previousPrimaryNode.current !== primaryNode;
-    const collapsedStateChanged = JSON.stringify(previousCollapsedState.current) !== JSON.stringify(collapsedState);
-    
-    // Update refs for next render
-    previousPrimaryNode.current = primaryNode;
-    previousCollapsedState.current = collapsedState;
+    const primaryNodeChanged = previousPrimaryNode.current !== null && 
+                             previousPrimaryNode.current !== primaryNode;
+    const collapsedStateChanged = previousCollapsedState.current !== null &&
+                                JSON.stringify(previousCollapsedState.current) !== JSON.stringify(collapsedState);
     
     // Flag for animation
-    const shouldAnimate = primaryNodeChanged || collapsedStateChanged;
+    const shouldAnimate = (primaryNodeChanged || collapsedStateChanged) && initialLayoutComplete.current;
     
     // Clear previous content
     d3.select(svgRef.current).selectAll('*').remove();
@@ -177,44 +177,6 @@ export function WorkflowGraphRenderer({
       .attr('d', 'M0,-5L10,0L0,5')
       .attr('fill', '#888');
     
-    // Add legend
-    const legend = svg.append('g')
-      .attr('class', 'legend')
-      .attr('transform', 'translate(20, 20)');
-    
-    // Legend title
-    legend.append('text')
-      .attr('x', 0)
-      .attr('y', 0)
-      .attr('font-weight', 'bold')
-      .text('Node Status:');
-    
-    // Status types for legend
-    const statusTypes = [
-      { status: 'running', label: 'Running', color: '#10b981' },
-      { status: 'starting', label: 'Starting', color: '#f59e0b' },
-      { status: 'stopped', label: 'Stopped', color: '#6b7280' },
-      { status: 'error', label: 'Error', color: '#ef4444' },
-      { status: 'focus', label: 'Focus Node', color: '#3b82f6' }
-    ];
-    
-    // Add legend items
-    statusTypes.forEach((item, i) => {
-      const legendItem = legend.append('g')
-        .attr('transform', `translate(0, ${20 + i * 25})`);
-      
-      legendItem.append('circle')
-        .attr('r', 8)
-        .attr('fill', item.color)
-        .attr('stroke', '#ffffff')
-        .attr('stroke-width', 1.5);
-      
-      legendItem.append('text')
-        .attr('x', 20)
-        .attr('y', 5)
-        .text(item.label);
-    });
-    
     // Main graph container
     const g = svg.append('g');
     
@@ -222,14 +184,13 @@ export function WorkflowGraphRenderer({
     g.attr('transform', `translate(${offset[0]}, ${offset[1]}) scale(${zoom})`);
     
     // Draw links first (so they appear behind nodes)
-    const link = g
-      .append('g')
+    const link = g.append('g')
       .attr('class', 'links')
       .selectAll('path')
       .data(graphData.links)
       .enter()
       .append('path')
-      .attr('stroke', '#3b82f6')
+      .attr('stroke', '#888')
       .attr('fill', 'none')
       .attr('stroke-width', 2);
     
@@ -244,15 +205,13 @@ export function WorkflowGraphRenderer({
       const sourceY = source.y || 0;
       const targetX = target.x || 0;
       const targetY = target.y || 0;
-
-        // Determine relationship type for styling
-        const relationType = 
-        (source.type === 'bot' && target.type === 'queue') ? 'write' as const :
-        (source.type === 'queue' && target.type === 'bot') ? 'read' as const : 
-        'default' as const;
-
-        // Store relationship type on the link data for later use
-        d.relationType = relationType;
+      
+      // Determine relationship type for styling
+      const relationType = source.type === 'bot' && target.type === 'queue' ? 'write' :
+                          source.type === 'queue' && target.type === 'bot' ? 'read' : 'default';
+      
+      // Store relationship type on the link data for later use
+      d.relationType = relationType;
       
       // Create a straight line with slight curve for aesthetics
       return `M${sourceX},${sourceY} C${(sourceX + targetX) / 2},${sourceY} ${(sourceX + targetX) / 2},${targetY} ${targetX},${targetY}`;
@@ -261,8 +220,7 @@ export function WorkflowGraphRenderer({
     // Add link stats if enabled
     if (showStats) {
       // Create a group for each link to hold its statistics
-      const linkLabels = g
-        .append('g')
+      const linkLabels = g.append('g')
         .attr('class', 'link-stats')
         .selectAll('g')
         .data(graphData.links)
@@ -275,7 +233,7 @@ export function WorkflowGraphRenderer({
         const target = typeof d.target === 'object' ? d.target : graphData.nodes.find(n => n.id === d.target);
         
         if (!source || !target) return '';
-
+        
         const sourceX = source.x || 0;
         const sourceY = source.y || 0;
         const targetX = target.x || 0;
@@ -289,8 +247,7 @@ export function WorkflowGraphRenderer({
       });
       
       // Add background for better readability
-      linkLabels
-        .append('rect')
+      linkLabels.append('rect')
         .attr('x', -30)
         .attr('y', -18)
         .attr('width', 60)
@@ -300,8 +257,7 @@ export function WorkflowGraphRenderer({
         .attr('rx', 4);
       
       // Add count stats
-      linkLabels
-        .append('text')
+      linkLabels.append('text')
         .attr('text-anchor', 'middle')
         .attr('y', -8)
         .attr('font-size', '10px')
@@ -312,8 +268,7 @@ export function WorkflowGraphRenderer({
         });
       
       // Add timing stats (lag or last time)
-      linkLabels
-        .append('text')
+      linkLabels.append('text')
         .attr('text-anchor', 'middle')
         .attr('y', 15)
         .attr('font-size', '10px')
@@ -330,8 +285,7 @@ export function WorkflowGraphRenderer({
     }
     
     // Create nodes group
-    const node = g
-      .append('g')
+    const node = g.append('g')
       .attr('class', 'nodes')
       .selectAll('g')
       .data(graphData.nodes)
@@ -394,12 +348,14 @@ export function WorkflowGraphRenderer({
         if ((d.originalId || d.id) === primaryNode) return '#3b82f6';
         
         // Color based on status
-        switch (d.status) {
-          case 'running': return '##3b82f6';
-          case 'stopped': return '#6b7280';
-          case 'error': return '#ef4444';
+        switch (d.status?.toLowerCase()) {
+          case 'running': return '#10b981'; // Green
+          case 'starting': return '#f59e0b'; // Amber
+          case 'stopped': return '#6b7280'; // Gray
+          case 'paused': return '#8b5cf6'; // Purple
+          case 'error': return '#ef4444'; // Red
           case 'infinity': return '#9333ea'; // Special color for infinity nodes
-          default: return '#3b82f6';
+          default: return '#3b82f6'; // Default to gray
         }
       })
       .attr('stroke', '#ffffff')
@@ -760,24 +716,28 @@ export function WorkflowGraphRenderer({
     
     // Initial layout is complete
     initialLayoutComplete.current = true;
-  }, [
-    svgRef, 
-    tooltipRef, 
-    graphData, 
-    primaryNode, 
-    offset, 
-    zoom, 
-    collapsedState, 
-    showStats, 
-    onNodeClick, 
-    onNodeDoubleClick, 
-    onNodeSettingsClick, 
-    onCollapse, 
-    onExpand, 
-    onFocusClick, 
-    onHoveredNodeChange,
-    state.nodes
-  ]);
+  }, [primaryNode, graphData, offset, zoom, collapsedState, showStats, onNodeClick, onNodeDoubleClick, onNodeSettingsClick, onCollapse, onExpand, onFocusClick, onHoveredNodeChange, state.nodes]);
+  
+  // Main rendering function
+  useEffect(() => {
+    if (!svgRef.current || !graphData.nodes.length) {
+      console.log('Not rendering graph: SVG ref or nodes missing', {
+        hasSvgRef: !!svgRef.current,
+        nodeCount: graphData.nodes.length
+      });
+      return;
+    }
+    
+    // Render the graph
+    const result = renderGraph();
+    
+    // Update refs for next render
+    previousPrimaryNode.current = primaryNode;
+    previousCollapsedState.current = JSON.parse(JSON.stringify(collapsedState));
+    
+    // Initial layout is complete
+    initialLayoutComplete.current = true;
+  }, [primaryNode, graphData, offset, zoom, collapsedState, showStats, renderGraph]);
   
   // Also, let's add a safeguard in the useEffect to always make sure the primary node isn't in collapsedState
   useEffect(() => {
@@ -799,5 +759,40 @@ export function WorkflowGraphRenderer({
     }
   }, [primaryNode, collapsedState, onExpand]);
   
-  return null; // This is a logic-only component, no rendering needed
+  return (
+    <div className="relative h-full w-full">
+      {/* The SVG is handled by the ref, so we don't need any JSX here */}
+      
+      {/* Legend - positioned at bottom right */}
+      <div className="absolute bottom-2 right-2 bg-white dark:bg-gray-800 p-2 rounded shadow border border-gray-200 dark:border-gray-700">
+        <div className="text-xs text-gray-700 dark:text-gray-300 font-semibold mb-1">Legend</div>
+        <div className="grid grid-cols-1 gap-2 text-xs">
+          <div className="flex items-center">
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot.png`} width="100%" height="100%" />
+              </svg>
+            </div>
+            <span className="text-gray-700 dark:text-gray-300">Bot</span>
+          </div>
+          <div className="flex items-center">
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/queue.png`} width="100%" height="100%" />
+              </svg>
+            </div>
+            <span className="text-gray-700 dark:text-gray-300">Queue</span>
+          </div>
+          <div className="flex items-center">
+            <div className="h-4 w-4 mr-1">
+              <svg viewBox="0 0 20 20" width="20" height="20">
+                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/system.png`} width="100%" height="100%" />
+              </svg>
+            </div>
+            <span className="text-gray-700 dark:text-gray-300">System</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 } 
