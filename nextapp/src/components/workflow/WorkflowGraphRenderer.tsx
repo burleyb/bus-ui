@@ -146,19 +146,22 @@ export function WorkflowGraphRenderer({
   
   // Track if context menu is active
   const isContextMenuActive = useRef(false);
-
+  
+  // Track currently hovered node
+  const hoveredNodeRef = useRef<string | null>(null);
+  
   // Function to update the tooltip content and position
   const updateTooltip = useCallback((nodeId: string | null, event?: MouseEvent) => {
+    // Don't show tooltip if context menu is active
+    if (isContextMenuActive.current) {
+      return;
+    }
+
     if (!tooltipRef.current || !nodeId) {
       // Hide tooltip if no node ID or tooltip ref
       if (tooltipRef.current && !isContextMenuActive.current) {
         tooltipRef.current.style.display = 'none';
       }
-      return;
-    }
-
-    // Don't show tooltip if context menu is active
-    if (isContextMenuActive.current) {
       return;
     }
 
@@ -210,13 +213,22 @@ export function WorkflowGraphRenderer({
     // Apply tooltip styling
     tooltipRef.current.className = 'absolute bg-white dark:bg-gray-900 p-2 rounded shadow-lg border border-gray-200 dark:border-gray-700 text-xs z-10';
     tooltipRef.current.style.display = 'block';
+    tooltipRef.current.style.maxWidth = '250px';
 
-    // Position tooltip relative to current mouse position or node
-    if (event) {
-      const rect = svgRef.current?.getBoundingClientRect();
-      if (rect) {
-        tooltipRef.current.style.left = `${event.clientX - rect.left + 10}px`;
-        tooltipRef.current.style.top = `${event.clientY - rect.top - 10}px`;
+    // Position tooltip relative to current mouse position but with a large offset
+    // to avoid interfering with hover buttons
+    if (event && svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      
+      // Position tooltip with a significant offset to avoid buttons
+      // Left side of the node to avoid control buttons which typically appear on the right
+      tooltipRef.current.style.left = `${event.clientX - rect.left - 380}px`; // Large offset to the left
+      tooltipRef.current.style.top = `${event.clientY - rect.top - 20}px`; // Slight offset above cursor
+      
+      // Check if tooltip is off the left edge of the screen
+      if (event.clientX - 280 < 0) {
+        // If it would be off-screen to the left, position it to the right instead
+        tooltipRef.current.style.left = `${event.clientX - rect.left + 140}px`; // offset to the right
       }
     }
   }, [graphData.nodes, tooltipRef, svgRef]);
@@ -237,6 +249,8 @@ export function WorkflowGraphRenderer({
     // Find the node data
     const nodeData = graphData.nodes.find(n => (n.originalId || n.id) === nodeId);
     if (!nodeData) return;
+    
+    console.log('Showing context menu for node:', nodeId); // Debug log
     
     // Create context menu content based on node type
     let menuContent = '';
@@ -275,15 +289,15 @@ export function WorkflowGraphRenderer({
       menuContent = commonItems;
     }
     
-    // Create the context menu
+    // Create the context menu with containing div for better styling
     tooltipRef.current.innerHTML = `
-      <div class="context-menu p-1">
+      <div class="context-menu">
         ${menuContent}
       </div>
     `;
     
     // Add styles for the context menu
-    tooltipRef.current.className = 'absolute bg-white dark:bg-gray-900 rounded shadow-lg border border-gray-200 dark:border-gray-700 text-xs z-20';
+    tooltipRef.current.className = 'absolute bg-white dark:bg-gray-900 p-1 rounded shadow-lg border border-gray-200 dark:border-gray-700 text-xs z-20';
     
     // Position context menu at mouse position
     const rect = svgRef.current?.getBoundingClientRect();
@@ -298,11 +312,31 @@ export function WorkflowGraphRenderer({
     // Add event listeners for menu items
     const menuItems = tooltipRef.current.querySelectorAll('.context-menu-item');
     menuItems.forEach(item => {
+      // Apply styles to make menu items more visible and interactive
+      (item as HTMLElement).style.padding = '8px 12px';
+      (item as HTMLElement).style.cursor = 'pointer';
+      (item as HTMLElement).style.margin = '2px 0';
+      (item as HTMLElement).style.borderRadius = '4px';
+      (item as HTMLElement).style.backgroundColor = 'transparent';
+      (item as HTMLElement).style.color = 'inherit';
+      
+      // Add hover effect
+      item.addEventListener('mouseover', () => {
+        (item as HTMLElement).style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+      });
+      
+      item.addEventListener('mouseout', () => {
+        (item as HTMLElement).style.backgroundColor = 'transparent';
+      });
+      
+      // Handle click actions
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         
         const action = (item as HTMLElement).dataset.action;
         const targetNodeId = (item as HTMLElement).dataset.nodeId || '';
+        
+        console.log('Context menu action:', action, 'for node:', targetNodeId); // Debug log
         
         // Hide the context menu
         if (tooltipRef.current) {
@@ -331,20 +365,6 @@ export function WorkflowGraphRenderer({
             break;
         }
       });
-      
-      // Add hover styling
-      (item as HTMLElement).style.padding = '8px 12px';
-      (item as HTMLElement).style.cursor = 'pointer';
-      (item as HTMLElement).style.margin = '2px 0';
-      (item as HTMLElement).style.borderRadius = '4px';
-      
-      item.addEventListener('mouseover', () => {
-        (item as HTMLElement).style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
-      });
-      
-      item.addEventListener('mouseout', () => {
-        (item as HTMLElement).style.backgroundColor = 'transparent';
-      });
     });
     
     // Define closeContextMenu function before using it
@@ -354,7 +374,8 @@ export function WorkflowGraphRenderer({
         return;
       }
       
-      if (tooltipRef.current) {
+      if (tooltipRef.current && isContextMenuActive.current) {
+        console.log('Closing context menu'); // Debug log
         tooltipRef.current.style.display = 'none';
         isContextMenuActive.current = false;
         document.removeEventListener('click', closeContextMenu);
@@ -371,9 +392,92 @@ export function WorkflowGraphRenderer({
     
   }, [graphData.nodes, tooltipRef, svgRef, onNodeDoubleClick, onNodeSettingsClick]);
 
+  // Function to properly center the graph in the viewport
+  const centerGraphInViewport = useCallback((svg: d3.Selection<SVGSVGElement, unknown, null, undefined>, g: d3.Selection<SVGGElement, unknown, null, undefined>) => {
+    if (!svgRef.current) return;
+    
+    // Get the SVG dimensions
+    const svgWidth = svgRef.current.clientWidth || window.innerWidth;
+    const svgHeight = svgRef.current.clientHeight || window.innerHeight;
+    
+    // Find the primary node's position
+    const primaryNodeData = graphData.nodes.find(n => (n.originalId || n.id) === primaryNode);
+    if (!primaryNodeData) return;
+    
+    // Center on primary node
+    const centerX = svgWidth / 2;
+    const centerY = svgHeight / 2;
+    
+    // Calculate the translate to center the primary node
+    const newOffsetX = centerX - (primaryNodeData.x || 0) * zoom;
+    const newOffsetY = centerY - (primaryNodeData.y || 0) * zoom;
+    
+    // Apply the transform
+    g.attr('transform', `translate(${newOffsetX}, ${newOffsetY}) scale(${zoom})`);
+    
+    // Now check if graph is visible within viewport by calculating boundaries
+    const nodeBounds = { 
+      minX: Infinity, 
+      maxX: -Infinity, 
+      minY: Infinity, 
+      maxY: -Infinity 
+    };
+    
+    // Calculate the actual bounds of all nodes
+    graphData.nodes.forEach(node => {
+      if (node.x !== undefined && node.y !== undefined) {
+        nodeBounds.minX = Math.min(nodeBounds.minX, node.x);
+        nodeBounds.maxX = Math.max(nodeBounds.maxX, node.x);
+        nodeBounds.minY = Math.min(nodeBounds.minY, node.y);
+        nodeBounds.maxY = Math.max(nodeBounds.maxY, node.y);
+      }
+    });
+    
+    // If we have a very small graph, ensure it's visible by adjusting zoom if needed
+    const graphWidth = nodeBounds.maxX - nodeBounds.minX;
+    const graphHeight = nodeBounds.maxY - nodeBounds.minY;
+    
+    // If graph is too small or too large, adjust zoom to fit
+    if (graphWidth > 0 && graphHeight > 0) {
+      // Calculate the viewport in graph coordinates
+      const viewportWidth = svgWidth / zoom;
+      const viewportHeight = svgHeight / zoom;
+      
+      // Check if graph is significantly smaller than viewport
+      const isTooSmall = graphWidth < viewportWidth * 0.3 && graphHeight < viewportHeight * 0.3;
+      
+      if (isTooSmall) {
+        // Calculate a better zoom level to make the graph more visible
+        const idealZoom = Math.min(
+          viewportWidth / graphWidth * 0.4,
+          viewportHeight / graphHeight * 0.4
+        );
+        
+        // Don't let zoom get too small
+        const adjustedZoom = Math.max(0.5, Math.min(idealZoom, zoom));
+        
+        // Recalculate the transform with the new zoom
+        const newOffsetWithZoom = {
+          x: centerX - (primaryNodeData.x || 0) * adjustedZoom,
+          y: centerY - (primaryNodeData.y || 0) * adjustedZoom
+        };
+        
+        // Apply adjusted transform
+        g.attr('transform', `translate(${newOffsetWithZoom.x}, ${newOffsetWithZoom.y}) scale(${adjustedZoom})`);
+        
+        // Notify parent of zoom change if it's significantly different
+        if (Math.abs(adjustedZoom - zoom) > 0.1) {
+          console.log('Adjusting zoom to fit small graph:', adjustedZoom);
+          // You may want to notify the parent component of this zoom change
+          // We won't implement this now to avoid introducing too many changes
+        }
+      }
+    }
+  }, [graphData.nodes, primaryNode, zoom, svgRef]);
+
   // Render the graph with D3
   const renderGraph = useCallback(() => {
-    if (!svgRef.current || !graphData.nodes.length) return;
+    if (!svgRef.current || !graphData.nodes.length) return null;
     
     console.log('Rendering workflow graph with', graphData.nodes.length, 'nodes and', graphData.links.length, 'links');
     
@@ -402,12 +506,12 @@ export function WorkflowGraphRenderer({
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#3b82f6');
+      .attr('fill', '#888');
     
     // Main graph container
     const g = svg.append('g');
     
-    // Apply zoom and offset transformations
+    // Apply initial zoom and offset transformations - will be adjusted later if needed
     g.attr('transform', `translate(${offset[0]}, ${offset[1]}) scale(${zoom})`);
     
     // Draw links first (so they appear behind nodes)
@@ -655,13 +759,18 @@ export function WorkflowGraphRenderer({
       });
     }
     
-    // Update the node events
+    // Update the hover behavior for nodes
     node
       .on('mouseover', function(event, d) {
+        event.stopPropagation(); // Stop event propagation
+        
         // Don't show tooltip if context menu is visible
         if (isContextMenuActive.current) {
           return;
         }
+        
+        // Update currently hovered node
+        hoveredNodeRef.current = d.originalId || d.id;
           
         // Notify parent of hovered node
         onHoveredNodeChange(d.originalId || d.id);
@@ -671,41 +780,28 @@ export function WorkflowGraphRenderer({
           .attr('stroke', '#3b82f6')
           .attr('stroke-width', 3);
         
-        // Show tooltip
+        // Show tooltip - make sure this is called
         updateTooltip(d.originalId || d.id, event);
         
         // Show node control buttons with a slight delay
         setTimeout(() => {
-          // Only add controls if the node is still being hovered
-          if (d3.select(this).classed('hovered')) return;
-          d3.select(this).classed('hovered', true);
-          addNodeControls(d3.select(this), d);
+          // Only add controls if this is still the hovered node
+          if (hoveredNodeRef.current !== (d.originalId || d.id)) return;
+          
+          // Only add controls if they don't already exist
+          if (d3.select(this).select('.node-controls').empty()) {
+            d3.select(this).classed('hovered', true);
+            addNodeControls(d3.select(this), d);
+          }
         }, 100);
       })
-      .on('mousemove', function(event, d) {
-        // Don't update tooltip if context menu is visible
-        if (isContextMenuActive.current) {
-          return;
-        }
-          
-        // Update tooltip position
-        updateTooltip(d.originalId || d.id, event);
-      })
       .on('mouseout', function(event, d) {
-        // Don't hide tooltip if it's being used as context menu
-        if (isContextMenuActive.current) {
-          return;
-        }
-          
         onHoveredNodeChange(null);
         
         // Remove hover effect from node
         d3.select(this).select('.node-shape')
           .attr('stroke', '#ffffff')
           .attr('stroke-width', 2);
-        
-        // Hide tooltip
-        updateTooltip(null);
         
         // Remove hovered class but keep controls visible briefly
         d3.select(this).classed('hovered', false);
@@ -721,26 +817,16 @@ export function WorkflowGraphRenderer({
         }
       })
       .on('click', (event, d) => {
-        // Close context menu if open
-        if (isContextMenuActive.current && tooltipRef.current) {
-          tooltipRef.current.style.display = 'none';
-          isContextMenuActive.current = false;
-        }
-          
         event.stopPropagation();
         onNodeClick(d.originalId || d.id);
       })
       .on('dblclick', (event, d) => {
-        // Close context menu if open
-        if (isContextMenuActive.current && tooltipRef.current) {
-          tooltipRef.current.style.display = 'none';
-          isContextMenuActive.current = false;
-        }
-          
         event.stopPropagation();
         onNodeDoubleClick(d.originalId || d.id);
       })
       .on('contextmenu', function(event, d) {
+        // Ensure this event handler is getting called
+        console.log('Right-click detected on node:', d.originalId || d.id);
         event.preventDefault();
         event.stopPropagation();
         showContextMenu(d.originalId || d.id, event);
@@ -748,16 +834,19 @@ export function WorkflowGraphRenderer({
     
     // Update the function to add node controls with improved behavior
     function addNodeControls(nodeSelection: d3.Selection<any, any, any, any>, d: Node) {
-      // Remove existing controls if any
+      // Remove any existing controls first
       nodeSelection.select('.node-controls').remove();
       
-      // Create a group for the controls with initial opacity
-      const controls = nodeSelection
-        .append('g')
+      // Extract nodeId
+      const nodeId = d.originalId || d.id;
+      
+      // Create controls container
+      const controls = nodeSelection.append('g')
         .attr('class', 'node-controls')
-        .attr('data-node-id', d.originalId || d.id)
-        .attr('opacity', 0.9)
-        .style('pointer-events', 'all');
+        .attr('opacity', 0);
+      
+      // Make sure hovered flag is set
+      nodeSelection.classed('hovered', true);
       
       const radius = 50; // Distance from node center
       const buttonRadius = 15; // Size of action buttons
@@ -769,10 +858,9 @@ export function WorkflowGraphRenderer({
         return { x, y };
       };
       
-      // Get node data including links
+      // Get node data and check primary node status
       const nodeData = state.nodes?.[d.originalId || d.id];
-      const nodeId = d.originalId || d.id;
-      const isPrimaryNode = nodeId === primaryNode;
+      const isPrimaryNode = (d.originalId || d.id) === primaryNode;
       
       // 1. Focus button (Crosshair icon) at 1 o'clock - should trigger double-click
       const pos1 = positionButton(Math.PI * 0.08);
@@ -927,72 +1015,51 @@ export function WorkflowGraphRenderer({
         .duration(200)
         .attr('opacity', 1);
       
-      // Ensure controls stay visible when hovered directly
-      controls.on('mouseover', function() {
+      // Ensure controls handle their own mouse events to prevent bubbling
+      controls.on('mouseover', function(event) {
+        event.stopPropagation();
         nodeSelection.classed('hovered', true);
+        hoveredNodeRef.current = nodeId;
       })
-      .on('mouseout', function() {
-        nodeSelection.classed('hovered', false);
+      .on('mouseout', function(event) {
+        event.stopPropagation();
+        
+        // Don't remove hovered class if moving to the node itself
+        const toElement = event.relatedTarget;
+        if (!nodeSelection.node()?.contains(toElement as HTMLElement)) {
+          nodeSelection.classed('hovered', false);
+          if (hoveredNodeRef.current === nodeId) {
+            hoveredNodeRef.current = null;
+          }
+          
+          // Schedule controls removal
+          setTimeout(() => {
+            if (hoveredNodeRef.current !== nodeId) {
+              controls.remove();
+            }
+          }, 50);
+        }
       });
     }
     
     // Position nodes based on their x, y coordinates
     node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
     
-    // Center primary node if needed
-    if (shouldAnimate && initialLayoutComplete.current) {
-      // Find the primary node's position
-      const primaryNodeData = graphData.nodes.find(n => (n.originalId || n.id) === primaryNode);
-      
-      if (primaryNodeData && primaryNodeData.x !== undefined && primaryNodeData.y !== undefined) {
-        const svgWidth = svgRef.current.clientWidth;
-        const svgHeight = svgRef.current.clientHeight;
-        
-        // Calculate center of the SVG viewBox
-        const centerX = svgWidth / 2;
-        const centerY = svgHeight / 2;
-        
-        // Calculate the required offset to center the primary node
-        const newOffsetX = centerX - primaryNodeData.x * zoom;
-        const newOffsetY = centerY - primaryNodeData.y * zoom;
-        
-        // Animate nodes gathering, then spreading
-        if (shouldAnimate) {
-          // First move all nodes to the position of the primary node (gather effect)
-          node.transition()
-            .duration(600)
-            .attr('transform', () => `translate(${primaryNodeData.x || 0}, ${primaryNodeData.y || 0})`)
-            .on('end', () => {
-              // Then spread them out to their final positions
-              node.transition()
-                .duration(800)
-                .ease(d3.easeElasticOut.amplitude(1).period(0.5))
-                .attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
-              
-              // Center the graph on the primary node
-              g.transition()
-                .duration(800)
-                .attr('transform', `translate(${newOffsetX}, ${newOffsetY}) scale(${zoom})`);
-            });
-        } else {
-          // Just center the graph without the gather/spread animation
-          g.transition()
-            .duration(500)
-            .attr('transform', `translate(${newOffsetX}, ${newOffsetY}) scale(${zoom})`);
-        }
-      }
+    // Find the primary node data
+    const primaryNodeData = graphData.nodes.find(n => (n.originalId || n.id) === primaryNode);
+    if (!primaryNodeData) {
+      console.warn('Primary node not found in graph data:', primaryNode);
+      return null;
     }
-    
-    // Also add a click handler to the SVG to hide the context menu when clicking outside nodes
-    svg.on('click', () => {
-      if (tooltipRef.current && isContextMenuActive.current) {
-        tooltipRef.current.style.display = 'none';
-        isContextMenuActive.current = false;
-      }
-    });
+
+    // Center the graph in the viewport
+    centerGraphInViewport(svg, g);
     
     // Initial layout is complete
     initialLayoutComplete.current = true;
+
+    // Return necessary objects for animation
+    return { node, g, primaryNodeData };
   }, [
     primaryNode, 
     graphData, 
@@ -1005,6 +1072,7 @@ export function WorkflowGraphRenderer({
     onNodeSettingsClick,
     onHoveredNodeChange,
     updateTooltip,
+    centerGraphInViewport,
     showContextMenu
   ]);
   
