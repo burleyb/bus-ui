@@ -368,8 +368,8 @@ export function useStats() {
         }
       }
     },
-    // Poll every 10 seconds
-    refetchInterval: 10000,
+    // Poll every 10 seconds if not paused, otherwise don't poll
+    refetchInterval: state?.statsPollingPaused ? Infinity : 10000,
     // Data stays fresh for 9.5 seconds
     staleTime: 9500,
     // Don't refetch on window focus as we're already polling

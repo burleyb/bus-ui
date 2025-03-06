@@ -76,7 +76,7 @@ axiosClient.interceptors.request.use(async (config) => {
     }
     
     // Add host header (required for AWS signing)
-    headers['host'] = parsedUrl.host;
+    // headers['host'] = parsedUrl.host;
     
     // For GET requests with no body, make sure content-type is explicitly set to empty string
     if (config.method?.toUpperCase() === 'GET' && !config.data) {

@@ -38,6 +38,7 @@ export interface AppState {
   settings: any | null;
   sortBy: string;
   sortDir: 'asc' | 'desc';
+  statsPollingPaused: boolean;
   tableData: any | null;
   tags: any[];
   tagCards: Record<string, any>;
@@ -123,6 +124,7 @@ const initialState: AppState = {
   settings: null,
   sortBy: '',
   sortDir: 'desc',
+  statsPollingPaused: false,
   tableData: null,
   tags: [],
   tagCards: getStoredTagCards(),

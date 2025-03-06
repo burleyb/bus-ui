@@ -58,7 +58,7 @@ export default function NodeGraph({ selectedBot }: NodeGraphProps) {
     const links: Link[] = [];
     filteredNodes.forEach(node => {
       if (node.connections && node.connections.length > 0) {
-        node.connections.forEach(target => {
+        node.connections.forEach((target: string) => {
           // Only add links if both source and target are in our filtered nodes
           if (nodes.some(n => n.id === target)) {
             links.push({

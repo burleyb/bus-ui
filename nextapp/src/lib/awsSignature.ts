@@ -129,11 +129,6 @@ export async function signRequest(
       }
     });
     
-    // Log the canonical string for debugging in development
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug('Signed headers:', signedHeaders);
-    }
-
     // Return the signed headers
     return signedHeaders;
   } catch (error) {

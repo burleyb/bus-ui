@@ -6,13 +6,7 @@ import WorkflowGraph from '@/components/workflow/WorkflowGraph';
 import WorkflowFilters from '@/components/workflow/WorkflowFilters';
 import WorkflowControls from '@/components/workflow/WorkflowControls';
 import { useStats } from '@/context/ApiContext';
-
-// Define TimePeriod interface for consistency
-interface TimePeriod {
-  begin?: string;
-  end?: string;
-  interval: 'minute_15' | 'hour' | 'hour_6' | 'day' | 'week';
-}
+import { TimePeriod } from '@/types/workflow';
 
 export default function WorkflowViewPage() {
   const [focusNodes, setFocusNodes] = useState<string[]>([]);

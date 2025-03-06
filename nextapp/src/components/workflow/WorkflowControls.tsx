@@ -10,9 +10,13 @@ import {
   Share2, 
   Copy, 
   Check, 
-  ChevronDown 
+  ChevronDown,
+  Pause,
+  Play 
 } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
+import { useQueryClient } from '@tanstack/react-query';
+import { useAppContext } from '@/context/AppContext';
 
 interface WorkflowControlsProps {
   selectedNode: string;
@@ -33,6 +37,10 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
   const [isBookmarkDropdownOpen, setIsBookmarkDropdownOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [statsEnabled, setStatsEnabled] = useState(true);
+  const [isPollingPaused, setIsPollingPaused] = useState(false);
+  
+  const queryClient = useQueryClient();
+  const { state, dispatch } = useAppContext();
   
   // Get current URL hash parameters
   const getUrlParams = (): Record<string, any> => {
@@ -108,6 +116,12 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
     const updateStatsStatus = () => {
       const currentParams = getUrlParams();
       setStatsEnabled(Boolean(currentParams.stats));
+      
+      // Also check for polling state in URL hash
+      const pollingParam = currentParams.statsPolling;
+      if (pollingParam !== undefined) {
+        setIsPollingPaused(!pollingParam); // Note: we store statsPolling as true when NOT paused
+      }
     };
     
     // Update initially
@@ -120,6 +134,25 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
       window.removeEventListener('hashchange', updateStatsStatus);
     };
   }, []);
+
+  // Effect for monitoring polling state changes
+  useEffect(() => {
+    // Log current polling state for debugging
+    console.log(`Polling state: ${isPollingPaused ? 'paused' : 'active'}`);
+    
+    // This effect now primarily serves for logging and potential future enhancements
+    
+    // Clean up any queries when component unmounts
+    return () => {
+      if (isPollingPaused) {
+        // Resume polling if we're unmounting while paused to avoid leaving the app in a bad state
+        dispatch({ 
+          type: 'UPDATE_STATE', 
+          payload: { statsPollingPaused: false } 
+        });
+      }
+    };
+  }, [isPollingPaused, dispatch]);
   
   // Handle zoom in
   const handleZoomIn = () => {
@@ -155,6 +188,36 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
       collapsed,
       expanded
     });
+  };
+
+  // Handle polling toggle
+  const handlePollingToggle = () => {
+    // Toggle the local state first
+    const newPausedState = !isPollingPaused;
+    setIsPollingPaused(newPausedState);
+    
+    // Update the global app state
+    dispatch({
+      type: 'UPDATE_STATE',
+      payload: { statsPollingPaused: newPausedState }
+    });
+    
+    // Force an immediate query cancellation if pausing
+    if (newPausedState) {
+      queryClient.cancelQueries({ queryKey: ['stats'] });
+    } else {
+      // Force an immediate refetch if resuming
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+    }
+    
+    // Store the polling state in URL hash to persist it across page refreshes
+    const currentParams = getUrlParams();
+    updateUrlHash({ 
+      ...currentParams,
+      statsPolling: !newPausedState // We store statsPolling as true when NOT paused
+    });
+    
+    console.log(`Stats polling ${newPausedState ? 'paused' : 'resumed'}`);
   };
   
   // Save bookmark
@@ -239,6 +302,19 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
         onClick={handleStatsToggle}
       >
         <Hourglass size={16} />
+      </button>
+
+      {/* Polling Toggle */}
+      <button
+        title={isPollingPaused ? "Resume Stats Polling" : "Pause Stats Polling"}
+        className={`p-1 rounded ${
+          isPollingPaused 
+            ? "text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700" 
+            : "bg-green-500 text-white hover:bg-green-600"
+        }`}
+        onClick={handlePollingToggle}
+      >
+        {isPollingPaused ? <Play size={16} /> : <Pause size={16} />}
       </button>
       
       {/* Bookmark Controls */}
