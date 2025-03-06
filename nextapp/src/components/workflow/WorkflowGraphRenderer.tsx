@@ -132,6 +132,8 @@ export function WorkflowGraphRenderer({
   onHoveredNodeChange
 }: WorkflowGraphRendererProps) {
   const initialLayoutComplete = useRef<boolean>(false);
+  const previousPrimaryNode = useRef<string | null>(null);
+  const previousCollapsedState = useRef<typeof collapsedState | null>(null);
   const { state } = useAppContext();
   
   // Main rendering function
@@ -145,6 +147,17 @@ export function WorkflowGraphRenderer({
     }
     
     console.log('Rendering workflow graph with', graphData.nodes.length, 'nodes and', graphData.links.length, 'links');
+    
+    // Check if primary node has changed or if collapsed state has changed
+    const primaryNodeChanged = previousPrimaryNode.current !== primaryNode;
+    const collapsedStateChanged = JSON.stringify(previousCollapsedState.current) !== JSON.stringify(collapsedState);
+    
+    // Update refs for next render
+    previousPrimaryNode.current = primaryNode;
+    previousCollapsedState.current = collapsedState;
+    
+    // Flag for animation
+    const shouldAnimate = primaryNodeChanged || collapsedStateChanged;
     
     // Clear previous content
     d3.select(svgRef.current).selectAll('*').remove();
@@ -216,7 +229,7 @@ export function WorkflowGraphRenderer({
       .data(graphData.links)
       .enter()
       .append('path')
-      .attr('stroke', '#888')
+      .attr('stroke', '#3b82f6')
       .attr('fill', 'none')
       .attr('stroke-width', 2);
     
@@ -292,7 +305,7 @@ export function WorkflowGraphRenderer({
         .attr('text-anchor', 'middle')
         .attr('y', -8)
         .attr('font-size', '10px')
-        .attr('fill', '#374151')
+        .attr('fill', '#3b82f6')
         .text(function(d) {
           if (!d.stats) return '';
           return d.stats.count ? `${d.stats.count}` : '0';
@@ -304,7 +317,7 @@ export function WorkflowGraphRenderer({
         .attr('text-anchor', 'middle')
         .attr('y', 15)
         .attr('font-size', '10px')
-        .attr('fill', '#374151')
+        .attr('fill', '#3b82f6')
         .text(function(d) {
           if (!d.stats) return '';
           if (d.stats.lag !== undefined) {
@@ -343,11 +356,11 @@ export function WorkflowGraphRenderer({
       // Add shadow circles for collapsed parents (left)
       if (hasCollapsedParents) {
         // Always use 3 shadow circles regardless of the actual count
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 2; i++) {
           nodeGroup.append("circle")
             .attr("r", 24)
-            .attr("cx", -8 - (i * 5))
-            .attr("cy", -8 - (i * 5))
+            .attr("cx", -4 - (i * 5))
+            .attr("cy", -4 - (i * 5))
             .attr("fill", "none")
             .attr("stroke", "#3182ce")
             .attr("stroke-width", 2)
@@ -358,11 +371,11 @@ export function WorkflowGraphRenderer({
       // Add shadow circles for collapsed children (right)
       if (hasCollapsedChildren) {
         // Always use 3 shadow circles regardless of the actual count
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 2; i++) {
           nodeGroup.append("circle")
             .attr("r", 24)
-            .attr("cx", 8 + (i * 5))
-            .attr("cy", 8 + (i * 5))
+            .attr("cx", 4 + (i * 5))
+            .attr("cy", 4 + (i * 5))
             .attr("fill", "none")
             .attr("stroke", "#3182ce")
             .attr("stroke-width", 2)
@@ -382,12 +395,11 @@ export function WorkflowGraphRenderer({
         
         // Color based on status
         switch (d.status) {
-          case 'running': return '#10b981';
-          case 'starting': return '#f59e0b';
+          case 'running': return '##3b82f6';
           case 'stopped': return '#6b7280';
           case 'error': return '#ef4444';
           case 'infinity': return '#9333ea'; // Special color for infinity nodes
-          default: return '#6b7280';
+          default: return '#3b82f6';
         }
       })
       .attr('stroke', '#ffffff')
@@ -694,6 +706,50 @@ export function WorkflowGraphRenderer({
     
     // Position nodes based on their x, y coordinates
     node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
+    
+    // Center primary node if needed
+    if (shouldAnimate && initialLayoutComplete.current) {
+      // Find the primary node's position
+      const primaryNodeData = graphData.nodes.find(n => (n.originalId || n.id) === primaryNode);
+      
+      if (primaryNodeData && primaryNodeData.x !== undefined && primaryNodeData.y !== undefined) {
+        const svgWidth = svgRef.current.clientWidth;
+        const svgHeight = svgRef.current.clientHeight;
+        
+        // Calculate center of the SVG viewBox
+        const centerX = svgWidth / 2;
+        const centerY = svgHeight / 2;
+        
+        // Calculate the required offset to center the primary node
+        const newOffsetX = centerX - primaryNodeData.x * zoom;
+        const newOffsetY = centerY - primaryNodeData.y * zoom;
+        
+        // Animate nodes gathering, then spreading
+        if (shouldAnimate) {
+          // First move all nodes to the position of the primary node (gather effect)
+          node.transition()
+            .duration(600)
+            .attr('transform', () => `translate(${primaryNodeData.x || 0}, ${primaryNodeData.y || 0})`)
+            .on('end', () => {
+              // Then spread them out to their final positions
+              node.transition()
+                .duration(800)
+                .ease(d3.easeElasticOut.amplitude(1).period(0.5))
+                .attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
+              
+              // Center the graph on the primary node
+              g.transition()
+                .duration(800)
+                .attr('transform', `translate(${newOffsetX}, ${newOffsetY}) scale(${zoom})`);
+            });
+        } else {
+          // Just center the graph without the gather/spread animation
+          g.transition()
+            .duration(500)
+            .attr('transform', `translate(${newOffsetX}, ${newOffsetY}) scale(${zoom})`);
+        }
+      }
+    }
     
     // Initial layout is complete
     initialLayoutComplete.current = true;
