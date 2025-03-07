@@ -432,7 +432,16 @@ export function WorkflowGraphRenderer({
       .append('path')
       .attr('stroke', '#3b82f6')
       .attr('fill', 'none')
-      .attr('stroke-width', 2);
+      .attr('stroke-width', 2)
+      // Add dashed line style for links to infinity nodes
+      .attr('stroke-dasharray', function(d) {
+        const target = typeof d.target === 'object' ? d.target : graphData.nodes.find(n => n.id === d.target);
+        // Check if this is a link to an infinity node (cycle terminator)
+        if (target && (target.type === 'infinity' || d.relationType === 'cycle')) {
+          return '5,5'; // Dashed line pattern
+        }
+        return 'none'; // Solid line for regular links
+      });
     
     // Set link paths
     link.attr('d', function(d) {
@@ -582,7 +591,11 @@ export function WorkflowGraphRenderer({
     node
       .append('circle')
       .attr('class', 'node-shape')
-      .attr('r', (d) => (d.originalId || d.id) === primaryNode ? 24 : 22)
+      .attr('r', (d) => {
+        // Infinity nodes have no circles
+        if (d.type === 'infinity') return 0;
+        return (d.originalId || d.id) === primaryNode ? 24 : 22;
+      })
       .attr('fill', (d) => {
         // Focus node is highlighted
         if ((d.originalId || d.id) === primaryNode) return '#3b82f6';
@@ -594,8 +607,7 @@ export function WorkflowGraphRenderer({
           case 'stopped': return '#6b7280'; // Gray
           case 'paused': return '#8b5cf6'; // Purple
           case 'error': return '#ef4444'; // Red
-          case 'infinity': return '#9333ea'; // Special color for infinity nodes
-          default: return '#3b82f6'; // Default to gray
+          default: return '#3b82f6'; // Default to blue
         }
       })
       .attr('stroke', '#ffffff')
@@ -604,14 +616,36 @@ export function WorkflowGraphRenderer({
     // Add inner circle (for image background)
     node
       .append('circle')
-      .attr('r', 18)
+      .attr('r', (d) => d.type === 'infinity' ? 0 : 18) // No inner circle for infinity nodes
       .attr('fill', '#ffffff');
+      
+    // Add infinity symbol for infinity nodes
+    node.each(function(d) {
+      if (d.type === 'infinity') {
+        const nodeGroup = d3.select(this);
+        
+        // Add infinity symbol (∞)
+        nodeGroup.append('text')
+          .attr('x', 0)
+          .attr('y', 0)
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'middle')
+          .attr('font-size', '50px')
+          .attr('fill', '#333') 
+          .attr('stroke', '#ffffff')
+          .attr('stroke-width', '0.5')
+          .text('∞');
+          
+        // No need for node controls on infinity nodes, so skip those
+      }
+    });
     
     // Get the base URL for node icons
     const baseUrl = window.location.origin;
     
-    // Add node icons
+    // Add node icons (skip for infinity nodes)
     node
+      .filter(d => d.type !== 'infinity') // Skip infinity nodes
       .append('svg')
       .attr('width', 32)
       .attr('height', 32)
@@ -632,6 +666,10 @@ export function WorkflowGraphRenderer({
     
     node.each(function(d) {
       const nodeSelection = d3.select(this);
+      
+      // Skip adding labels to infinity nodes
+      if (d.type === 'infinity') return;
+      
       const labelGroup = nodeSelection
         .append('text')
         .attr('y', 36)  // Set absolute y position below the node
@@ -652,6 +690,9 @@ export function WorkflowGraphRenderer({
     // Add stats text if enabled, positioned based on label height
     if (showStats) {
       node.each(function(d) {
+        // Skip adding stats to infinity nodes
+        if (d.type === 'infinity') return;
+        
         const lineCount = nodeLabelLineCount.get(d.id) || 1;
         const statsY = 36 + (lineCount * 15); // Base position + line height adjustment
         
@@ -671,6 +712,9 @@ export function WorkflowGraphRenderer({
     // Update the hover behavior for nodes
     node
       .on('mouseover', function(event, d) {
+        // Skip interaction for infinity nodes
+        if (d.type === 'infinity') return;
+        
         // Don't show tooltip if context menu is visible
         if (isContextMenuActive.current) {
           return;
@@ -703,6 +747,9 @@ export function WorkflowGraphRenderer({
         }, 100);
       })
       .on('mousemove', function(event, d) {
+        // Skip interaction for infinity nodes
+        if (d.type === 'infinity') return;
+        
         // Don't update tooltip if context menu is visible
         if (isContextMenuActive.current) {
           return;
@@ -712,6 +759,9 @@ export function WorkflowGraphRenderer({
         updateTooltip(d.originalId || d.id, event);
       })
       .on('mouseout', function(event, d) {
+        // Skip interaction for infinity nodes
+        if (d.type === 'infinity') return;
+        
         // Don't hide tooltip if it's being used as context menu
         if (isContextMenuActive.current) {
           return;
@@ -746,14 +796,23 @@ export function WorkflowGraphRenderer({
         }
       })
       .on('click', (event, d) => {
+        // Skip interaction for infinity nodes
+        if (d.type === 'infinity') return;
+        
         event.stopPropagation();
         onNodeClick(d.originalId || d.id);
       })
       .on('dblclick', (event, d) => {
+        // Skip interaction for infinity nodes
+        if (d.type === 'infinity') return;
+        
         event.stopPropagation();
         onNodeDoubleClick(d.originalId || d.id);
       })
       .on('contextmenu', function(event, d) {
+        // Skip interaction for infinity nodes
+        if (d.type === 'infinity') return;
+        
         // Ensure this event handler is getting called
         console.log('Right-click detected on node:', d.originalId || d.id);
         event.preventDefault();
@@ -763,6 +822,9 @@ export function WorkflowGraphRenderer({
     
     // Update the function to add node controls with improved behavior
     function addNodeControls(nodeSelection: d3.Selection<any, any, any, any>, d: Node) {
+      // Skip adding controls to infinity nodes
+      if (d.type === 'infinity') return;
+      
       // Remove any existing controls first
       nodeSelection.select('.node-controls').remove();
       

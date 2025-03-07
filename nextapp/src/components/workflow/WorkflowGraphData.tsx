@@ -60,8 +60,8 @@ export function WorkflowGraphData({
     // Track nodes we've seen in different branches
     const visited = new Set<string>();
     
-    // Track paths to detect cycles
-    const pathTracker = new Map<string, Set<string>>();
+    // Track cycle nodes that we've already processed for "one more generation"
+    const processedCycleNodes = new Set<string>();
     
     // Maximum depth for traversal as a safety measure
     const MAX_DEPTH = 20;
@@ -98,6 +98,42 @@ export function WorkflowGraphData({
       return uniqueNodeId;
     };
     
+    // Add an infinity node to represent a cycle terminator
+    const addInfinityNode = (parentNodeId: string, sourceNodeId: string, generation: number, branchId: string) => {
+      // Create a unique ID for this infinity node
+      const infinityNodeId = `${branchId}:infinity:${sourceNodeId}`;
+      
+      // Skip if we've already added this infinity node
+      if (visited.has(infinityNodeId)) return infinityNodeId;
+      visited.add(infinityNodeId);
+      
+      // Create infinity node
+      const infinityNode: Node = {
+        id: infinityNodeId,
+        originalId: `infinity:${sourceNodeId}`,
+        status: 'cycle',
+        type: 'infinity',
+        group: 2, // output group
+        generation: generation + 1,
+      };
+      
+      // Add infinity node to graph
+      newGraphData.nodes.push(infinityNode);
+      
+      // Add link from parent to infinity node (with dashed line indicator)
+      newGraphData.links.push({
+        source: parentNodeId,
+        target: infinityNodeId,
+        value: 1,
+        relationType: 'cycle',
+        
+      });
+      
+      console.log(`Added infinity node ${infinityNodeId} for cycle detected at ${sourceNodeId}`);
+      
+      return infinityNodeId;
+    };
+    
     // Add ancestors (inputs) to the graph recursively
     const addAncestors = (nodeId: string, generation: number, branchId: string, path: string[] = [], depth: number = 0) => {
       // Safety measures to prevent stack overflow
@@ -105,7 +141,10 @@ export function WorkflowGraphData({
       if (collapsedState.collapsed.left.includes(nodeId)) return;
       
       // Check for cycles in the current path
-      if (path.includes(nodeId)) return;
+      if (path.includes(nodeId)) {
+        console.log(`Cycle detected in ancestors path at node ${nodeId}, path: ${path.join(' -> ')}`);
+        return;
+      }
       
       // Create a new path with this node
       const newPath = [...path, nodeId];
@@ -126,6 +165,9 @@ export function WorkflowGraphData({
         const parentNodeId = addNodeToGraph(parentId, generation - 1, 0, parentBranchId);
         
         if (parentNodeId) {
+          // Create parent branch unique ID to check for cycles
+          const parentBranchUniqueId = `${parentBranchId}:${nodeId}`;
+          
           // Add link from parent to child
           const linkStats = {
             count: 0,
@@ -133,11 +175,10 @@ export function WorkflowGraphData({
             lag: 0
           };
 
-        const relationType = 
-          (parentNode.type === 'bot' && nodeData.type === 'queue') ? 'write' as const :
-          (parentNode.type === 'queue' && nodeData.type === 'bot') ? 'read' as const : 
-          'default' as const;
-        
+          const relationType = 
+            (parentNode.type === 'bot' && nodeData.type === 'queue') ? 'write' as const :
+            (parentNode.type === 'queue' && nodeData.type === 'bot') ? 'read' as const : 
+            'default' as const;
           
           // For queue->bot connection, get stats from bot's read queue data
           if (relationType === 'read' && nodeData.queues?.read) {
@@ -165,8 +206,48 @@ export function WorkflowGraphData({
             stats: linkStats
           });
           
-          // Recursively add ancestors of this parent (with cycle detection)
-          addAncestors(parentId, generation - 1, parentBranchId, newPath, depth + 1);
+          // Check if parent exists in our current path (would create a cycle)
+          const cycleDetected = newPath.includes(parentId);
+          
+          if (cycleDetected) {
+            console.log(`Ancestor cycle detected: ${parentId} is already in the path: ${newPath.join(' -> ')}`);
+            
+            // Add "one more generation" for this cycle if not already processed
+            if (!processedCycleNodes.has(parentBranchUniqueId)) {
+              processedCycleNodes.add(parentBranchUniqueId);
+              
+              // Get the ancestors of this parent (which creates the cycle)
+              if (parentNode.link_to?.parent) {
+                Object.keys(parentNode.link_to.parent).forEach(grandparentId => {
+                  if (state.nodes[grandparentId]) {
+                    const gpBranchId = `${parentBranchId}:${grandparentId}`;
+                    const gpNodeId = addNodeToGraph(grandparentId, generation - 2, 0, gpBranchId);
+                    
+                    if (gpNodeId) {
+                      // Add link to parent
+                      newGraphData.links.push({
+                        source: gpNodeId,
+                        target: parentNodeId,
+                        value: 1,
+                        relationType: 'default',
+                        stats: {
+                          count: 0,
+                          last_time: '',
+                          lag: 0
+                        }
+                      });
+                      
+                      // Add infinity node as terminator
+                      addInfinityNode(gpNodeId, parentId, generation - 2, gpBranchId);
+                    }
+                  }
+                });
+              }
+            }
+          } else {
+            // Recursively add ancestors of this parent (unless it would create a cycle)
+            addAncestors(parentId, generation - 1, parentBranchId, newPath, depth + 1);
+          }
         }
       });
     };
@@ -178,7 +259,10 @@ export function WorkflowGraphData({
       if (collapsedState.collapsed.right.includes(nodeId)) return;
       
       // Check for cycles in the current path
-      if (path.includes(nodeId)) return;
+      if (path.includes(nodeId)) {
+        console.log(`Cycle detected in descendants path at node ${nodeId}, path: ${path.join(' -> ')}`);
+        return;
+      }
       
       // Create a new path with this node
       const newPath = [...path, nodeId];
@@ -199,6 +283,9 @@ export function WorkflowGraphData({
         const childNodeId = addNodeToGraph(childId, generation + 1, 2, childBranchId);
         
         if (childNodeId) {
+          // Create child branch unique ID to check for cycles
+          const childBranchUniqueId = `${childBranchId}:${nodeId}`;
+          
           // Add link from parent to child
           const linkStats = {
             count: 0,
@@ -207,9 +294,9 @@ export function WorkflowGraphData({
           };
 
           const relationType = 
-          (nodeData.type === 'bot' && childNode.type === 'queue') ? 'write' as const :
-          (nodeData.type === 'queue' && childNode.type === 'bot') ? 'read' as const : 
-          'default' as const;
+            (nodeData.type === 'bot' && childNode.type === 'queue') ? 'write' as const :
+            (nodeData.type === 'queue' && childNode.type === 'bot') ? 'read' as const : 
+            'default' as const;
           
           // For bot->queue connection, get stats from bot's write queue data
           if (relationType === 'write' && nodeData.queues?.write) {
@@ -237,8 +324,48 @@ export function WorkflowGraphData({
             stats: linkStats
           });
           
-          // Recursively add descendants of this child (with cycle detection)
-          addDescendants(childId, generation + 1, childBranchId, newPath, depth + 1);
+          // Check if child exists in our current path (would create a cycle)
+          const cycleDetected = newPath.includes(childId);
+          
+          if (cycleDetected) {
+            console.log(`Descendant cycle detected: ${childId} is already in the path: ${newPath.join(' -> ')}`);
+            
+            // Add "one more generation" for this cycle if not already processed
+            if (!processedCycleNodes.has(childBranchUniqueId)) {
+              processedCycleNodes.add(childBranchUniqueId);
+              
+              // Get the descendants of this child (which creates the cycle)
+              if (childNode.link_to?.children) {
+                Object.keys(childNode.link_to.children).forEach(grandchildId => {
+                  if (state.nodes[grandchildId]) {
+                    const gcBranchId = `${childBranchId}:${grandchildId}`;
+                    const gcNodeId = addNodeToGraph(grandchildId, generation + 2, 2, gcBranchId);
+                    
+                    if (gcNodeId) {
+                      // Add link to child
+                      newGraphData.links.push({
+                        source: childNodeId,
+                        target: gcNodeId,
+                        value: 1,
+                        relationType: 'default',
+                        stats: {
+                          count: 0,
+                          last_time: '',
+                          lag: 0
+                        }
+                      });
+                      
+                      // Add infinity node as terminator
+                      addInfinityNode(gcNodeId, childId, generation + 2, gcBranchId);
+                    }
+                  }
+                });
+              }
+            }
+          } else {
+            // Recursively add descendants of this child (unless it would create a cycle)
+            addDescendants(childId, generation + 1, childBranchId, newPath, depth + 1);
+          }
         }
       });
     };
