@@ -4,8 +4,26 @@ import React, { useState, useRef, useEffect } from 'react';
 
 // Context approach was causing TypeScript issues - rewriting with a simpler implementation
 
-export interface DropdownMenuProps {
+interface DropdownMenuProps {
   children: React.ReactNode;
+}
+
+interface DropdownMenuTriggerProps {
+  asChild?: boolean;
+  children: React.ReactNode;
+}
+
+interface DropdownMenuContentProps {
+  align?: 'start' | 'center' | 'end';
+  children: React.ReactNode;
+  className?: string;
+}
+
+interface DropdownMenuItemProps {
+  children: React.ReactNode;
+  className?: string;
+  onClick?: () => void;
+  disabled?: boolean;
 }
 
 export function DropdownMenu({ children }: DropdownMenuProps) {
@@ -16,113 +34,131 @@ export function DropdownMenu({ children }: DropdownMenuProps) {
   );
 }
 
-export interface DropdownMenuTriggerProps {
-  children: React.ReactNode;
-  onClick?: () => void;
-}
-
-export function DropdownMenuTrigger({ children, onClick }: DropdownMenuTriggerProps) {
-  // Just passing through the children and onClick handler
+export function DropdownMenuTrigger({ asChild = false, children }: DropdownMenuTriggerProps) {
+  const [open, setOpen] = useState(false);
+  
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(!open);
+    
+    // Propagate the open state to the DropdownMenuContent
+    const event = new CustomEvent('dropdown-toggle', { 
+      detail: { open: !open },
+      bubbles: true 
+    });
+    e.currentTarget.dispatchEvent(event);
+  };
+  
+  if (asChild) {
+    return React.cloneElement(children as React.ReactElement, {
+      onClick: handleClick,
+      'aria-expanded': open,
+      'aria-haspopup': true,
+    });
+  }
+  
   return (
-    <div onClick={onClick} className="inline-flex">
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-expanded={open}
+      aria-haspopup="true"
+      className="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-100 focus:ring-blue-500"
+    >
       {children}
-    </div>
+    </button>
   );
 }
 
-export interface DropdownMenuContentProps {
-  children: React.ReactNode;
-  isOpen: boolean;
-  onClose: () => void;
-  align?: 'start' | 'end' | 'center';
-}
-
 export function DropdownMenuContent({ 
+  align = 'start', 
   children, 
-  isOpen, 
-  onClose, 
-  align = 'end' 
+  className = '' 
 }: DropdownMenuContentProps) {
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
+  const [show, setShow] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (contentRef.current && !contentRef.current.contains(event.target as Node)) {
-        onClose();
+    const handleToggle = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      setShow(customEvent.detail.open);
+    };
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setShow(false);
       }
     };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
+    
+    document.addEventListener('dropdown-toggle', handleToggle);
+    document.addEventListener('mousedown', handleClickOutside);
     
     return () => {
+      document.removeEventListener('dropdown-toggle', handleToggle);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [isOpen, onClose]);
-
-  // Close dropdown when pressing Escape
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('keydown', handleKeyDown);
-    }
-    
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
-  // Calculate alignment classes
-  let alignClass = 'left-0';
-  if (align === 'end') alignClass = 'right-0';
-  if (align === 'center') alignClass = 'left-1/2 -translate-x-1/2';
-
+  }, []);
+  
+  if (!show) return null;
+  
+  const alignmentClasses = {
+    start: 'left-0',
+    center: 'left-1/2 transform -translate-x-1/2',
+    end: 'right-0',
+  };
+  
   return (
     <div
-      ref={contentRef}
-      className={`absolute z-50 mt-2 min-w-[8rem] overflow-hidden rounded-md border border-gray-200 
-                bg-white shadow-md dark:border-gray-800 dark:bg-gray-900 ${alignClass}`}
+      ref={ref}
+      className={`absolute z-10 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 focus:outline-none ${alignmentClasses[align]} ${className}`}
+      role="menu"
+      aria-orientation="vertical"
+      aria-labelledby="menu-button"
+      tabIndex={-1}
     >
-      <div className="py-1">
+      <div className="py-1" role="none">
         {children}
       </div>
     </div>
   );
 }
 
-export interface DropdownMenuItemProps {
-  children: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  className?: string;
-}
-
 export function DropdownMenuItem({ 
   children, 
+  className = '', 
   onClick, 
-  disabled = false,
-  className = ''
+  disabled = false 
 }: DropdownMenuItemProps) {
+  const handleClick = (e: React.MouseEvent) => {
+    if (disabled) {
+      e.preventDefault();
+      return;
+    }
+    
+    if (onClick) {
+      onClick();
+    }
+    
+    // Close the dropdown after clicking
+    const event = new CustomEvent('dropdown-toggle', { 
+      detail: { open: false },
+      bubbles: true 
+    });
+    e.currentTarget.dispatchEvent(event);
+  };
+  
   return (
     <button
-      type="button"
-      className={`relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none 
-                focus:bg-gray-100 focus:text-gray-900 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 
-                dark:focus:bg-gray-800 dark:focus:text-gray-50 hover:bg-gray-100 dark:hover:bg-gray-800 ${className}`}
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
+      className={`text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-900 dark:hover:text-white block w-full text-left px-4 py-2 text-sm ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
       role="menuitem"
+      tabIndex={-1}
+      onClick={handleClick}
+      disabled={disabled}
     >
-      {children}
+      <div className="flex items-center">
+        {children}
+      </div>
     </button>
   );
 } 

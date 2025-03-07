@@ -1,25 +1,22 @@
 "use client";
 
 import { useCallback } from 'react';
-import { useDialog } from '@/context/DialogContext';
+import { useDialogContext } from '@/hooks/useDialogContext';
 
 /**
  * Hook that provides a simplified interface for opening dialogs
  * defined in the DialogContext
  */
 export function useDialogs() {
-  const { 
-    openNodeSettingsDialog: contextOpenNodeSettings,
-    openEventReplayDialog: contextOpenEventReplay 
-  } = useDialog();
+  const { openDialog } = useDialogContext();
 
   const openNodeSettingsDialog = useCallback((nodeId: string) => {
-    contextOpenNodeSettings(nodeId);
-  }, [contextOpenNodeSettings]);
+    openDialog({ nodeId });
+  }, [openDialog]);
 
   const openEventReplayDialog = useCallback((queueId: string, eventId: string) => {
-    contextOpenEventReplay(queueId, eventId);
-  }, [contextOpenEventReplay]);
+    openDialog({ queueId, eventId, type: 'eventReplay' });
+  }, [openDialog]);
 
   return {
     openNodeSettingsDialog,

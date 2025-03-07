@@ -7,6 +7,10 @@ import { DialogProvider } from '@/context/DialogContext';
 import { InitProvider } from '@/context/InitContext';
 import { AuthProvider } from '@/context/AuthContext';
 import { ApiProvider } from '@/context/ApiContext';
+import { ToastProvider } from '@/components/ui/toast';
+import NodeSettingsDialog from '@/components/dialogs/NodeSettingsDialog';
+import EventReplayDialog from '@/components/dialogs/EventReplayDialog';
+import { ThemeProvider } from '@/components/ui/theme-provider';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -29,6 +33,10 @@ export default function RootLayout({
               <ApiProvider>
                 <DialogProvider>
                   {children}
+                  <ToastProvider>
+                    <NodeSettingsDialog />
+                    <EventReplayDialog />
+                  </ToastProvider>
                 </DialogProvider>
               </ApiProvider>
             </AppProvider>
