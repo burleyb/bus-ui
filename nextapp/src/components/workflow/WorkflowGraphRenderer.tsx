@@ -144,10 +144,8 @@ export function WorkflowGraphRenderer({
   // Flag to prevent multiple animations from running
   const isAnimating = useRef(false);
   
-  // Track if context menu is active
-  const isContextMenuActive = useRef(false);
-  
-  // Track currently hovered node
+  // Add missing refs for context menu and hovered node tracking
+  const isContextMenuActive = useRef<boolean>(false);
   const hoveredNodeRef = useRef<string | null>(null);
   
   // Function to update the tooltip content and position
@@ -213,7 +211,7 @@ export function WorkflowGraphRenderer({
     // Apply tooltip styling
     tooltipRef.current.className = 'absolute bg-white dark:bg-gray-900 p-2 rounded shadow-lg border border-gray-200 dark:border-gray-700 text-xs z-10';
     tooltipRef.current.style.display = 'block';
-    tooltipRef.current.style.maxWidth = '250px';
+    tooltipRef.current.style.maxWidth = '350px';
 
     // Position tooltip relative to current mouse position but with a large offset
     // to avoid interfering with hover buttons
@@ -221,7 +219,6 @@ export function WorkflowGraphRenderer({
       const rect = svgRef.current.getBoundingClientRect();
       
       // Position tooltip with a significant offset to avoid buttons
-      // Left side of the node to avoid control buttons which typically appear on the right
       tooltipRef.current.style.left = `${event.clientX - rect.left - 380}px`; // Large offset to the left
       tooltipRef.current.style.top = `${event.clientY - rect.top - 20}px`; // Slight offset above cursor
       
@@ -317,8 +314,6 @@ export function WorkflowGraphRenderer({
       (item as HTMLElement).style.cursor = 'pointer';
       (item as HTMLElement).style.margin = '2px 0';
       (item as HTMLElement).style.borderRadius = '4px';
-      (item as HTMLElement).style.backgroundColor = 'transparent';
-      (item as HTMLElement).style.color = 'inherit';
       
       // Add hover effect
       item.addEventListener('mouseover', () => {
@@ -335,8 +330,6 @@ export function WorkflowGraphRenderer({
         
         const action = (item as HTMLElement).dataset.action;
         const targetNodeId = (item as HTMLElement).dataset.nodeId || '';
-        
-        console.log('Context menu action:', action, 'for node:', targetNodeId); // Debug log
         
         // Hide the context menu
         if (tooltipRef.current) {
@@ -375,7 +368,6 @@ export function WorkflowGraphRenderer({
       }
       
       if (tooltipRef.current && isContextMenuActive.current) {
-        console.log('Closing context menu'); // Debug log
         tooltipRef.current.style.display = 'none';
         isContextMenuActive.current = false;
         document.removeEventListener('click', closeContextMenu);
@@ -392,92 +384,9 @@ export function WorkflowGraphRenderer({
     
   }, [graphData.nodes, tooltipRef, svgRef, onNodeDoubleClick, onNodeSettingsClick]);
 
-  // Function to properly center the graph in the viewport
-  const centerGraphInViewport = useCallback((svg: d3.Selection<SVGSVGElement, unknown, null, undefined>, g: d3.Selection<SVGGElement, unknown, null, undefined>) => {
-    if (!svgRef.current) return;
-    
-    // Get the SVG dimensions
-    const svgWidth = svgRef.current.clientWidth || window.innerWidth;
-    const svgHeight = svgRef.current.clientHeight || window.innerHeight;
-    
-    // Find the primary node's position
-    const primaryNodeData = graphData.nodes.find(n => (n.originalId || n.id) === primaryNode);
-    if (!primaryNodeData) return;
-    
-    // Center on primary node
-    const centerX = svgWidth / 2;
-    const centerY = svgHeight / 2;
-    
-    // Calculate the translate to center the primary node
-    const newOffsetX = centerX - (primaryNodeData.x || 0) * zoom;
-    const newOffsetY = centerY - (primaryNodeData.y || 0) * zoom;
-    
-    // Apply the transform
-    g.attr('transform', `translate(${newOffsetX}, ${newOffsetY}) scale(${zoom})`);
-    
-    // Now check if graph is visible within viewport by calculating boundaries
-    const nodeBounds = { 
-      minX: Infinity, 
-      maxX: -Infinity, 
-      minY: Infinity, 
-      maxY: -Infinity 
-    };
-    
-    // Calculate the actual bounds of all nodes
-    graphData.nodes.forEach(node => {
-      if (node.x !== undefined && node.y !== undefined) {
-        nodeBounds.minX = Math.min(nodeBounds.minX, node.x);
-        nodeBounds.maxX = Math.max(nodeBounds.maxX, node.x);
-        nodeBounds.minY = Math.min(nodeBounds.minY, node.y);
-        nodeBounds.maxY = Math.max(nodeBounds.maxY, node.y);
-      }
-    });
-    
-    // If we have a very small graph, ensure it's visible by adjusting zoom if needed
-    const graphWidth = nodeBounds.maxX - nodeBounds.minX;
-    const graphHeight = nodeBounds.maxY - nodeBounds.minY;
-    
-    // If graph is too small or too large, adjust zoom to fit
-    if (graphWidth > 0 && graphHeight > 0) {
-      // Calculate the viewport in graph coordinates
-      const viewportWidth = svgWidth / zoom;
-      const viewportHeight = svgHeight / zoom;
-      
-      // Check if graph is significantly smaller than viewport
-      const isTooSmall = graphWidth < viewportWidth * 0.3 && graphHeight < viewportHeight * 0.3;
-      
-      if (isTooSmall) {
-        // Calculate a better zoom level to make the graph more visible
-        const idealZoom = Math.min(
-          viewportWidth / graphWidth * 0.4,
-          viewportHeight / graphHeight * 0.4
-        );
-        
-        // Don't let zoom get too small
-        const adjustedZoom = Math.max(0.5, Math.min(idealZoom, zoom));
-        
-        // Recalculate the transform with the new zoom
-        const newOffsetWithZoom = {
-          x: centerX - (primaryNodeData.x || 0) * adjustedZoom,
-          y: centerY - (primaryNodeData.y || 0) * adjustedZoom
-        };
-        
-        // Apply adjusted transform
-        g.attr('transform', `translate(${newOffsetWithZoom.x}, ${newOffsetWithZoom.y}) scale(${adjustedZoom})`);
-        
-        // Notify parent of zoom change if it's significantly different
-        if (Math.abs(adjustedZoom - zoom) > 0.1) {
-          console.log('Adjusting zoom to fit small graph:', adjustedZoom);
-          // You may want to notify the parent component of this zoom change
-          // We won't implement this now to avoid introducing too many changes
-        }
-      }
-    }
-  }, [graphData.nodes, primaryNode, zoom, svgRef]);
-
   // Render the graph with D3
   const renderGraph = useCallback(() => {
-    if (!svgRef.current || !graphData.nodes.length) return null;
+    if (!svgRef.current || !graphData.nodes.length) return;
     
     console.log('Rendering workflow graph with', graphData.nodes.length, 'nodes and', graphData.links.length, 'links');
     
@@ -506,12 +415,12 @@ export function WorkflowGraphRenderer({
       .attr('orient', 'auto')
       .append('path')
       .attr('d', 'M0,-5L10,0L0,5')
-      .attr('fill', '#888');
+      .attr('fill', '#3b82f6');
     
     // Main graph container
     const g = svg.append('g');
     
-    // Apply initial zoom and offset transformations - will be adjusted later if needed
+    // Apply zoom and offset transformations
     g.attr('transform', `translate(${offset[0]}, ${offset[1]}) scale(${zoom})`);
     
     // Draw links first (so they appear behind nodes)
@@ -762,8 +671,6 @@ export function WorkflowGraphRenderer({
     // Update the hover behavior for nodes
     node
       .on('mouseover', function(event, d) {
-        event.stopPropagation(); // Stop event propagation
-        
         // Don't show tooltip if context menu is visible
         if (isContextMenuActive.current) {
           return;
@@ -795,7 +702,21 @@ export function WorkflowGraphRenderer({
           }
         }, 100);
       })
+      .on('mousemove', function(event, d) {
+        // Don't update tooltip if context menu is visible
+        if (isContextMenuActive.current) {
+          return;
+        }
+        
+        // Update tooltip position
+        updateTooltip(d.originalId || d.id, event);
+      })
       .on('mouseout', function(event, d) {
+        // Don't hide tooltip if it's being used as context menu
+        if (isContextMenuActive.current) {
+          return;
+        }
+        
         onHoveredNodeChange(null);
         
         // Remove hover effect from node
@@ -803,17 +724,25 @@ export function WorkflowGraphRenderer({
           .attr('stroke', '#ffffff')
           .attr('stroke-width', 2);
         
-        // Remove hovered class but keep controls visible briefly
-        d3.select(this).classed('hovered', false);
+        // Hide tooltip
+        updateTooltip(null);
         
-        // Hide node control buttons with delay (to allow clicking)
-        const nodeControls = d3.select(this).select('.node-controls');
-        if (!nodeControls.empty()) {
-          setTimeout(() => {
-            if (!d3.select(this).classed('hovered')) {
-              nodeControls.remove();
-            }
-          }, 300); // Longer delay to improve UX
+        // Get the element the mouse moved to
+        const toElement = event.relatedTarget;
+        
+        // Only remove the hovered class if we're not moving to a child element
+        if (!d3.select(this).node()?.contains(toElement as HTMLElement)) {
+          d3.select(this).classed('hovered', false);
+          
+          // Hide node control buttons with delay (to allow clicking)
+          const nodeControls = d3.select(this).select('.node-controls');
+          if (!nodeControls.empty()) {
+            setTimeout(() => {
+              if (!d3.select(this).classed('hovered')) {
+                nodeControls.remove();
+              }
+            }, 300); // Longer delay to improve UX
+          }
         }
       })
       .on('click', (event, d) => {
@@ -863,39 +792,42 @@ export function WorkflowGraphRenderer({
       const isPrimaryNode = (d.originalId || d.id) === primaryNode;
       
       // 1. Focus button (Crosshair icon) at 1 o'clock - should trigger double-click
-      const pos1 = positionButton(Math.PI * 0.08);
-      const focusButton = controls.append('g')
-        .attr('transform', `translate(${pos1.x}, ${pos1.y})`)
-        .style('cursor', 'pointer')
-        .attr('class', 'focus-button');
-      
-      focusButton.append('circle')
-        .attr('r', buttonRadius)
-        .attr('fill', '#3182ce')
-        .attr('opacity', 0.9);
-      
-      // Add crosshair icon
-      focusButton.append('path')
-        .attr('d', 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z')
-        .attr('transform', 'translate(-10, -10) scale(0.75)')
-        .attr('fill', 'none')
-        .attr('stroke', 'white')
-        .attr('stroke-width', '1.5');
-      
-      // Add the crosshair lines
-      focusButton.append('path')
-        .attr('d', 'M22 12h-4 M6 12H2 M12 6V2 M12 22v-4')
-        .attr('transform', 'translate(-10, -10) scale(0.75)')
-        .attr('fill', 'none')
-        .attr('stroke', 'white')
-        .attr('stroke-width', '1.5')
-        .attr('stroke-linecap', 'round');
-      
-      // Focus button click handler - trigger double-click action
-      focusButton.on('click', (event) => {
-        event.stopPropagation();
-        onNodeDoubleClick(nodeId);
-      });
+      // Don't show focus button for the primary node
+      if (!isPrimaryNode) {
+        const pos1 = positionButton(Math.PI * 0.08);
+        const focusButton = controls.append('g')
+          .attr('transform', `translate(${pos1.x}, ${pos1.y})`)
+          .style('cursor', 'pointer')
+          .attr('class', 'focus-button');
+        
+        focusButton.append('circle')
+          .attr('r', buttonRadius)
+          .attr('fill', '#3182ce')
+          .attr('opacity', 0.9);
+        
+        // Add crosshair icon
+        focusButton.append('path')
+          .attr('d', 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z')
+          .attr('transform', 'translate(-10, -10) scale(0.75)')
+          .attr('fill', 'none')
+          .attr('stroke', 'white')
+          .attr('stroke-width', '1.5');
+        
+        // Add the crosshair lines
+        focusButton.append('path')
+          .attr('d', 'M22 12h-4 M6 12H2 M12 6V2 M12 22v-4')
+          .attr('transform', 'translate(-10, -10) scale(0.75)')
+          .attr('fill', 'none')
+          .attr('stroke', 'white')
+          .attr('stroke-width', '1.5')
+          .attr('stroke-linecap', 'round');
+        
+        // Focus button click handler - trigger double-click action
+        focusButton.on('click', (event) => {
+          event.stopPropagation();
+          onNodeDoubleClick(nodeId);
+        });
+      }
       
       // 2. Settings button at 2 o'clock - open node details
       const pos2 = positionButton(Math.PI * 0.29);
@@ -928,8 +860,8 @@ export function WorkflowGraphRenderer({
         // Only show for generation 0 or positive
         const generation = d.generation || 0;
         if (generation >= 0) {
-          // Don't allow collapsing the primary node
-          if (isPrimaryNode) return;
+          // IMPORTANT: Remove this check to allow primary node to have collapse/expand buttons
+          // if (isPrimaryNode) return;
           
           const pos3 = positionButton(Math.PI * 0.5);
           const childrenButton = controls.append('g')
@@ -971,8 +903,8 @@ export function WorkflowGraphRenderer({
         // Only show for generation 0 or negative
         const generation = d.generation || 0;
         if (generation <= 0) {
-          // Don't allow collapsing the primary node
-          if (isPrimaryNode) return;
+          // IMPORTANT: Remove this check to allow primary node to have collapse/expand buttons
+          // if (isPrimaryNode) return;
           
           const pos4 = positionButton(Math.PI * 1.5);
           const parentsButton = controls.append('g')
@@ -1015,66 +947,65 @@ export function WorkflowGraphRenderer({
         .duration(200)
         .attr('opacity', 1);
       
-      // Ensure controls handle their own mouse events to prevent bubbling
-      controls.on('mouseover', function(event) {
-        event.stopPropagation();
+      // Ensure controls stay visible when hovered directly
+      controls.on('mouseover', function() {
         nodeSelection.classed('hovered', true);
-        hoveredNodeRef.current = nodeId;
       })
-      .on('mouseout', function(event) {
-        event.stopPropagation();
-        
-        // Don't remove hovered class if moving to the node itself
-        const toElement = event.relatedTarget;
-        if (!nodeSelection.node()?.contains(toElement as HTMLElement)) {
-          nodeSelection.classed('hovered', false);
-          if (hoveredNodeRef.current === nodeId) {
-            hoveredNodeRef.current = null;
-          }
-          
-          // Schedule controls removal
-          setTimeout(() => {
-            if (hoveredNodeRef.current !== nodeId) {
-              controls.remove();
-            }
-          }, 50);
-        }
+      .on('mouseout', function() {
+        nodeSelection.classed('hovered', false);
       });
     }
     
     // Position nodes based on their x, y coordinates
     node.attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
     
-    // Find the primary node data
-    const primaryNodeData = graphData.nodes.find(n => (n.originalId || n.id) === primaryNode);
-    if (!primaryNodeData) {
-      console.warn('Primary node not found in graph data:', primaryNode);
-      return null;
+    // Center primary node if needed
+    if (shouldAnimate && initialLayoutComplete.current) {
+      // Find the primary node's position
+      const primaryNodeData = graphData.nodes.find(n => (n.originalId || n.id) === primaryNode);
+      
+      if (primaryNodeData && primaryNodeData.x !== undefined && primaryNodeData.y !== undefined) {
+        const svgWidth = svgRef.current.clientWidth;
+        const svgHeight = svgRef.current.clientHeight;
+        
+        // Calculate center of the SVG viewBox
+        const centerX = svgWidth / 2;
+        const centerY = svgHeight / 2;
+        
+        // Calculate the required offset to center the primary node
+        const newOffsetX = centerX - primaryNodeData.x * zoom;
+        const newOffsetY = centerY - primaryNodeData.y * zoom;
+        
+        // Animate nodes gathering, then spreading
+        if (shouldAnimate) {
+          // First move all nodes to the position of the primary node (gather effect)
+          node.transition()
+            .duration(600)
+            .attr('transform', () => `translate(${primaryNodeData.x || 0}, ${primaryNodeData.y || 0})`)
+            .on('end', () => {
+              // Then spread them out to their final positions
+              node.transition()
+                .duration(800)
+                .ease(d3.easeElasticOut.amplitude(1).period(0.5))
+                .attr('transform', (d) => `translate(${d.x || 0}, ${d.y || 0})`);
+              
+              // Center the graph on the primary node
+              g.transition()
+                .duration(800)
+                .attr('transform', `translate(${newOffsetX}, ${newOffsetY}) scale(${zoom})`);
+            });
+        } else {
+          // Just center the graph without the gather/spread animation
+          g.transition()
+            .duration(500)
+            .attr('transform', `translate(${newOffsetX}, ${newOffsetY}) scale(${zoom})`);
+        }
+      }
     }
-
-    // Center the graph in the viewport
-    centerGraphInViewport(svg, g);
     
     // Initial layout is complete
     initialLayoutComplete.current = true;
-
-    // Return necessary objects for animation
-    return { node, g, primaryNodeData };
-  }, [
-    primaryNode, 
-    graphData, 
-    offset, 
-    zoom, 
-    collapsedState, 
-    showStats, 
-    onNodeClick, 
-    onNodeDoubleClick, 
-    onNodeSettingsClick,
-    onHoveredNodeChange,
-    updateTooltip,
-    centerGraphInViewport,
-    showContextMenu
-  ]);
+  }, [primaryNode, graphData, offset, zoom, collapsedState, showStats, onNodeClick, onNodeDoubleClick, onNodeSettingsClick, onCollapse, onExpand, onFocusClick, onHoveredNodeChange, state.nodes]);
   
   // Main rendering function
   useEffect(() => {
