@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/tabs';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import NodeSettingsDialogHeader from './NodeSettingsDialogHeader';
 import { FullScreenModal } from '@/components/ui/fullscreen-modal';
 import { useDialogContext } from '@/hooks/useDialogContext';
@@ -392,13 +392,20 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
                 ) : nodeType === 'bot' ? (
                   <BotDashboardTab 
                     nodeData={nodeData} 
-                    timePeriod={timePeriod === 'custom' ? 'custom' : timePeriod}
+                    timePeriod={timePeriod}
                     onClose={closeDialog}
                   />
                 ) : nodeType === 'queue' ? (
-                  <QueueDashboardTab nodeData={nodeData} />
+                  <QueueDashboardTab 
+                    nodeData={nodeData} 
+                    timePeriod={timePeriod}
+                    onClose={closeDialog}
+                  />
                 ) : (
-                  <SystemDashboardTab nodeData={nodeData} />
+                  <SystemDashboardTab 
+                    nodeData={nodeData} 
+                    timePeriod={timePeriod}
+                    onClose={closeDialog} />
                 )}
               </TabsContent>
               

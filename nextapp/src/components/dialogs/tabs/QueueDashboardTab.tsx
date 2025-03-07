@@ -4,6 +4,8 @@ import React from 'react';
 
 interface QueueDashboardTabProps {
   nodeData: any;
+  timePeriod: string;
+  onClose?: () => void;
 }
 
 const QueueDashboardTab: React.FC<QueueDashboardTabProps> = ({ nodeData }) => {

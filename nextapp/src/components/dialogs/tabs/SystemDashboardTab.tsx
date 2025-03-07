@@ -4,6 +4,8 @@ import React from 'react';
 
 interface SystemDashboardTabProps {
   nodeData: any;
+  timePeriod: string;
+  onClose?: () => void;
 }
 
 const SystemDashboardTab: React.FC<SystemDashboardTabProps> = ({ nodeData }) => {
