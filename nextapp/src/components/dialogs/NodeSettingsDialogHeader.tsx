@@ -69,6 +69,109 @@ function ReadQueueIndicator({
   );
 }
 
+// Define custom components for the queue selector dropdown
+const QueueSelectorDropdown = ({ 
+  readQueueIds, 
+  readQueues, 
+  selectedQueueId, 
+  onQueueSelect 
+}: { 
+  readQueueIds: string[];
+  readQueues: Record<string, any>; 
+  selectedQueueId: string;
+  onQueueSelect: (queueId: string) => void;
+}) => {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button 
+          variant="outline" 
+          size="sm" 
+          className="rounded-r-none h-8 px-2 flex items-center gap-1"
+        >
+          <Database size={14} className="text-blue-500" />
+          <Badge 
+            variant="secondary" 
+            className="h-4 px-1 text-xs flex items-center justify-center"
+          >
+            {readQueueIds.length}
+          </Badge>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent 
+        align="end" 
+        className="min-w-[400px] max-w-[500px] max-h-[400px] overflow-y-auto"
+      >
+        <div className="px-2 py-1 text-xs text-muted-foreground font-semibold">Select Queue</div>
+        <div className="h-px bg-muted my-1"></div>
+        {readQueueIds.map(queueId => {
+          // Format queue name for display
+          const displayName = queueId.split(':').pop() || queueId;
+          const isSelected = selectedQueueId === queueId;
+          return (
+            <DropdownMenuItem 
+              key={queueId}
+              onClick={() => onQueueSelect(queueId)}
+              className={`${isSelected ? "bg-blue-50 dark:bg-blue-900/20" : ""} py-2`}
+            >
+              <div className="flex flex-col w-full">
+                <div className="flex items-center">
+                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></div>}
+                  <span className={`font-medium ${isSelected ? "text-blue-600 dark:text-blue-400" : ""} truncate max-w-[450px]`}>
+                    {displayName}
+                  </span>
+                </div>
+                {displayName !== queueId && (
+                  <span className="text-xs text-muted-foreground font-mono ml-3 truncate max-w-[450px]">{queueId}</span>
+                )}
+              </div>
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
+// Define custom component for the checkpoint actions dropdown
+const CheckpointActionsDropdown = ({
+  onCopyCheckpoint,
+  onChangeCheckpoint,
+  onForceRun
+}: {
+  onCopyCheckpoint: () => void;
+  onChangeCheckpoint: () => void;
+  onForceRun: () => void;
+}) => {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button 
+          variant="ghost" 
+          className="h-8 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-2 py-1 rounded-r-md border-l border-gray-300 dark:border-gray-600"
+        >
+          <div className="flex items-center">
+            <Settings size={14} />
+            <ChevronDown size={14} />
+          </div>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={onCopyCheckpoint}>
+          Copy Checkpoint
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onChangeCheckpoint}>
+          Change Checkpoint
+        </DropdownMenuItem>
+        <div className="h-px bg-muted my-1"></div>
+        <DropdownMenuItem onClick={onForceRun}>
+          Force Run
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
 export default function NodeSettingsDialogHeader({ 
   nodeData, 
   onClose,
@@ -112,7 +215,7 @@ export default function NodeSettingsDialogHeader({
     if (!selectedQueueId && readQueueIds.length > 0) {
       setSelectedQueueId(readQueueIds[0]);
     }
-  }, [readQueueIds, selectedQueueId]);
+  }, [readQueueIds]);
   
   // Get the checkpoint from the selected read queue
   const getSelectedCheckpoint = () => {
@@ -122,9 +225,16 @@ export default function NodeSettingsDialogHeader({
     
     if (!selectedQueueId && readQueueIds.length > 0) {
       // Default to first queue if none selected
-      return readQueueIds
-        .map(id => readQueues[id]?.checkpoint)
-        .find(checkpoint => checkpoint) || '';
+      let sqId = Object.keys(readQueues)
+        .map((id) => {
+          return (readQueues[id]?.checkpoint) ? id : ''
+        })
+        .find((value): value is string => value !== '');
+
+      if(sqId) {
+        setSelectedQueueId(sqId);
+      }
+
     }
     
     if (!selectedQueueId || !readQueues[selectedQueueId]) return '';
@@ -191,11 +301,8 @@ export default function NodeSettingsDialogHeader({
       onClose();
     }
     
-    // Update graph state to focus on this node and center the graph
-    updateGraphState({ 
-      focusNode: nodeId,
-      offset: [0, 0] // Center the graph around the node
-    });
+    // Update graph state to focus on this node
+    updateGraphState({ focusNode: nodeId });
   };
   
   // Function to handle navigate to parent
@@ -386,62 +493,14 @@ export default function NodeSettingsDialogHeader({
           {botPauseMutation.isPending && <span className="ml-1 animate-spin">⟳</span>}
         </Button>
         
-        
-        {/* Queue selector dropdown for multiple read queues - Now a compact icon-only button */}
+        {/* Queue selector dropdown for multiple read queues */}
         {readQueueIds.length > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                data-dropdown="queue-selector"
-                variant="outline" 
-                size="sm" 
-                className="rounded-r-none h-8 px-2 flex items-center gap-1"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  // Prevent event from bubbling up to parent elements
-                  e.stopPropagation();
-                }}
-              >
-                <Database size={14} className="text-blue-500" />
-                <Badge 
-                  variant="secondary" 
-                  className="h-4 px-1 text-xs flex items-center justify-center"
-                >
-                  {readQueueIds.length}
-                </Badge>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              align="end" 
-              className="w-[300px] max-h-[400px] overflow-y-auto"
-            >
-              <div className="px-2 py-1 text-xs text-muted-foreground font-semibold">Select Queue</div>
-              <div className="h-px bg-muted my-1"></div>
-              {readQueueIds.map(queueId => {
-                // Format queue name for display
-                const displayName = queueId.split(':').pop() || queueId;
-                const isSelected = selectedQueueId === queueId;
-                return (
-                  <DropdownMenuItem 
-                    key={queueId}
-                    onClick={() => handleQueueSelect(queueId)}
-                    className={`${isSelected ? "bg-blue-50 dark:bg-blue-900/20" : ""} py-2`}
-                  >
-                    <div className="flex flex-col w-full">
-                      <div className="flex items-center">
-                        {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></div>}
-                        <span className={`font-medium ${isSelected ? "text-blue-600 dark:text-blue-400" : ""}`}>
-                          {displayName}
-                        </span>
-                      </div>
-                      {displayName !== queueId && (
-                        <span className="text-xs text-muted-foreground font-mono ml-3">{queueId}</span>
-                      )}
-                    </div>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <QueueSelectorDropdown
+            readQueueIds={readQueueIds}
+            readQueues={readQueues}
+            selectedQueueId={selectedQueueId}
+            onQueueSelect={handleQueueSelect}
+          />
         )}
         
         {/* Checkpoint display */}
@@ -451,36 +510,11 @@ export default function NodeSettingsDialogHeader({
             {checkpoint || 'No checkpoint'}
           </div>
           
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                data-dropdown="checkpoint-actions"
-                variant="ghost" 
-                className="h-8 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-2 py-1 rounded-r-md border-l border-gray-300 dark:border-gray-600"
-                onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
-                  // Prevent event from bubbling up to parent elements
-                  e.stopPropagation();
-                }}
-              >
-                <div className="flex items-center">
-                  <Settings size={14} />
-                  <ChevronDown size={14} />
-                </div>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleCopyCheckpoint}>
-                Copy Checkpoint
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleChangeCheckpoint}>
-                Change Checkpoint
-              </DropdownMenuItem>
-              <div className="h-px bg-muted my-1"></div>
-              <DropdownMenuItem onClick={handleForceRun}>
-                Force Run
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <CheckpointActionsDropdown
+            onCopyCheckpoint={handleCopyCheckpoint}
+            onChangeCheckpoint={handleChangeCheckpoint}
+            onForceRun={handleForceRun}
+          />
         </div>
         
         {/* Close button */}

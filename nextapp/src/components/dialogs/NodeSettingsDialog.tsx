@@ -467,9 +467,9 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
               ) : (
                 <>
                   <TabsContent value="dashboard" className="mt-0 h-full overflow-y-auto">
-                    {nodeType === 'bot' && <BotDashboardTab nodeData={nodeData} timePeriod={timePeriod} onClose={handleClose} />}
-                    {nodeType === 'queue' && <QueueDashboardTab nodeData={nodeData} timePeriod={timePeriod} onClose={handleClose} />}
-                    {nodeType === 'system' && <SystemDashboardTab nodeData={nodeData} timePeriod={timePeriod} onClose={handleClose} />}
+                    {nodeType === 'bot' && <BotDashboardTab nodeData={nodeData} timePeriod={timePeriod} />}
+                    {nodeType === 'queue' && <QueueDashboardTab nodeData={nodeData} timePeriod={timePeriod} />}
+                    {nodeType === 'system' && <SystemDashboardTab nodeData={nodeData} timePeriod={timePeriod} />}
                   </TabsContent>
                   
                   {nodeType === 'bot' && (

@@ -14,7 +14,8 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  Legend
+  Legend,
+  ReferenceLine
 } from 'recharts';
 import { formatTimeAgo } from '@/lib/utils';
 import NodeIcon from '../../node/NodeIcon';
@@ -46,6 +47,18 @@ interface HistoricalDataPoint {
     read?: Record<string, any>;
     write?: Record<string, any>;
   };
+}
+
+// Define an interface for the sparkline data
+interface SparklineDataPoint {
+  time: string;
+  value: number;
+}
+
+// Define a type for the reference line
+interface ReferenceLineProps {
+  timestamp: string;
+  color?: string;
 }
 
 export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDashboardTabProps) {
@@ -86,10 +99,7 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
     }
     
     // Update graph state to focus on the node
-    updateGraphState({ 
-      focusNode: nodeId,
-      offset: [0, 0] // Center the graph around the node
-    });
+    updateGraphState({ focusNode: nodeId });
   };
 
   // Safeguard against null nodeData
@@ -198,6 +208,138 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
   
   const { timeLabels } = prepareQueueData();
 
+  // Add this helper function at an appropriate location in the file, such as after existing utility functions
+  const calculateReferenceLinePosition = (lastReadTimestamp: string, dataPoints: any[]): number => {
+    // If no data points or timestamp, default to left edge
+    if (!dataPoints || dataPoints.length === 0 || !lastReadTimestamp) {
+      return 0;
+    }
+
+    const lastReadTime = new Date(lastReadTimestamp).getTime();
+    
+    // Get time range of the sparkline data
+    const timeValues = dataPoints.map(point => new Date(point.time).getTime());
+    const minTime = Math.min(...timeValues);
+    const maxTime = Math.max(...timeValues);
+    
+    // If last read time is before the range, show at left edge
+    if (lastReadTime <= minTime) {
+      return 0;
+    }
+    
+    // If last read time is after the range, show at right edge
+    if (lastReadTime >= maxTime) {
+      return 100;
+    }
+    
+    // Calculate position as percentage within the time range
+    const position = ((lastReadTime - minTime) / (maxTime - minTime)) * 100;
+    return Math.max(0, Math.min(100, position));
+  };
+
+  // Better sparkline using Recharts that matches the Performance Charts styling
+  const SparklineChart = ({ 
+    data, 
+    referenceLine,
+    height = 50
+  }: { 
+    data: SparklineDataPoint[];
+    referenceLine?: ReferenceLineProps;
+    height?: number;
+  }) => {
+    // Memoize the data to prevent unnecessary re-renders
+    const memoizedData = React.useMemo(() => {
+      // Handle empty data case
+      if (!data || data.length === 0) {
+        return [{ time: new Date().toISOString(), value: 0 }];
+      }
+      
+      // Format the data for better display
+      return data.map(point => ({
+        ...point,
+        formattedTime: new Date(point.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }));
+    }, [data]);
+
+    // Handle empty data case
+    const isEmpty = !data || data.length === 0;
+    
+    // Memoize the reference line props to prevent unnecessary re-renders
+    const referenceLineProps = React.useMemo(() => {
+      if (!referenceLine || !referenceLine.timestamp) return null;
+      
+      return {
+        x: isEmpty ? 0 : referenceLine.timestamp,
+        stroke: referenceLine.color || "#ef4444",
+        strokeWidth: 2,
+        strokeDasharray: "3 3",
+        // Use proper types for label position
+        label: {
+          value: 'Last read',
+          position: 'top' as const,
+          fill: referenceLine.color || "#ef4444",
+          fontSize: 9
+        }
+      };
+    }, [referenceLine, isEmpty]);
+    
+    return (
+      <ResponsiveContainer width="100%" height={height}>
+        <LineChart 
+          data={memoizedData} 
+          margin={{ top: 20, right: 5, left: 5, bottom: 0 }}
+        >
+          <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+          <XAxis 
+            dataKey="time" 
+            hide={true}
+          />
+          <YAxis 
+            hide={true}
+          />
+          <Tooltip 
+            formatter={(value: any) => [`${value} events`, 'Count']}
+            labelFormatter={(label) => {
+              const date = new Date(label);
+              return `Time: ${date.toLocaleString()}`;
+            }}
+            contentStyle={{
+              borderRadius: '4px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              padding: '6px 8px',
+              fontSize: '12px'
+            }}
+            // Position tooltip above the chart instead of on top of it
+            wrapperStyle={{ 
+              top: -80, 
+              zIndex: 100 
+            }}
+            cursor={{ 
+              stroke: '#9ca3af', 
+              strokeWidth: 1, 
+              strokeDasharray: '3 3' 
+            }}
+            isAnimationActive={false}
+          />
+          <Line 
+            type="monotone" 
+            dataKey="value" 
+            stroke="#3b82f6" 
+            strokeWidth={2} 
+            dot={false} 
+            isAnimationActive={false}
+            name="Events" 
+          />
+          {referenceLine && referenceLine.timestamp && referenceLineProps && (
+            <ReferenceLine 
+              {...referenceLineProps}
+            />
+          )}
+        </LineChart>
+      </ResponsiveContainer>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full" style={{ minHeight: "calc(100vh - 240px)" }}>
       {/* Auto-refresh indicator */}
@@ -251,19 +393,28 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="h-6 w-24 mx-auto">
-                            {readqueue.values && readqueue.values.length > 0 ? (
-                              <div className="flex flex-col items-center">
-                                <Sparklines data={readqueue.values.map((value: any) => value.value)} height={70} margin={2}>
-                                  <SparklinesLine color="#3b82f6" style={{ fill: "none" }} />
-                                  <SparklinesSpots size={4} spotColors={{ '-1': '#ef4444', '0': '#22c55e', '1': '#3b82f6' }} />
-                                </Sparklines>
-                              </div>
-                            ) : (
-                              <div className="text-gray-400 text-center">No data</div>
-                            )}
-                          </div>
-                        </td>
+                                  <div className="h-10 w-32 mx-auto">
+                                    {readqueue.values && readqueue.values.length > 0 ? (
+                                      <SparklineChart 
+                                        data={readqueue.values}
+                                        referenceLine={readqueue.last_read_event_timestamp ? {
+                                          timestamp: readqueue.last_read_event_timestamp,
+                                          color: "#ef4444"
+                                        } : undefined}
+                                        height={50}
+                                      />
+                                    ) : (
+                                      <SparklineChart 
+                                        data={[]}
+                                        referenceLine={readqueue.last_read_event_timestamp ? {
+                                          timestamp: readqueue.last_read_event_timestamp,
+                                          color: "#ef4444"
+                                        } : undefined}
+                                        height={50}
+                                      />
+                                    )}
+                                  </div>
+                                </td>
                         <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{readqueue.values?.reduce(function(total: number, read: any) {
 												return total + (read.value || 0)
 											}, 0).toLocaleString()}</td>
@@ -326,16 +477,17 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="h-6 w-24 mx-auto">
+                          <div className="h-10 w-32 mx-auto">
                             {writequeue.values && writequeue.values.length > 0 ? (
-                              <div className="flex flex-col items-center">
-                                <Sparklines data={writequeue.values.map((value: any) => value.value)} height={70} margin={2}>
-                                  <SparklinesLine color="#3b82f6" style={{ fill: "none" }} />
-                                  <SparklinesSpots size={4} spotColors={{ '-1': '#ef4444', '0': '#22c55e', '1': '#3b82f6' }} />
-                                </Sparklines>
-                              </div>
+                              <SparklineChart 
+                                data={writequeue.values}
+                                height={50}
+                              />
                             ) : (
-                              <div className="text-gray-400 text-center">No data</div>
+                              <SparklineChart 
+                                data={[]}
+                                height={50}
+                              />
                             )}
                           </div>
                         </td>
