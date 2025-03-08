@@ -21,7 +21,7 @@ import {
 } from '@/lib/dateUtils';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { Dialog } from '@/components/ui/Dialog';
+import { Dialog } from '@/components/ui/dialog';
 import { awsNativeFetch } from '@/lib/authUtils';
 
 interface QueueEventsTabProps {

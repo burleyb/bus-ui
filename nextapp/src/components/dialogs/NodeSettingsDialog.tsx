@@ -16,13 +16,15 @@ import SystemDashboardTab from './tabs/SystemDashboardTab';
 import SystemEventsTab from './tabs/SystemEventsTab';
 import SystemSettingsTab from './tabs/SystemSettingsTab';
 import BotLogsTab from './tabs/BotLogsTab';
-import { awsNativeFetch } from '@/lib/authUtils';
 import { useToast } from '../ui/toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { X } from 'lucide-react';
+import { useBotDetails, useQueueDetails, useSystemDetails } from '@/context/ApiContext';
+import { NodeData } from '@/types/node';
+import { awsNativeFetch } from '@/lib/authUtils';
 
 // Time period options for stats
 type TimePeriod = '15m' | '1hr' | '6hr' | '1d' | '1w' | 'custom';
@@ -39,6 +41,28 @@ const TIME_PERIOD_CONFIGS: Record<TimePeriod, TimePeriodConfig> = {
   '1d': { range: 'day', count: 1 },
   '1w': { range: 'week', count: 1 },
   'custom': { range: 'minute', count: 15 } // Default, will be overridden
+};
+
+// Utility functions for calculating stats - moved here to avoid temporal dead zone
+const calculateTotalExecutions = (timeSeries: any[] = []) => {
+  if (!timeSeries || !Array.isArray(timeSeries)) return 0;
+  
+  return timeSeries.reduce((total, point) => {
+    return total + (point.value || 0);
+  }, 0);
+};
+
+const calculateAverageDuration = (timeSeries: any[] = []) => {
+  if (!timeSeries || !Array.isArray(timeSeries) || timeSeries.length === 0) return 0;
+  
+  const totalDuration = timeSeries.reduce((sum, point) => sum + (point.value || 0), 0);
+  return Math.round(totalDuration / timeSeries.length);
+};
+
+const calculateMaxDuration = (timeSeries: any[] = []) => {
+  if (!timeSeries || !Array.isArray(timeSeries) || timeSeries.length === 0) return 0;
+  
+  return Math.max(...timeSeries.map(point => point.value || 0));
 };
 
 export interface NodeSettingsDialogProps {
@@ -128,12 +152,13 @@ function CustomTimePeriodDialog({
 export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) {
   const { dialogData, closeDialog, isOpen } = useDialogContext() || {};
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [isLoading, setIsLoading] = useState(true);
-  const [nodeData, setNodeData] = useState<any>(null);
   const { addToast } = useToast();
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('15m');
   const [customTimePeriod, setCustomTimePeriod] = useState<TimePeriodConfig>({ range: 'minute', count: 15 });
   const [showCustomPeriodDialog, setShowCustomPeriodDialog] = useState(false);
+  
+  // Track whether this is an initial load or just a time period refresh
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   
   // Determine current time period config
   const currentTimePeriodConfig = timePeriod === 'custom' ? customTimePeriod : TIME_PERIOD_CONFIGS[timePeriod];
@@ -147,151 +172,173 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
   // Determine the type of node
   const nodeType = currentNodeId?.split(':')[0] || '';
   
-  // Function to extract bot ID from node ID
-  const getBotIdFromNodeId = (nodeId: string) => {
-    if (!nodeId) return '';
-    const parts = nodeId.split(':');
-    if (parts.length < 2) return nodeId;
-    return parts[1];
-  };
+  // Get timestamp for API calls
+  const timestamp = new Date().toISOString();
   
-  // Function to fetch node data with the selected time period
-  const fetchNodeData = () => {
-    if (!shouldShow || !currentNodeId) return;
+  // Get the appropriate data based on node type
+  const {
+    data: botDetails,
+    isLoading: isBotLoading,
+    isError: isBotError,
+    error: botError
+  } = useBotDetails(nodeType === 'bot' ? currentNodeId : '');
+  
+  const {
+    data: queueDetails,
+    isLoading: isQueueLoading,
+    isError: isQueueError,
+    error: queueError
+  } = useQueueDetails(nodeType === 'queue' ? currentNodeId : '');
+  
+  const {
+    data: systemDetails,
+    isLoading: isSystemLoading,
+    isError: isSystemError,
+    error: systemError
+  } = useSystemDetails(nodeType === 'system' ? currentNodeId : '');
+  
+  // For dashboard data, we'll use a direct fetch instead of the hook
+  // to ensure the URL structure is correct
+  const [dashboardData, setDashboardData] = useState<any>(null);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [isDashboardError, setIsDashboardError] = useState(false);
+  const [dashboardError, setDashboardError] = useState<Error | null>(null);
+  
+  // Function to fetch dashboard data
+  const fetchDashboardData = async (isRefresh = false) => {
+    if (!currentNodeId) return;
     
-    setIsLoading(true);
+    // Only set loading state on initial load, not on time period refresh
+    if (!isRefresh) {
+      setIsDashboardLoading(true);
+    }
     
-    // If this is a bot node, get the bot data
-    if (currentNodeId.startsWith('bot:')) {
-      const botId = getBotIdFromNodeId(currentNodeId);
+    setIsDashboardError(false);
+    setDashboardError(null);
+    
+    try {
+      // Build the URL with the format shown in the example
+      // Example: /api/dashboard/bot:BURLEYB_botWriteSavedTracks?range=minute&count=15&timestamp=...
+      const apiUrl = `/api/dashboard/${currentNodeId}?range=${currentTimePeriodConfig.range}&count=${currentTimePeriodConfig.count}&timestamp=${encodeURIComponent(timestamp)}`;
       
-      // Get current timestamp for API call
-      const timestamp = new Date().toISOString();
+      const response = await awsNativeFetch(apiUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch dashboard data: ${response.status}`);
+      }
       
-      // Prepare the API URL with the current time period
-      const apiUrl = `/api/dashboard/bot:${botId}?range=${currentTimePeriodConfig.range}&count=${currentTimePeriodConfig.count}&timestamp=${encodeURIComponent(timestamp)}`;
-      
-      // Fetch bot data using the signed request method
-      awsNativeFetch(apiUrl)
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`Failed to fetch bot data: ${response.status}`);
-          }
-          return response.json();
-        })
-        .then(data => {
-          console.log('Bot data fetched:', data);
-          
-          // Process the data to match our component expectations
-          const processedData = {
-            id: currentNodeId,
-            name: currentNodeId.split(':').pop() || currentNodeId,
-            type: currentNodeId.includes('bot:') ? 'lambda' : 'queue',
-            status: 'RUNNING', // Default status
-            stats: {
-              executions: calculateTotalExecutions(data.executions),
-              errors: calculateTotalExecutions(data.errors),
-              avgDuration: calculateAverageDuration(data.duration),
-              maxDuration: calculateMaxDuration(data.duration),
-              lastRun: data.executions?.[0]?.time || null,
-              errorRate: data.executions && data.executions.length > 0 && data.errors
-                ? Math.round((calculateTotalExecutions(data.errors) / calculateTotalExecutions(data.executions)) * 100)
-                : 0
-            },
-            // Include all the raw data for components that need it
-            ...data
-          };
-          
-          setNodeData(processedData);
-          setIsLoading(false);
-        })
-        .catch(error => {
-          console.error('Error fetching bot data:', error);
-          addToast({
-            title: "Error",
-            description: `Failed to fetch node data: ${error.message}`,
-            variant: "destructive"
-          });
-          
-          // Set basic data even on error
-          setNodeData({
-            id: currentNodeId,
-            name: currentNodeId.split(':').pop() || currentNodeId,
-            type: currentNodeId.includes('bot:') ? 'lambda' : 'queue',
-            status: 'UNKNOWN',
-            error: error.message
-          });
-          setIsLoading(false);
-        });
-    } else if (currentNodeId.startsWith('queue:')) {
-      // Queue data handling
-      setNodeData({
-        id: currentNodeId,
-        name: currentNodeId.split(':').pop() || currentNodeId,
-        type: 'queue',
-        status: 'ACTIVE'
-      });
-      setIsLoading(false);
-    } else if (currentNodeId.startsWith('system:')) {
-      // System data handling
-      setNodeData({
-        id: currentNodeId,
-        name: currentNodeId.split(':').pop() || currentNodeId,
-        type: 'system',
-        status: 'ACTIVE'
-      });
-      setIsLoading(false);
-    } else {
-      // Generic fallback
-      setNodeData({
-        id: currentNodeId,
-        name: currentNodeId.split(':').pop() || currentNodeId,
-        type: 'unknown',
-        status: 'UNKNOWN'
-      });
-      setIsLoading(false);
+      const data = await response.json();
+      setDashboardData(data);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+      setIsDashboardError(true);
+      setDashboardError(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      setIsDashboardLoading(false);
+      // If this was an initial load, mark it as complete
+      if (isInitialLoad) {
+        setIsInitialLoad(false);
+      }
     }
   };
   
-  // Fetch data when dialog opens or time period changes
+  // Fetch dashboard data when component mounts or time period changes
   useEffect(() => {
-    fetchNodeData();
+    if (shouldShow && currentNodeId) {
+      // If dialog first opens or node changes, do a full load
+      if (isInitialLoad) {
+        fetchDashboardData(false);
+      } else {
+        // If just the time period changed, do a quiet refresh
+        fetchDashboardData(true);
+      }
+    }
   }, [shouldShow, currentNodeId, timePeriod, customTimePeriod]);
   
-  // Calculate total executions
-  const calculateTotalExecutions = (timeSeries: any[]) => {
-    if (!timeSeries || !Array.isArray(timeSeries)) return 0;
-    
-    return timeSeries.reduce((total, point) => {
-      return total + (point.value || 0);
-    }, 0);
+  // Reset initial load state when dialog closes or node changes
+  useEffect(() => {
+    if (!shouldShow || !currentNodeId) {
+      setIsInitialLoad(true);
+    }
+  }, [shouldShow, currentNodeId]);
+  
+  // Function to manually refetch dashboard data
+  const refetchDashboard = () => {
+    fetchDashboardData(true);
   };
   
-  // Calculate average duration
-  const calculateAverageDuration = (timeSeries: any[]) => {
-    if (!timeSeries || !Array.isArray(timeSeries) || timeSeries.length === 0) return 0;
-    
-    const total = timeSeries.reduce((sum, point) => {
-      return sum + (point.value || 0);
-    }, 0);
-    
-    return Math.round(total / timeSeries.length);
-  };
+  // Combine all loading states, but only include dashboard loading for initial loads
+  const isLoading = isBotLoading || isQueueLoading || isSystemLoading || (isInitialLoad && isDashboardLoading);
   
-  // Calculate max duration
-  const calculateMaxDuration = (timeSeries: any[]) => {
-    if (!timeSeries || !Array.isArray(timeSeries) || timeSeries.length === 0) return 0;
-    
-    return Math.max(...timeSeries.map(point => point.value || 0));
-  };
+  // Combine error states
+  const hasError = isBotError || isQueueError || isSystemError || isDashboardError;
   
-  // Function to handle time period change
+  // Calculate processed node data based on node type
+  const nodeData: NodeData | null = React.useMemo(() => {
+    if (!currentNodeId) return null;
+    
+    // Base node data common to all types
+    const baseData = {
+      id: currentNodeId,
+      name: currentNodeId.split(':').pop() || currentNodeId,
+      type: (nodeType === 'bot' ? 'bot' : (nodeType === 'queue' ? 'queue' : nodeType === 'system' ? 'system' : 'unknown')) as NodeData['type'],
+      status: 'UNKNOWN' as NodeData['status'],
+      parentNodes: [] as string[],
+      childNodes: [] as string[]
+    } as NodeData;
+    
+    // Get detailed node data based on type
+    let detailedData = {};
+    if (nodeType === 'bot' && botDetails) {
+      detailedData = {
+        ...botDetails,
+        status: botDetails.paused ? 'PAUSED' : 'RUNNING'
+      };
+    } else if (nodeType === 'queue' && queueDetails) {
+      detailedData = {
+        ...queueDetails,
+        status: 'ACTIVE' // Default for queues
+      };
+    } else if (nodeType === 'system' && systemDetails) {
+      detailedData = {
+        ...systemDetails,
+        status: 'ACTIVE' // Default for systems
+      };
+    }
+    
+    // Add dashboard stats if available
+    let statsData = {};
+    if (dashboardData) {
+      statsData = {
+        stats: {
+          executions: calculateTotalExecutions(dashboardData.executions),
+          errors: calculateTotalExecutions(dashboardData.errors),
+          avgDuration: calculateAverageDuration(dashboardData.duration),
+          maxDuration: calculateMaxDuration(dashboardData.duration),
+          lastRun: dashboardData.executions?.[0]?.time || null,
+          errorRate: dashboardData.executions && dashboardData.executions.length > 0 && dashboardData.errors
+            ? Math.round((calculateTotalExecutions(dashboardData.errors) / calculateTotalExecutions(dashboardData.executions)) * 100)
+            : 0
+        },
+        // Include raw dashboard data for components that need it
+        ...dashboardData
+      };
+    }
+    
+    // Combine all data
+    return {
+      ...baseData,
+      ...detailedData,
+      ...statsData
+    };
+  }, [currentNodeId, nodeType, botDetails, queueDetails, systemDetails, dashboardData]);
+  
+  // Handle time period change
   const handleTimePeriodChange = (period: TimePeriod) => {
     setTimePeriod(period);
     
     if (period !== 'custom') {
-      // If a standard time period is selected, refetch the data
-      fetchNodeData();
+      // If a standard time period is selected, refetch the dashboard data quietly
+      setTimeout(() => fetchDashboardData(true), 0);
     } else {
       // If custom is selected, show the custom dialog
       setShowCustomPeriodDialog(true);
@@ -302,8 +349,9 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
   const applyCustomTimePeriod = (config: TimePeriodConfig) => {
     setCustomTimePeriod(config);
     setTimePeriod('custom');
-    // Refetch data with new time period
-    fetchNodeData();
+    // Refetch data with new time period - use setTimeout to ensure state is updated first
+    // Do a quiet refresh without showing loading state
+    setTimeout(() => fetchDashboardData(true), 0);
   };
   
   // Function to handle dialog close
@@ -313,12 +361,37 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     }
   };
   
+  // Show error toast if there's an API error
+  useEffect(() => {
+    if (hasError) {
+      const errorMessage = botError || queueError || systemError || dashboardError;
+      addToast({
+        title: "Error",
+        description: `Failed to fetch node data: ${errorMessage?.message || 'Unknown error'}`,
+        type: "error"
+      });
+    }
+  }, [hasError, botError, queueError, systemError, dashboardError, addToast]);
+  
   if (!currentNodeId || !shouldShow) return null;
   
   return (
     <>
       <FullScreenModal isOpen={!!shouldShow} onClose={handleClose}>
-        <NodeSettingsDialogHeader nodeData={nodeData} onClose={handleClose} />
+        <NodeSettingsDialogHeader 
+          nodeData={nodeData || { 
+            id: currentNodeId, 
+            name: currentNodeId.split(':').pop() || currentNodeId, 
+            type: (nodeType === 'bot' ? 'bot' : (nodeType === 'queue' ? 'queue' : nodeType === 'system' ? 'system' : 'unknown')) as NodeData['type'], 
+            status: 'UNKNOWN' as NodeData['status'],
+            parentNodes: [] as string[],
+            childNodes: [] as string[]
+          }} 
+          onClose={handleClose}
+          timePeriod={timePeriod}
+          onTimePeriodChange={handleTimePeriodChange}
+          onCustomPeriodClick={() => setShowCustomPeriodDialog(true)}
+        />
         
         <div className="flex-1 flex flex-col overflow-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden">
@@ -383,109 +456,54 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
               </div>
             </div>
             
-            <div className="flex-1 overflow-auto p-4">
-              <TabsContent value="dashboard" className="mt-0 h-full">
-                {isLoading ? (
-                  <div className="flex justify-center items-center h-full">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-gray-100"></div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+                    <p className="mt-2 text-gray-500">Loading...</p>
                   </div>
-                ) : nodeType === 'bot' ? (
-                  <BotDashboardTab 
-                    nodeData={nodeData} 
-                    timePeriod={timePeriod}
-                    onClose={closeDialog}
-                  />
-                ) : nodeType === 'queue' ? (
-                  <QueueDashboardTab 
-                    nodeData={nodeData} 
-                    timePeriod={timePeriod}
-                    onClose={closeDialog}
-                  />
-                ) : (
-                  <SystemDashboardTab 
-                    nodeData={nodeData} 
-                    timePeriod={timePeriod}
-                    onClose={closeDialog} />
-                )}
-              </TabsContent>
-              
-              <TabsContent value="code" className="mt-0 h-full">
-                {isLoading ? (
-                  <div className="flex justify-center items-center h-full">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-gray-100"></div>
-                  </div>
-                ) : nodeType === 'bot' ? (
-                  <BotCodeTab nodeData={nodeData} />
-                ) : (
-                  <div className="flex justify-center items-center h-full">
-                    <p className="text-gray-500">Code tab is only available for bots</p>
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="settings" className="mt-0 h-full">
-                {isLoading ? (
-                  <div className="flex justify-center items-center h-full">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-gray-100"></div>
-                  </div>
-                ) : nodeType === 'bot' ? (
-                  <BotSettingsTab nodeData={nodeData} />
-                ) : nodeType === 'queue' ? (
-                  <QueueSettingsTab nodeData={nodeData} />
-                ) : (
-                  <SystemSettingsTab nodeData={nodeData} />
-                )}
-              </TabsContent>
-              
-              <TabsContent value="triggers" className="mt-0 h-full">
-                {isLoading ? (
-                  <div className="flex justify-center items-center h-full">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-gray-100"></div>
-                  </div>
-                ) : nodeType === 'bot' ? (
-                  <BotTriggersTab nodeData={nodeData} />
-                ) : (
-                  <div className="flex justify-center items-center h-full">
-                    <p className="text-gray-500">Triggers tab is only available for bots</p>
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="logs" className="mt-0 h-full">
-                {isLoading ? (
-                  <div className="flex justify-center items-center h-full">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-gray-100"></div>
-                  </div>
-                ) : nodeType === 'bot' ? (
-                  <BotLogsTab nodeData={nodeData} />
-                ) : (
-                  <div className="flex justify-center items-center h-full">
-                    <p className="text-gray-500">Logs tab is only available for bots</p>
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="events" className="mt-0 h-full">
-                {isLoading ? (
-                  <div className="flex justify-center items-center h-full">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-gray-100"></div>
-                  </div>
-                ) : nodeType === 'queue' ? (
-                  <QueueEventsTab nodeData={nodeData} />
-                ) : nodeType === 'system' ? (
-                  <SystemEventsTab nodeData={nodeData} />
-                ) : (
-                  <div className="flex justify-center items-center h-full">
-                    <p className="text-gray-500">Events tab is only available for queues and systems</p>
-                  </div>
-                )}
-              </TabsContent>
+                </div>
+              ) : (
+                <>
+                  <TabsContent value="dashboard" className="mt-0 h-full overflow-y-auto">
+                    {nodeType === 'bot' && <BotDashboardTab nodeData={nodeData} timePeriod={timePeriod} onClose={handleClose} />}
+                    {nodeType === 'queue' && <QueueDashboardTab nodeData={nodeData} timePeriod={timePeriod} onClose={handleClose} />}
+                    {nodeType === 'system' && <SystemDashboardTab nodeData={nodeData} timePeriod={timePeriod} onClose={handleClose} />}
+                  </TabsContent>
+                  
+                  {nodeType === 'bot' && (
+                    <TabsContent value="code" className="mt-0 h-full overflow-y-auto">
+                      <BotCodeTab nodeData={nodeData} />
+                    </TabsContent>
+                  )}
+                  
+                  {nodeType === 'bot' && (
+                    <TabsContent value="logs" className="mt-0 h-full overflow-y-auto">
+                      <BotLogsTab nodeData={nodeData} />
+                    </TabsContent>
+                  )}
+                  
+                  {(nodeType === 'queue' || nodeType === 'system') && (
+                    <TabsContent value="events" className="mt-0 h-full overflow-y-auto">
+                      {nodeType === 'queue' && <QueueEventsTab nodeData={nodeData} />}
+                      {nodeType === 'system' && <SystemEventsTab nodeData={nodeData} />}
+                    </TabsContent>
+                  )}
+                  
+                  <TabsContent value="settings" className="mt-0 h-full overflow-y-auto">
+                    {nodeType === 'bot' && <BotSettingsTab nodeData={nodeData} />}
+                    {nodeType === 'queue' && <QueueSettingsTab nodeData={nodeData} />}
+                    {nodeType === 'system' && <SystemSettingsTab nodeData={nodeData} />}
+                  </TabsContent>
+                </>
+              )}
             </div>
           </Tabs>
         </div>
       </FullScreenModal>
       
-      {/* Custom Time Period Dialog */}
+      {/* Custom time period dialog */}
       <CustomTimePeriodDialog
         isOpen={showCustomPeriodDialog}
         onClose={() => setShowCustomPeriodDialog(false)}

@@ -58,7 +58,11 @@ export default function NodeDetails({ selectedBot }: NodeDetailsProps) {
       <div className="flex items-center">
         <div className="mr-3">
           <NodeIcon 
-            node={selectedBot} 
+            node={{ 
+              id: selectedBot, 
+              type: selectedBot.split(':')[0] || 'bot', 
+              status: 'running' 
+            }} 
             size={48} 
             className="rounded-lg"
           />

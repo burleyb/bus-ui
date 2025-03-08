@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { GitFork } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { 
   LineChart, 
@@ -16,10 +17,12 @@ import {
   Legend
 } from 'recharts';
 import { formatTimeAgo } from '@/lib/utils';
-import { awsNativeFetch } from '@/lib/authUtils';
 import NodeIcon from '../../node/NodeIcon';
 import { useRouter } from 'next/navigation';
 import { Sparklines, SparklinesLine, SparklinesSpots } from 'react-sparklines';
+import { useMetricsData } from '@/context/ApiContext';
+import { useWorkflowGraph } from '@/hooks/useWorkflowGraph';
+import moment from 'moment';
 
 interface BotDashboardTabProps {
   nodeData: any;
@@ -33,91 +36,61 @@ interface QueueHistoryItem {
   count: number;
 }
 
+// Add this interface at the top of the file, with the other interfaces
+interface HistoricalDataPoint {
+  metrics?: {
+    read?: Record<string, any>;
+    write?: Record<string, any>;
+  };
+  queues?: {
+    read?: Record<string, any>;
+    write?: Record<string, any>;
+  };
+}
+
 export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDashboardTabProps) {
-  // Add state for metrics data and loading state
-  const [metricsData, setMetricsData] = useState<any>(nodeData);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const router = useRouter();
-
-  // Setup refresh interval for metrics data
-  useEffect(() => {
-    // Function to fetch the latest metrics data
-    const fetchMetricsData = async () => {
-      if (!nodeData?.id) return;
-
-      setIsLoading(true);
-      
-      try {
-        // Generate current timestamp for the API call
-        const timestamp = new Date().toISOString();
-        
-        // Extract range and count from timePeriod
-        // This assumes timePeriod is in format like "15m", "1hr", etc.
-        let range = 'minute';
-        let count = 15;
-        
-        if (timePeriod) {
-          if (timePeriod.endsWith('m')) {
-            range = 'minute';
-            count = parseInt(timePeriod.replace('m', ''), 10);
-          } else if (timePeriod.endsWith('hr')) {
-            range = 'hour';
-            count = parseInt(timePeriod.replace('hr', ''), 10);
-          } else if (timePeriod.endsWith('d')) {
-            range = 'day';
-            count = parseInt(timePeriod.replace('d', ''), 10);
-          } else if (timePeriod.endsWith('w')) {
-            range = 'week';
-            count = parseInt(timePeriod.replace('w', ''), 10);
-          }
-        }
-
-        // Build API URL
-        const apiUrl = `/api/dashboard/${nodeData.id}?range=${range}&count=${count}&timestamp=${encodeURIComponent(timestamp)}`;
-        
-        // Fetch the data using authenticated request
-        const response = await awsNativeFetch(apiUrl);
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch metrics data: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        // Process and merge the new data with existing data structure
-        const updatedData = {
-          ...nodeData,
-          ...data,
-          // Preserve original node ID and metadata
-          id: nodeData.id,
-          name: nodeData.name,
-          type: nodeData.type
-        };
-        
-        setMetricsData(updatedData);
-        setLastUpdated(new Date());
-      } catch (error) {
-        console.error('Error fetching metrics data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    
-    // Immediately fetch data on mount
-    fetchMetricsData();
-    
-    // Set up interval to refresh every 10 seconds
-    const intervalId = setInterval(fetchMetricsData, 10000);
-    
-    // Clean up interval on component unmount
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [nodeData?.id, timePeriod]);
   
-  // Use the merged data instead of directly using nodeData
-  const activeData = metricsData || nodeData;
+  // Use the workflow graph hook to get access to graph state methods
+  const { updateGraphState } = useWorkflowGraph();
+  
+  // Use the metrics data hook with auto-refresh interval of 10 seconds
+  const { 
+    data: metricsData, 
+    isLoading, 
+    error,
+    dataUpdatedAt 
+  } = useMetricsData(nodeData?.id, timePeriod, 10000);
+  
+  // Last updated time from the query
+  const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : new Date();
+  
+  // Use a combined data object with original node data and metrics data
+  const activeData = React.useMemo(() => {
+    if (!metricsData) return nodeData;
+    
+    return {
+      ...nodeData,
+      ...metricsData,
+      // Preserve original node ID and metadata
+      id: nodeData.id,
+      name: nodeData.name,
+      type: nodeData.type
+    };
+  }, [nodeData, metricsData]);
+
+  // Function to navigate to a node in the workflow view
+  const navigateToNode = (nodeId: string) => {
+    if (onClose) {
+      onClose();
+    }
+    
+    // Update graph state to focus on the node
+    updateGraphState({ 
+      focusNode: nodeId,
+      offset: [0, 0] // Center the graph around the node
+    });
+  };
 
   // Safeguard against null nodeData
   if (!activeData) {
@@ -151,6 +124,23 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
     }
   };
 
+  // Format lag time to show in human-readable format with "ago"
+  const formatLagTime = (duration: number | undefined | string): string => {
+    if (!duration) return '';
+    
+    // Convert to a number if it's a string
+    const durationValue = typeof duration === 'string' ? parseInt(duration, 10) : duration;
+    
+    // If we can't parse it or it's 0, return empty
+    if (isNaN(durationValue) || durationValue === 0) return '';
+    
+    // Use moment.js to format the duration
+    const formattedTime = moment.duration(durationValue).humanize() + " ago";
+    
+    // Replace "a few" with empty string as in the original code
+    return formattedTime.replace("a few ", "");
+  };
+
   // Transform time series data for charts
   const prepareChartData = (timeSeriesData: any[]) => {
     if (!timeSeriesData || !Array.isArray(timeSeriesData) || timeSeriesData.length === 0) {
@@ -170,73 +160,43 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
 
   // Prepare queue data for events read and written tables
   const prepareQueueData = () => {
-    // Handle metrics for read queues
-    const readMetrics = activeData.metrics?.read || {};
-    const readQueues = activeData.queues?.read || {};
-    const readHistory = activeData.readHistory || {};
+    // Get time period labels for history
+    const getTimePeriodLabels = (): string[] => {
+      let periodLabel = "";
+      
+      if (timePeriod.endsWith('m')) {
+        const minutes = parseInt(timePeriod.replace('m', ''), 10);
+        periodLabel = `${minutes*3} minutes`;
+      } else if (timePeriod.endsWith('hr')) {
+        const hours = parseInt(timePeriod.replace('hr', ''), 10);
+        periodLabel = hours === 1 ? "1 hour" : `${hours*3} hours`;
+      } else if (timePeriod.endsWith('d')) {
+        const days = parseInt(timePeriod.replace('d', ''), 10);
+        periodLabel = days === 1 ? "1 day" : `${days*3} days`;
+      } else if (timePeriod.endsWith('w')) {
+        const weeks = parseInt(timePeriod.replace('w', ''), 10);
+        periodLabel = weeks === 1 ? "1 week" : `${weeks*3} weeks`;
+      }
+      
+      // Generate generic labels that show relative periods
+      // The exact timestamps will be in the API data
+      return [
+        `Previous ${periodLabel}`,
+        `Previous ${periodLabel}`,
+        `Current ${periodLabel}`
+      ];
+    };
     
-    const readData = Object.entries(readQueues).map(([queueId, queueInfo]: [string, any]) => {
-      const metrics = readMetrics[queueId] || {};
-      
-      // Get historical counts for this queue
-      // If we don't have history data, create an array with the current count
-      const queueHistory = readHistory[queueId] || [];
-      
-      // Extract event counts from the last 3 time periods
-      // If we have history, use it; otherwise, use the current count 3 times
-      const historicalCounts = queueHistory.length ? 
-        queueHistory.slice(-3).map((item: QueueHistoryItem) => item.count || 0) :
-        Array(3).fill(metrics.totalEvents || queueInfo.events || 0);
-      
-      return {
-        queueId,
-        queueName: queueInfo.name || queueId,
-        eventsRead: metrics.totalEvents || queueInfo.events || 0,
-        lastRead: metrics.lastEventTimestamp || queueInfo.lastRead || null,
-        lagTime: metrics.lagTime || queueInfo.lagTime || 0,
-        lagEvents: metrics.lagEvents || queueInfo.lagEvents || 0,
-        historicalCounts: historicalCounts
-      };
-    });
+    const timeLabels = getTimePeriodLabels();
+
+    // Handle metrics for read queues
     
     // Handle metrics for write queues
-    const writeMetrics = activeData.metrics?.write || {};
-    const writeQueues = activeData.queues?.write || {};
-    const writeHistory = activeData.writeHistory || {};
     
-    const writeData = Object.entries(writeQueues).map(([queueId, queueInfo]: [string, any]) => {
-      const metrics = writeMetrics[queueId] || {};
-      
-      // Get historical counts for this queue
-      const queueHistory = writeHistory[queueId] || [];
-      
-      // Extract event counts from the last 3 time periods
-      const historicalCounts = queueHistory.length ?
-        queueHistory.slice(-3).map((item: QueueHistoryItem) => item.count || 0) :
-        Array(3).fill(metrics.totalEvents || queueInfo.events || 0);
-      
-      return {
-        queueId,
-        queueName: queueInfo.name || queueId,
-        eventsWritten: metrics.totalEvents || queueInfo.events || 0,
-        lastWrite: metrics.lastEventTimestamp || queueInfo.lastWrite || null,
-        historicalCounts: historicalCounts
-      };
-    });
-    
-    return { readData, writeData };
+    return { timeLabels };
   };
   
-  const { readData, writeData } = prepareQueueData();
-
-  // First, add a method to navigate to a queue in the workflow
-  const navigateToNode = (nodeId: string, type: string = 'queue') => {
-    if (onClose) {
-      onClose();
-    }
-    // Navigate to workflow view with the node as primary
-    router.push(`/workflow?primaryNode=${type}:${nodeId}`);
-  };
+  const { timeLabels } = prepareQueueData();
 
   return (
     <div className="flex flex-col h-full" style={{ minHeight: "calc(100vh - 240px)" }}>
@@ -254,14 +214,14 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 h-full">
             <h3 className="text-lg font-medium mb-4">Events Read by Bot</h3>
             
-            {readData.length > 0 ? (
+            {nodeData && nodeData.queues?.read && Object.keys(nodeData.queues.read).length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead>
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Queue</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">View</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Activity</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"></th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"></th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Events Read</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Last Read</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Lag Time</th>
@@ -269,46 +229,61 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {readData.map((queue: any, index: number) => (
-                      <tr key={queue.queueId} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}>
+                    {nodeData && nodeData.queues?.read && Object.keys(nodeData.queues.read).map((queueId: string, index: number) => {
+                      const readqueue = nodeData.queues.read[queueId];
+                      return (
+                        <tr key={queueId} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}>
                         <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center space-x-2">
                             <NodeIcon node={{ type: 'queue' }} className="w-4 h-4" />
-                            <span className="truncate max-w-[150px]">{queue.queueName}</span>
+                            <span className="truncate max-w-[500px]">{readqueue.label}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
-                            onClick={() => navigateToNode(queue.queueId)}
+                            onClick={() => navigateToNode(readqueue.id)}
                             className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 p-1"
                             title="View in workflow"
                           >
-                            <NodeIcon node={{ type: 'queue' }} className="w-4 h-4 inline" />
+                            <div style={{ transform: 'rotate(90deg)' }}>
+                              <GitFork size={26} />
+                            </div>
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="h-6 w-16 mx-auto">
-                            {queue.historicalCounts && queue.historicalCounts.length > 0 ? (
-                              <Sparklines data={queue.historicalCounts} height={20} margin={2}>
-                                <SparklinesLine color="#3b82f6" />
-                                <SparklinesSpots size={2} spotColors={{ '-1': '#ef4444', '0': '#22c55e', '1': '#3b82f6' }} />
-                              </Sparklines>
+                          <div className="h-6 w-24 mx-auto">
+                            {readqueue.values && readqueue.values.length > 0 ? (
+                              <div className="flex flex-col items-center">
+                                <Sparklines data={readqueue.values.map((value: any) => value.value)} height={70} margin={2}>
+                                  <SparklinesLine color="#3b82f6" style={{ fill: "none" }} />
+                                  <SparklinesSpots size={4} spotColors={{ '-1': '#ef4444', '0': '#22c55e', '1': '#3b82f6' }} />
+                                </Sparklines>
+                              </div>
                             ) : (
                               <div className="text-gray-400 text-center">No data</div>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{queue.eventsRead.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatDate(queue.lastRead)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatTime(queue.lagTime)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{queue.lagEvents.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{readqueue.values?.reduce(function(total: number, read: any) {
+												return total + (read.value || 0)
+											}, 0).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatLagTime(readqueue.last_read_lag)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatLagTime(readqueue.last_event_source_timestamp_lag)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{readqueue.lagEvents.toLocaleString()}</td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">No read connections found</div>
+            )}
+
+            {/* Add explanation below read queue table */}
+            {nodeData && nodeData.queues?.read && Object.keys(nodeData.queues.read).length > 0 && (
+              <div className="mt-2 text-xs text-gray-500 italic">
+                * Activity charts show historical event counts. Hover over numbers for more details.
+              </div>
             )}
           </div>
           
@@ -316,57 +291,72 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 h-full">
             <h3 className="text-lg font-medium mb-4">Events Written by Bot</h3>
             
-            {writeData.length > 0 ? (
+            {nodeData && nodeData.queues?.write && Object.keys(nodeData.queues.write).length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
                   <thead>
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Queue</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">View</th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Activity</th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"></th>
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"></th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Events Written</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Last Write</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                    {writeData.map((queue: any, index: number) => (
-                      <tr key={queue.queueId} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}>
+                    {nodeData && nodeData.queues?.write && Object.keys(nodeData.queues.write).map((queueId: string, index: number) => {
+                      const writequeue = nodeData.queues.write[queueId];
+                      return (
+                        <tr key={queueId} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-900'}>
                         <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center space-x-2">
                             <NodeIcon node={{ type: 'queue' }} className="w-4 h-4" />
-                            <span className="truncate max-w-[150px]">{queue.queueName}</span>
+                            <span className="truncate max-w-[500px]">{writequeue.label}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
                           <button
-                            onClick={() => navigateToNode(queue.queueId)}
+                            onClick={() => navigateToNode(writequeue.id)}
                             className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 p-1"
                             title="View in workflow"
                           >
-                            <NodeIcon node={{ type: 'queue' }} className="w-4 h-4 inline" />
+                            <div style={{ transform: 'rotate(90deg)' }}>
+                              <GitFork size={26} />
+                            </div>
                           </button>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="h-6 w-16 mx-auto">
-                            {queue.historicalCounts && queue.historicalCounts.length > 0 ? (
-                              <Sparklines data={queue.historicalCounts} height={20} margin={2}>
-                                <SparklinesLine color="#3b82f6" />
-                                <SparklinesSpots size={2} spotColors={{ '-1': '#ef4444', '0': '#22c55e', '1': '#3b82f6' }} />
-                              </Sparklines>
+                          <div className="h-6 w-24 mx-auto">
+                            {writequeue.values && writequeue.values.length > 0 ? (
+                              <div className="flex flex-col items-center">
+                                <Sparklines data={writequeue.values.map((value: any) => value.value)} height={70} margin={2}>
+                                  <SparklinesLine color="#3b82f6" style={{ fill: "none" }} />
+                                  <SparklinesSpots size={4} spotColors={{ '-1': '#ef4444', '0': '#22c55e', '1': '#3b82f6' }} />
+                                </Sparklines>
+                              </div>
                             ) : (
                               <div className="text-gray-400 text-center">No data</div>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{queue.eventsWritten.toLocaleString()}</td>
-                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatDate(queue.lastWrite)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{writequeue.values?.reduce(function(total: number, write: any) {
+												return total + (write.value || 0)
+											}, 0).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatLagTime(writequeue.last_write_lag)}</td>
                       </tr>
-                    ))}
+                    )})}
                   </tbody>
                 </table>
               </div>
             ) : (
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">No write connections found</div>
+            )}
+
+            {/* Add explanation below write queue table */}
+            {nodeData && nodeData.queues?.write && Object.keys(nodeData.queues.write).length > 0 && (
+              <div className="mt-2 text-xs text-gray-500 italic">
+                * Activity charts show historical event counts. Hover over numbers for more details.
+              </div>
             )}
           </div>
         </div>
@@ -384,7 +374,7 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
             <CardContent className="flex-grow grid grid-cols-3 gap-4">
               {/* Left side: Metrics */}
               <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-3xl font-bold">{activeData.stats?.executions || 0}</div>
+                <div className="text-3xl font-bold">{nodeData.stats?.executions || 0}</div>
                 <div className="text-xs text-gray-500 mt-2">
                   Last run:<br/>{formatDate(activeData.stats?.lastRun)}
                 </div>

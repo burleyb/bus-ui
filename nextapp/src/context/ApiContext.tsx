@@ -123,6 +123,49 @@ const API = {
     return response.json();
   },
   
+  saveCron: async (data: { id: string; paused: boolean }) => {
+    
+    const response = await awsNativeFetch('/api/cron/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Failed to save cron data: ${response.statusText}`);
+    }
+    
+    return response.json();
+  },
+  
+  // Metrics data related
+  getMetricsData: async (nodeId: string, timePeriodConfig: { range: string; count: number }) => {
+    try {
+      // Generate current timestamp for the API call
+      const timestamp = new Date().toISOString();
+      const { range, count } = timePeriodConfig;
+      
+      // Build API URL with the current time period
+      const apiUrl = `/api/dashboard/${nodeId}?range=${range}&count=${count}&timestamp=${encodeURIComponent(timestamp)}`;
+      
+      // Fetch the data using authenticated request
+      const response = await awsNativeFetch(apiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch metrics data: ${response.status}`);
+      }
+      
+      // Return the raw API response
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error fetching metrics data:', error);
+      throw error;
+    }
+  },
+  
   // Search Queue Events - new function to search for events in a queue
   searchQueueEvents: async (queueId: string, eid?: string, searchText?: string, count?: number) => {
     try {
@@ -947,3 +990,82 @@ export function useSearchSystemEvents(
     retry: 1,            // Retry failed requests once
   });
 } 
+
+// Add mutation hooks here
+export function useBotPause() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: { id: string; paused: boolean }) => API.saveCron(data),
+    onSuccess: (data, variables) => {
+      // Invalidate the bot details query to refresh the data
+      queryClient.invalidateQueries({
+        queryKey: ['bot-details', variables.id]
+      });
+      
+      // Update the app state to reflect the paused status
+      console.log(`Bot ${variables.id} paused status updated to ${variables.paused}`);
+    }
+  });
+}
+
+// Helper to parse time period string into range and count
+export function parseTimePeriod(timePeriod: string): { range: string; count: number } {
+  let range = 'minute';
+  let count = 15;
+  
+  if (timePeriod) {
+    if (timePeriod.endsWith('m')) {
+      range = 'minute';
+      count = parseInt(timePeriod.replace('m', ''), 10);
+    } else if (timePeriod.endsWith('hr')) {
+      range = 'hour';
+      count = parseInt(timePeriod.replace('hr', ''), 10);
+    } else if (timePeriod.endsWith('d')) {
+      range = 'day';
+      count = parseInt(timePeriod.replace('d', ''), 10);
+    } else if (timePeriod.endsWith('w')) {
+      range = 'week';
+      count = parseInt(timePeriod.replace('w', ''), 10);
+    }
+  }
+  
+  return { range, count };
+}
+
+// Function to process API response into a usable format with historical data
+export function processMetricsData(apiData: any): any {
+  // Return processed data with history
+  return {
+    ...apiData,
+  };
+}
+
+/**
+ * Hook for fetching and processing metrics data for a node
+ * @param nodeId The ID of the node to fetch metrics for
+ * @param timePeriod The time period for metrics data (e.g., '15m', '1hr')
+ * @param refetchInterval Optional refetch interval in milliseconds
+ */
+export function useMetricsData(
+  nodeId: string,
+  timePeriod: string = '15m',
+  refetchInterval: number | false = false
+) {
+  // Parse the time period string into range and count
+  const timePeriodConfig = parseTimePeriod(timePeriod);
+  
+  // Use React Query to fetch and cache the metrics data
+  return useQuery({
+    queryKey: ['metrics', nodeId, timePeriod],
+    queryFn: async () => {
+      const data = await API.getMetricsData(nodeId, timePeriodConfig);
+      return processMetricsData(data);
+    },
+    enabled: !!nodeId,
+    refetchInterval,
+    // Keep data fresh while in view
+    staleTime: 1000 * 60 * 2, // 2 minutes
+    placeholderData: (previousData) => previousData, // Show previous data while refetching
+  });
+}

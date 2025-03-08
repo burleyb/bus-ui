@@ -23,7 +23,7 @@ export interface NodeStats {
 export interface NodeData {
   id: string;
   name: string;
-  type: 'lambda' | 'queue' | 'system' | 'unknown';
+  type: 'bot' | 'queue' | 'system' | 'infinity' | 'unknown';
   status: 'RUNNING' | 'PAUSED' | 'STOPPED' | 'ERROR' | 'UNKNOWN';
   parentNodes: string[];
   childNodes: string[];
