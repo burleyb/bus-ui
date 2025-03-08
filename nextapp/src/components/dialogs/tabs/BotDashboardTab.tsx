@@ -152,7 +152,7 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
   };
 
   // Transform time series data for charts
-  const prepareChartData = (timeSeriesData: any[]) => {
+  const prepareChartData = (timeSeriesData: any[], preserveTotal: boolean = false) => {
     if (!timeSeriesData || !Array.isArray(timeSeriesData) || timeSeriesData.length === 0) {
       return [];
     }
@@ -160,13 +160,15 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
     return timeSeriesData.map(point => ({
       time: point.time,
       value: point.value || point.count || 0,
+      // Preserve total duration for correct average calculations
+      ...(preserveTotal && point.total !== undefined ? { total: point.total } : {}),
       formattedTime: new Date(point.time).toLocaleTimeString()
     }));
   };
 
   const executionData = prepareChartData(activeData.executions || []);
   const errorData = prepareChartData(activeData.errors || []);
-  const durationData = prepareChartData(activeData.duration || []);
+  const durationData = prepareChartData(activeData.duration || [], true); // Preserve total value for duration data
 
   // Prepare queue data for events read and written tables
   const prepareQueueData = () => {

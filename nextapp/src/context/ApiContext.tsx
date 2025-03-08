@@ -123,7 +123,12 @@ const API = {
     return response.json();
   },
   
-  saveCron: async (data: { id: string; paused: boolean }) => {
+  saveCron: async (data: { 
+    id: string; 
+    paused?: boolean;
+    checkpoint?: Record<string, string>;
+    executeNow?: boolean;
+  }) => {
     
     const response = await awsNativeFetch('/api/cron/save', {
       method: 'POST',
@@ -136,7 +141,6 @@ const API = {
     if (!response.ok) {
       throw new Error(`Failed to save cron data: ${response.statusText}`);
     }
-    
     return response.json();
   },
   
@@ -1005,6 +1009,40 @@ export function useBotPause() {
       
       // Update the app state to reflect the paused status
       console.log(`Bot ${variables.id} paused status updated to ${variables.paused}`);
+    }
+  });
+}
+
+// Hook for updating bot checkpoint
+export function useBotCheckpoint() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: { id: string; checkpoint: Record<string, string> }) => API.saveCron(data),
+    onSuccess: (data, variables) => {
+      // Invalidate the bot details query to refresh the data
+      queryClient.invalidateQueries({
+        queryKey: ['bot-details', variables.id]
+      });
+      
+      console.log(`Bot ${variables.id} checkpoint updated`);
+    }
+  });
+}
+
+// Hook for forcing bot execution
+export function useBotForceRun() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: { id: string; executeNow: boolean }) => API.saveCron(data),
+    onSuccess: (data, variables) => {
+      // Invalidate the bot details query to refresh the data
+      queryClient.invalidateQueries({
+        queryKey: ['bot-details', variables.id]
+      });
+      
+      console.log(`Bot ${variables.id} force run initiated`);
     }
   });
 }

@@ -52,11 +52,23 @@ const calculateTotalExecutions = (timeSeries: any[] = []) => {
   }, 0);
 };
 
-const calculateAverageDuration = (timeSeries: any[] = []) => {
+const calculateAverageDuration = (timeSeries: any[] = [], executionTimeSeries: any[] = []) => {
   if (!timeSeries || !Array.isArray(timeSeries) || timeSeries.length === 0) return 0;
   
-  const totalDuration = timeSeries.reduce((sum, point) => sum + (point.value || 0), 0);
-  return Math.round(totalDuration / timeSeries.length);
+  // Calculate total duration from all points
+  const totalDuration = timeSeries.reduce((sum, point) => {
+    // Check if point has a total property (total duration), otherwise use value * 1
+    return sum + (point.total || point.value || 0);
+  }, 0);
+  
+  // Get total number of executions
+  const totalExecutions = calculateTotalExecutions(executionTimeSeries);
+  
+  // If no executions, avoid division by zero
+  if (totalExecutions === 0) return 0;
+  
+  // Return average duration per execution
+  return Math.round(totalDuration / totalExecutions);
 };
 
 const calculateMaxDuration = (timeSeries: any[] = []) => {
@@ -312,7 +324,7 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
         stats: {
           executions: calculateTotalExecutions(dashboardData.executions),
           errors: calculateTotalExecutions(dashboardData.errors),
-          avgDuration: calculateAverageDuration(dashboardData.duration),
+          avgDuration: calculateAverageDuration(dashboardData.duration, dashboardData.executions),
           maxDuration: calculateMaxDuration(dashboardData.duration),
           lastRun: dashboardData.executions?.[0]?.time || null,
           errorRate: dashboardData.executions && dashboardData.executions.length > 0 && dashboardData.errors
