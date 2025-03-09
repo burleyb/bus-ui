@@ -76,8 +76,8 @@ axiosClient.interceptors.request.use(async (config) => {
     }
     
     // Add host header (required for AWS signing)
-    if(parsedUrl.hostname === 'localhost') {
-      headers['host'] = 'botmon.lablpx.com';
+    if(parsedUrl.hostname === 'localhost' && process.env.USE_CORS_PROXY === 'true') {
+      headers['host'] = process.env.CORS_PROXY_HOST || 'botmon.lablpx.com';
     } else {
       headers['host'] = parsedUrl.host;
     }

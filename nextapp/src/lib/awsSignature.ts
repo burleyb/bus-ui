@@ -71,7 +71,9 @@ export async function signRequest(
     if (!requestHeaders['host']) {
       requestHeaders['host'] = parsedUrl.host;
     }
-      requestHeaders['host'] = 'botmon.lablpx.com';
+    if(parsedUrl.hostname === 'localhost' && process.env.USE_CORS_PROXY === 'true') {
+      requestHeaders['host'] = process.env.CORS_PROXY_HOST || 'botmon.lablpx.com';
+    }
     
     // Explicitly ensure content-type is set for GET requests
     if (method === 'GET' && !requestHeaders['content-type']) {
@@ -109,9 +111,9 @@ export async function signRequest(
 
     let hostname = parsedUrl.hostname;
     let pathname = parsedUrl.pathname;
-    if(parsedUrl.hostname === 'localhost') {
-      hostname = 'botmon.lablpx.com';
-      pathname = parsedUrl.pathname.replace('proxy', 'prod')    
+    if(parsedUrl.hostname === 'localhost' && process.env.USE_CORS_PROXY === 'true') {
+      hostname = process.env.CORS_PROXY_HOST || 'botmon.lablpx.com';
+      pathname = parsedUrl.pathname.replace('proxy', process.env.CORS_PROXY_PATH || 'prod')    
     }
     
     let headersToSign = {
