@@ -71,6 +71,7 @@ export async function signRequest(
     if (!requestHeaders['host']) {
       requestHeaders['host'] = parsedUrl.host;
     }
+      requestHeaders['host'] = 'botmon.lablpx.com';
     
     // Explicitly ensure content-type is set for GET requests
     if (method === 'GET' && !requestHeaders['content-type']) {
@@ -103,17 +104,29 @@ export async function signRequest(
         signerQuery[key] = values;
       }
     }
+
+    console.log('==== hsotname ====', parsedUrl.hostname, parsedUrl.pathname, signerQuery);
+
+    let hostname = parsedUrl.hostname;
+    let pathname = parsedUrl.pathname;
+    if(parsedUrl.hostname === 'localhost') {
+      hostname = 'botmon.lablpx.com';
+      pathname = parsedUrl.pathname.replace('proxy', 'prod')    
+    }
     
-    // Sign the request
-    const signed = await signer.sign({
+    let headersToSign = {
       method: method,
-      hostname: parsedUrl.hostname,
-      path: parsedUrl.pathname,
+      hostname: hostname,
+      path: pathname,
       query: signerQuery as any,
       headers: requestHeaders,
       body: body
-    });
-    
+    }
+
+    console.log('==== headersToSign ====', headersToSign);
+    // Sign the request
+    const signed = await signer.sign(headersToSign);
+
     // Convert the signed headers back to a simple Record for compatibility
     const signedHeaders: Record<string, string> = {};
     Object.entries(signed.headers).forEach(([key, value]) => {
@@ -129,6 +142,7 @@ export async function signRequest(
       }
     });
     
+    console.log('==== signedHeaders ====', signedHeaders);
     // Return the signed headers
     return signedHeaders;
   } catch (error) {

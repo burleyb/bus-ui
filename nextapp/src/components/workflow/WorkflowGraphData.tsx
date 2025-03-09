@@ -29,6 +29,9 @@ export function WorkflowGraphData({
   const { state } = useAppContext();
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   
+  // Add constants for node limits
+  const NODE_COUNT_LIMIT = 125; // Maximum number of nodes before auto-collapsing
+  
   // Generate graph data whenever primary node, time period, or nodes data changes
   useEffect(() => {
     if (!primaryNode) {
@@ -63,10 +66,25 @@ export function WorkflowGraphData({
     // Track cycle nodes that we've already processed for "one more generation"
     const processedCycleNodes = new Set<string>();
     
+    // Track total node count to enforce limits
+    let totalNodeCount = 0;
+    
+    // Clone collapsed state to modify it if needed
+    const effectiveCollapsedState = {
+      collapsed: {
+        left: [...collapsedState.collapsed.left],
+        right: [...collapsedState.collapsed.right]
+      },
+      expanded: {
+        left: [...collapsedState.expanded.left],
+        right: [...collapsedState.expanded.right]
+      }
+    };
+    
     // Maximum depth for traversal as a safety measure
     const MAX_DEPTH = 20;
     
-    // Add node to graph
+    // Modified addNodeToGraph to track node count
     const addNodeToGraph = (nodeId: string, generation: number, group: number, branchId: string) => {
       const nodeData = state.nodes?.[nodeId];
       if (!nodeData) return null;
@@ -76,7 +94,67 @@ export function WorkflowGraphData({
       
       // Skip if we've already added this exact node instance
       if (visited.has(uniqueNodeId)) return uniqueNodeId;
+      
+      // Check if we're approaching node limit
+      if (totalNodeCount >= NODE_COUNT_LIMIT) {
+        // Auto-collapse this node if it's not the primary node
+        if (generation !== 0) {
+          if (generation < 0) {
+            // This is an ancestor (left side)
+            if (!effectiveCollapsedState.collapsed.left.includes(nodeId)) {
+              effectiveCollapsedState.collapsed.left.push(nodeId);
+              
+              // Remove from expanded if present
+              const expandedIndex = effectiveCollapsedState.expanded.left.indexOf(nodeId);
+              if (expandedIndex !== -1) {
+                effectiveCollapsedState.expanded.left.splice(expandedIndex, 1);
+              }
+              
+              console.log(`Auto-collapsed ancestor node ${nodeId} due to node limit`);
+            }
+          } else {
+            // This is a descendant (right side)
+            if (!effectiveCollapsedState.collapsed.right.includes(nodeId)) {
+              effectiveCollapsedState.collapsed.right.push(nodeId);
+              
+              // Remove from expanded if present
+              const expandedIndex = effectiveCollapsedState.expanded.right.indexOf(nodeId);
+              if (expandedIndex !== -1) {
+                effectiveCollapsedState.expanded.right.splice(expandedIndex, 1);
+              }
+              
+              console.log(`Auto-collapsed descendant node ${nodeId} due to node limit`);
+            }
+          }
+          
+          // Still add this node, but don't explore its connections
+          visited.add(uniqueNodeId);
+          totalNodeCount++;
+          
+          // Create node object with all necessary properties
+          const node: Node = {
+            id: uniqueNodeId,
+            originalId: nodeId, // Store the original ID for reference
+            status: nodeData.status || 'unknown',
+            type: nodeData.type || 'unknown',
+            group: group, // 0 = input, 1 = focus, 2 = output
+            generation: generation,
+            executions: nodeData.stats?.executions,
+            errors: nodeData.stats?.errors,
+            queues: nodeData.queues,
+            link_to: nodeData.link_to,
+            isAutoCollapsed: true // Add a flag to indicate this node was auto-collapsed
+          };
+          
+          // Add node to graph
+          newGraphData.nodes.push(node);
+          
+          return uniqueNodeId;
+        }
+      }
+      
       visited.add(uniqueNodeId);
+      totalNodeCount++;
       
       // Create node object with all necessary properties
       const node: Node = {
@@ -134,11 +212,13 @@ export function WorkflowGraphData({
       return infinityNodeId;
     };
     
-    // Add ancestors (inputs) to the graph recursively
+    // Modify addAncestors function to check collapsed state
     const addAncestors = (nodeId: string, generation: number, branchId: string, path: string[] = [], depth: number = 0) => {
       // Safety measures to prevent stack overflow
       if (depth > MAX_DEPTH) return;
-      if (collapsedState.collapsed.left.includes(nodeId)) return;
+      
+      // Check if this node is in the effective collapsed state
+      if (effectiveCollapsedState.collapsed.left.includes(nodeId)) return;
       
       // Check for cycles in the current path
       if (path.includes(nodeId)) {
@@ -252,11 +332,13 @@ export function WorkflowGraphData({
       });
     };
     
-    // Add descendants (outputs) to the graph recursively
+    // Modify addDescendants function to check collapsed state
     const addDescendants = (nodeId: string, generation: number, branchId: string, path: string[] = [], depth: number = 0) => {
       // Safety measures to prevent stack overflow
       if (depth > MAX_DEPTH) return;
-      if (collapsedState.collapsed.right.includes(nodeId)) return;
+      
+      // Check if this node is in the effective collapsed state
+      if (effectiveCollapsedState.collapsed.right.includes(nodeId)) return;
       
       // Check for cycles in the current path
       if (path.includes(nodeId)) {
@@ -388,6 +470,12 @@ export function WorkflowGraphData({
         
         // Update state and notify parent
         console.log('Generated graph with', newGraphData.nodes.length, 'nodes and', newGraphData.links.length, 'links', newGraphData);
+        
+        // Log if auto-collapsing was triggered
+        if (totalNodeCount >= NODE_COUNT_LIMIT) {
+          console.warn(`Graph exceeded node limit of ${NODE_COUNT_LIMIT}. Some nodes were automatically collapsed to prevent browser freezing.`);
+        }
+        
         setGraphData(newGraphData);
         onDataReady(newGraphData);
       }

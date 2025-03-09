@@ -43,6 +43,7 @@ export interface Node {
     parent?: Record<string, any>;
     children?: Record<string, any>;
   };
+  isAutoCollapsed?: boolean; // Flag to indicate node was auto-collapsed due to node limit
 }
 
 export interface Link {

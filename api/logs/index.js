@@ -59,7 +59,8 @@ exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, ca
       callback(err, details);
     });
   } else {
-    async.doWhilst(async (done) => {
+    let nextToken;
+    while (hasTime && nextToken !== null) {
       const pattern = bot_id === "all" ? `"START"` : `"[LEOCRON]:start:${bot_id}"`;
       const splitPattern = bot_id === "all" ? new RegExp("RequestId: *(.*?) Version") : new RegExp("\t");
 
@@ -87,31 +88,26 @@ exports.handler = require("leo-sdk/wrappers/resource")(async (event, context, ca
             endtimestamp: moment().valueOf()
           });
         });
-        done();
       } catch (err) {
-        if (err.code === "ResourceNotFoundException") {
-          done();
-        } else {
-          done(err);
+        if (err.code !== "ResourceNotFoundException") {
+          throw err;
         }
+        break;
       }
-    }, () => {
-      return hasTime && nextToken !== null;
-    }, (err) => {
-      starts = starts.sort((a, b) => {
-        return b.timestamp - a.timestamp;
-      });
-      if (starts.length) {
+    }
+
+    starts = starts.sort((a, b) => b.timestamp - a.timestamp);
+    if (starts.length) {
+      const details = await new Promise((resolve, reject) => {
         requestLogs(lambda, starts[0], (err, details) => {
-          starts[0].details = details;
-          clearTimeout(timeout);
-          callback(err, starts);
+          if (err) reject(err);
+          else resolve(details);
         });
-      } else {
-        clearTimeout(timeout);
-        callback(err, starts);
-      }
-    });
+      });
+      starts[0].details = details;
+      clearTimeout(timeout);
+      return starts;
+    }
   }
 });
 

@@ -76,7 +76,11 @@ axiosClient.interceptors.request.use(async (config) => {
     }
     
     // Add host header (required for AWS signing)
-    // headers['host'] = parsedUrl.host;
+    if(parsedUrl.hostname === 'localhost') {
+      headers['host'] = 'botmon.lablpx.com';
+    } else {
+      headers['host'] = parsedUrl.host;
+    }
     
     // For GET requests with no body, make sure content-type is explicitly set to empty string
     if (config.method?.toUpperCase() === 'GET' && !config.data) {
@@ -95,6 +99,8 @@ axiosClient.interceptors.request.use(async (config) => {
         bodyString = JSON.stringify(config.data);
       }
     }
+
+    console.log('==== headers ====', headers, fullUrl);
     
     // Sign the request
     const signedHeaders = await signRequest(

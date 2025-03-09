@@ -24,6 +24,7 @@ import { Sparklines, SparklinesLine, SparklinesSpots } from 'react-sparklines';
 import { useMetricsData } from '@/context/ApiContext';
 import { useWorkflowGraph } from '@/hooks/useWorkflowGraph';
 import moment from 'moment';
+import { useDialogs } from '@/hooks/useDialogs';
 
 interface BotDashboardTabProps {
   nodeData: any;
@@ -63,6 +64,9 @@ interface ReferenceLineProps {
 
 export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDashboardTabProps) {
   const router = useRouter();
+  
+  // Add useDialogs hook to access openNodeSettingsDialog
+  const { openNodeSettingsDialog } = useDialogs();
   
   // Use the workflow graph hook to get access to graph state methods
   const { updateGraphState } = useWorkflowGraph();
@@ -380,7 +384,13 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
                         <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center space-x-2">
                             <NodeIcon node={{ type: 'queue' }} className="w-4 h-4" />
-                            <span className="truncate max-w-[500px]">{readqueue.label}</span>
+                            <span 
+                              className="truncate max-w-[500px] hover:text-blue-500 cursor-pointer"
+                              onClick={() => openNodeSettingsDialog(readqueue.id)}
+                              title="Open queue settings"
+                            >
+                              {readqueue.label}
+                            </span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -464,7 +474,13 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
                         <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
                           <div className="flex items-center space-x-2">
                             <NodeIcon node={{ type: 'queue' }} className="w-4 h-4" />
-                            <span className="truncate max-w-[500px]">{writequeue.label}</span>
+                            <span 
+                              className="truncate max-w-[500px] hover:text-blue-500 cursor-pointer"
+                              onClick={() => openNodeSettingsDialog(writequeue.id)}
+                              title="Open queue settings"
+                            >
+                              {writequeue.label}
+                            </span>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-center">

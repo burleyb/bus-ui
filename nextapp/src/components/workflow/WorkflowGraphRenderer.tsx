@@ -556,6 +556,9 @@ export function WorkflowGraphRenderer({
       const hasCollapsedChildren = collapsedState.collapsed.right.includes(nodeId) && 
         d.link_to?.children && Object.keys(d.link_to.children).length > 0;
       
+      // Check if this node was auto-collapsed
+      const isAutoCollapsed = d.isAutoCollapsed === true;
+      
       // Add shadow circles for collapsed parents (left)
       if (hasCollapsedParents) {
         // Always use 3 shadow circles regardless of the actual count
@@ -565,7 +568,7 @@ export function WorkflowGraphRenderer({
             .attr("cx", -4 - (i * 5))
             .attr("cy", -4 - (i * 5))
             .attr("fill", "none")
-            .attr("stroke", "#3182ce")
+            .attr("stroke", isAutoCollapsed ? "#e53e3e" : "#3182ce") // Red for auto-collapsed, blue for manual
             .attr("stroke-width", 2)
             .attr("opacity", 0.5 - (i * 0.1));
         }
@@ -580,10 +583,18 @@ export function WorkflowGraphRenderer({
             .attr("cx", 4 + (i * 5))
             .attr("cy", 4 + (i * 5))
             .attr("fill", "none")
-            .attr("stroke", "#3182ce")
+            .attr("stroke", isAutoCollapsed ? "#e53e3e" : "#3182ce") // Red for auto-collapsed, blue for manual
             .attr("stroke-width", 2)
             .attr("opacity", 0.5 - (i * 0.1));
         }
+      }
+      
+      // Add a warning indicator for auto-collapsed nodes
+      if (isAutoCollapsed) {
+        nodeGroup.append("path")
+          .attr("d", "M12 0a1 1 0 0 1 .894.553l7 14a1 1 0 0 1-.894 1.447H1a1 1 0 0 1-.894-1.447l7-14A1 1 0 0 1 12 0zm0 8a1 1 0 0 0-1 1v2a1 1 0 0 0 2 0V9a1 1 0 0 0-1-1zm0 6a1 1 0 1 0 0 2 1 1 0 0 0 0-2z")
+          .attr("transform", "translate(18, -18) scale(0.8)")
+          .attr("fill", "#e53e3e");
       }
     });
     
@@ -1109,6 +1120,49 @@ export function WorkflowGraphRenderer({
       }
     }
   }, [primaryNode, collapsedState, onExpand]);
+  
+  // Add a warning message at the top of the graph when nodes are auto-collapsed
+  useEffect(() => {
+    // Check if any nodes are auto-collapsed
+    const hasAutoCollapsedNodes = graphData.nodes.some(node => node.isAutoCollapsed);
+    
+    if (hasAutoCollapsedNodes && svgRef.current) {
+      const svg = d3.select(svgRef.current);
+      // Parse the width attribute to a number or use a default value
+      const svgWidth = parseFloat(svg.attr('width') || '0');
+      
+      const warningGroup = svg
+        .append('g')
+        .attr('class', 'auto-collapse-warning')
+        .attr('transform', `translate(${svgWidth / 2}, 30)`);
+      
+      // Add background for the warning
+      warningGroup
+        .append('rect')
+        .attr('x', -175)
+        .attr('y', -15)
+        .attr('width', 350)
+        .attr('height', 30)
+        .attr('rx', 5)
+        .attr('fill', 'rgba(254, 226, 226, 0.9)') // Light red background
+        .attr('stroke', '#e53e3e')
+        .attr('stroke-width', 1);
+      
+      // Add warning text
+      warningGroup
+        .append('text')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('fill', '#e53e3e')
+        .attr('font-size', '12px')
+        .text('Some nodes were automatically collapsed to prevent browser freezing (node limit: 125)');
+      
+      // Clean up on unmount
+      return () => {
+        svg.select('.auto-collapse-warning').remove();
+      };
+    }
+  }, [graphData.nodes, svgRef]);
   
   return null; // This is a logic-only component, no rendering needed
 } 
