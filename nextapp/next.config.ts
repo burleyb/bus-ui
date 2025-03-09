@@ -20,16 +20,9 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_COGNITO_REGION: process.env.NEXT_PUBLIC_COGNITO_REGION,
     NEXT_PUBLIC_COGNITO_IDENTITY_POOL_ID: process.env.NEXT_PUBLIC_COGNITO_IDENTITY_POOL_ID,
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
-  },
-
-  // Add the rewrites configuration
-  async rewrites() {
-    return [
-      {
-        source: '/prod/api/:path*',
-        destination: 'https://server-18-172-170-14.sea73.r.cloudfront.net/prod/api/:path*' // Replace with actual API domain
-      }
-    ]
+    NEXT_PUBLIC_USE_CORS_PROXY: process.env.NEXT_PUBLIC_USE_CORS_PROXY,
+    NEXT_PUBLIC_CORS_PROXY_HOST: process.env.NEXT_PUBLIC_CORS_PROXY_HOST,
+    NEXT_PUBLIC_CORS_PROXY_PATH: process.env.NEXT_PUBLIC_CORS_PROXY_PATH, 
   },
 
   serverRuntimeConfig: {

@@ -75,9 +75,12 @@ axiosClient.interceptors.request.use(async (config) => {
       headers['accept'] = 'application/json';
     }
     
+    console.log('==== USE_CORS_PROXY ====', process.env.NEXT_PUBLIC_USE_CORS_PROXY);
+    console.log('==== CORS_PROXY_HOST ====', process.env.NEXT_PUBLIC_CORS_PROXY_HOST);
+    console.log('==== CORS_PROXY_PATH ====', process.env.NEXT_PUBLIC_CORS_PROXY_PATH);
     // Add host header (required for AWS signing)
-    if(parsedUrl.hostname === 'localhost' && process.env.USE_CORS_PROXY === 'true') {
-      headers['host'] = process.env.CORS_PROXY_HOST || 'botmon.lablpx.com';
+    if(parsedUrl.hostname === 'localhost' && process.env.NEXT_PUBLIC_USE_CORS_PROXY == 'true') {
+      headers['host'] = process.env.NEXT_PUBLIC_CORS_PROXY_HOST || 'botmon.lablpx.com';
     } else {
       headers['host'] = parsedUrl.host;
     }

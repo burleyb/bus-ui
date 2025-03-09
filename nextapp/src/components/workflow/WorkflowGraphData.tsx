@@ -212,13 +212,17 @@ export function WorkflowGraphData({
       return infinityNodeId;
     };
     
-    // Modify addAncestors function to check collapsed state
+    // Update the addAncestors function to properly define nodeData
     const addAncestors = (nodeId: string, generation: number, branchId: string, path: string[] = [], depth: number = 0) => {
       // Safety measures to prevent stack overflow
       if (depth > MAX_DEPTH) return;
       
       // Check if this node is in the effective collapsed state
       if (effectiveCollapsedState.collapsed.left.includes(nodeId)) return;
+      
+      // Get the current node data - add this line to ensure nodeData is defined
+      const nodeData = state.nodes[nodeId];
+      if (!nodeData) return;
       
       // Check for cycles in the current path
       if (path.includes(nodeId)) {
@@ -229,8 +233,7 @@ export function WorkflowGraphData({
       // Create a new path with this node
       const newPath = [...path, nodeId];
       
-      // Get node data
-      const nodeData = state.nodes?.[nodeId];
+      // Get node data - remove this duplicate check since we've added it above
       if (!nodeData || !nodeData.link_to?.parent) return;
       
       // Process each parent
@@ -255,26 +258,35 @@ export function WorkflowGraphData({
             lag: 0
           };
 
+          // Now nodeData is properly in scope
           const relationType = 
             (parentNode.type === 'bot' && nodeData.type === 'queue') ? 'write' as const :
             (parentNode.type === 'queue' && nodeData.type === 'bot') ? 'read' as const : 
             'default' as const;
           
-          // For queue->bot connection, get stats from bot's read queue data
-          if (relationType === 'read' && nodeData.queues?.read) {
-            const readStats = nodeData.queues.read[parentId];
-            if (readStats) {
-              linkStats.count = readStats.count || 0;
-              linkStats.lag = readStats.last_source_lag || 0;
+          // For queue->bot connection (bot reading from queue)
+          if (relationType === 'read' && nodeData.type === 'bot') {
+            // For queue->bot, the data is in bot's link_to.parent[queueId].units
+            if (nodeData.link_to?.parent && nodeData.link_to.parent[parentId] && 
+                typeof nodeData.link_to.parent[parentId].units !== 'undefined') {
+              linkStats.count = Number(nodeData.link_to.parent[parentId].units);
+            }
+            // Still use queue data for lag if available
+            if (nodeData.queues?.read && nodeData.queues.read[parentId]) {
+              linkStats.lag = nodeData.queues.read[parentId].last_source_lag || 0;
             }
           }
           
-          // For bot->queue connection, get stats from bot's write queue data
-          if (relationType === 'write' && parentNode.queues?.write) {
-            const writeStats = parentNode.queues.write[nodeId];
-            if (writeStats) {
-              linkStats.count = writeStats.count || 0;
-              linkStats.last_time = writeStats.last_write || '';
+          // For bot->queue connection (bot writing to queue)
+          if (relationType === 'write' && parentNode.type === 'bot') {
+            // For bot->queue, the data is in bot's link_to.children[queueId].units
+            if (parentNode.link_to?.children && parentNode.link_to.children[nodeId] && 
+                typeof parentNode.link_to.children[nodeId].units !== 'undefined') {
+              linkStats.count = Number(parentNode.link_to.children[nodeId].units);
+            }
+            // Still use queue data for last_write time if available
+            if (parentNode.queues?.write && parentNode.queues.write[nodeId]) {
+              linkStats.last_time = parentNode.queues.write[nodeId].last_write || '';
             }
           }
           
@@ -305,16 +317,38 @@ export function WorkflowGraphData({
                     
                     if (gpNodeId) {
                       // Add link to parent
+                      const cycleLinkStats = {
+                        count: 0,
+                        last_time: '',
+                        lag: 0
+                      };
+                      
+                      // Check for stats for this link
+                      const gpNode = state.nodes[grandparentId];
+                      const parentNode = state.nodes[parentId];
+                      
+                      if (gpNode && parentNode) {
+                        if (gpNode.type === 'bot' && parentNode.type === 'queue') {
+                          // Bot -> Queue relationship
+                          if (gpNode.link_to?.children && gpNode.link_to.children[parentId] && 
+                              typeof gpNode.link_to.children[parentId].units !== 'undefined') {
+                            cycleLinkStats.count = Number(gpNode.link_to.children[parentId].units);
+                          }
+                        } else if (gpNode.type === 'queue' && parentNode.type === 'bot') {
+                          // Queue -> Bot relationship
+                          if (parentNode.link_to?.parent && parentNode.link_to.parent[grandparentId] && 
+                              typeof parentNode.link_to.parent[grandparentId].units !== 'undefined') {
+                            cycleLinkStats.count = Number(parentNode.link_to.parent[grandparentId].units);
+                          }
+                        }
+                      }
+                      
                       newGraphData.links.push({
                         source: gpNodeId,
                         target: parentNodeId,
                         value: 1,
                         relationType: 'default',
-                        stats: {
-                          count: 0,
-                          last_time: '',
-                          lag: 0
-                        }
+                        stats: cycleLinkStats
                       });
                       
                       // Add infinity node as terminator
@@ -332,13 +366,17 @@ export function WorkflowGraphData({
       });
     };
     
-    // Modify addDescendants function to check collapsed state
+    // Update the addDescendants function to properly define nodeData
     const addDescendants = (nodeId: string, generation: number, branchId: string, path: string[] = [], depth: number = 0) => {
       // Safety measures to prevent stack overflow
       if (depth > MAX_DEPTH) return;
       
       // Check if this node is in the effective collapsed state
       if (effectiveCollapsedState.collapsed.right.includes(nodeId)) return;
+      
+      // Get the current node data - add this line to ensure nodeData is defined
+      const nodeData = state.nodes[nodeId];
+      if (!nodeData) return;
       
       // Check for cycles in the current path
       if (path.includes(nodeId)) {
@@ -349,8 +387,7 @@ export function WorkflowGraphData({
       // Create a new path with this node
       const newPath = [...path, nodeId];
       
-      // Get node data
-      const nodeData = state.nodes?.[nodeId];
+      // Get node data - remove this duplicate check since we've added it above
       if (!nodeData || !nodeData.link_to?.children) return;
       
       // Process each child
@@ -375,26 +412,35 @@ export function WorkflowGraphData({
             lag: 0
           };
 
+          // Now nodeData is properly in scope
           const relationType = 
             (nodeData.type === 'bot' && childNode.type === 'queue') ? 'write' as const :
             (nodeData.type === 'queue' && childNode.type === 'bot') ? 'read' as const : 
             'default' as const;
           
-          // For bot->queue connection, get stats from bot's write queue data
-          if (relationType === 'write' && nodeData.queues?.write) {
-            const writeStats = nodeData.queues.write[childId];
-            if (writeStats) {
-              linkStats.count = writeStats.count || 0;
-              linkStats.last_time = writeStats.last_write || '';
+          // For bot->queue connection (bot writing to queue)
+          if (relationType === 'write' && nodeData.type === 'bot') {
+            // For bot->queue, the data is in bot's link_to.children[queueId].units
+            if (nodeData.link_to?.children && nodeData.link_to.children[childId] && 
+                typeof nodeData.link_to.children[childId].units !== 'undefined') {
+              linkStats.count = Number(nodeData.link_to.children[childId].units);
+            }
+            // Still use queue data for last_write time if available
+            if (nodeData.queues?.write && nodeData.queues.write[childId]) {
+              linkStats.last_time = nodeData.queues.write[childId].last_write || '';
             }
           }
           
-          // For queue->bot connection, get stats from bot's read queue data
-          if (relationType === 'read' && childNode.queues?.read) {
-            const readStats = childNode.queues.read[nodeId];
-            if (readStats) {
-              linkStats.count = readStats.count || 0;
-              linkStats.lag = readStats.last_source_lag || 0;
+          // For queue->bot connection (bot reading from queue)
+          if (relationType === 'read' && childNode.type === 'bot') {
+            // For queue->bot, the data is in bot's link_to.parent[queueId].units
+            if (childNode.link_to?.parent && childNode.link_to.parent[nodeId] && 
+                typeof childNode.link_to.parent[nodeId].units !== 'undefined') {
+              linkStats.count = Number(childNode.link_to.parent[nodeId].units);
+            }
+            // Still use queue data for lag if available
+            if (childNode.queues?.read && childNode.queues.read[nodeId]) {
+              linkStats.lag = childNode.queues.read[nodeId].last_source_lag || 0;
             }
           }
           
@@ -425,16 +471,38 @@ export function WorkflowGraphData({
                     
                     if (gcNodeId) {
                       // Add link to child
+                      const cycleLinkStats = {
+                        count: 0,
+                        last_time: '',
+                        lag: 0
+                      };
+                      
+                      // Check for stats for this link
+                      const childNode = state.nodes[childId];
+                      const gcNode = state.nodes[grandchildId];
+                      
+                      if (childNode && gcNode) {
+                        if (childNode.type === 'bot' && gcNode.type === 'queue') {
+                          // Bot -> Queue relationship
+                          if (childNode.link_to?.children && childNode.link_to.children[grandchildId] && 
+                              typeof childNode.link_to.children[grandchildId].units !== 'undefined') {
+                            cycleLinkStats.count = Number(childNode.link_to.children[grandchildId].units);
+                          }
+                        } else if (childNode.type === 'queue' && gcNode.type === 'bot') {
+                          // Queue -> Bot relationship
+                          if (gcNode.link_to?.parent && gcNode.link_to.parent[childId] && 
+                              typeof gcNode.link_to.parent[childId].units !== 'undefined') {
+                            cycleLinkStats.count = Number(gcNode.link_to.parent[childId].units);
+                          }
+                        }
+                      }
+                      
                       newGraphData.links.push({
                         source: childNodeId,
                         target: gcNodeId,
                         value: 1,
                         relationType: 'default',
-                        stats: {
-                          count: 0,
-                          last_time: '',
-                          lag: 0
-                        }
+                        stats: cycleLinkStats
                       });
                       
                       // Add infinity node as terminator
