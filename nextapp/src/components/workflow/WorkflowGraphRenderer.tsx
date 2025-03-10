@@ -634,6 +634,24 @@ export function WorkflowGraphRenderer({
       .attr('id', (d) => `node-${d.id.replace(/[^a-zA-Z0-9]/g, '-')}`)
       .attr('data-id', (d) => d.id);
     
+    // Add a large invisible circle to improve hover behavior
+    // Add this as the first element in each node group
+    node.each(function(d) {
+      // Skip adding hover area to infinity nodes
+      if (d.type === 'infinity') return;
+      
+      // Add a large invisible circle for better hover detection
+      d3.select(this)
+        .insert('circle', ':first-child')
+        .attr('class', 'hover-area')
+        .attr('r', 50) // Large radius to cover the node and all its buttons
+        .attr('cx', 0)
+        .attr('cy', 0)
+        .attr('fill', 'white')
+        .attr('fill-opacity', 0) // Make it invisible
+        .attr('pointer-events', 'all'); // Ensure it captures mouse events
+    });
+    
     // Add shadow circles for collapsed nodes - need to add these first so they appear behind the node
     node.each(function(d) {
       const nodeGroup = d3.select(this);
