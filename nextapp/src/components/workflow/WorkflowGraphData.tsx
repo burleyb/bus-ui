@@ -272,9 +272,9 @@ export function WorkflowGraphData({
               linkStats.count = Number(nodeData.link_to.parent[parentId].units);
             }
             // Still use queue data for lag if available
-            if (nodeData.link_to?.parent && nodeData.link_to.parent[parentId] && 
-                typeof nodeData.link_to.parent[parentId].last_source_lag !== 'undefined') {
-              linkStats.lag = nodeData.link_to.parent[parentId].last_source_lag || 0;
+            if (parentNode.link_to?.children && parentNode.link_to.children[nodeId] && 
+                typeof parentNode.link_to.children[nodeId].last_read_lag !== 'undefined') {
+              linkStats.lag = parentNode.link_to.children[nodeId].last_read_lag || 0;
             }
           }
           
