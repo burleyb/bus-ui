@@ -89,6 +89,11 @@ export function WorkflowGraphData({
       const nodeData = state.nodes?.[nodeId];
       if (!nodeData) return null;
       
+      // Skip archived nodes
+      if (nodeData.status === 'archived' || nodeData.archived) {
+        return null;
+      }
+      
       // Create a unique ID for this node within its branch
       const uniqueNodeId = `${branchId}:${nodeId}`;
       
@@ -240,6 +245,11 @@ export function WorkflowGraphData({
       Object.keys(nodeData.link_to.parent).forEach(parentId => {
         const parentNode = state.nodes[parentId];
         if (!parentNode) return;
+        
+        // Skip archived nodes
+        if (parentNode.status === 'archived' || parentNode.archived) {
+          return;
+        }
         
         // Create a unique branch ID for this parent
         const parentBranchId = `${branchId}:${parentId}`;
@@ -397,6 +407,11 @@ export function WorkflowGraphData({
         const childNode = state.nodes[childId];
         if (!childNode) return;
         
+        // Skip archived nodes
+        if (childNode.status === 'archived' || childNode.archived) {
+          return;
+        }
+        
         // Create a unique branch ID for this child
         const childBranchId = `${branchId}:${childId}`;
         
@@ -526,6 +541,14 @@ export function WorkflowGraphData({
     
     // Start building the graph from the primary node
     if (state.nodes && primaryNode && state.nodes[primaryNode]) {
+      // Skip if primary node is archived
+      if (state.nodes[primaryNode].status === 'archived' || state.nodes[primaryNode].archived) {
+        console.log('Primary node is archived, not displaying graph');
+        setGraphData(newGraphData);
+        onDataReady(newGraphData);
+        return;
+      }
+      
       // Always add the primary (focus) node first
       const rootBranchId = "branch0";
       const primaryNodeId = addNodeToGraph(primaryNode, 0, 1, rootBranchId);

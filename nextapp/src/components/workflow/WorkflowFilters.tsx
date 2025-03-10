@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } f
 import { useRouter, usePathname } from 'next/navigation';
 import { useAppContext } from '@/context/AppContext';
 import { NodeData } from '@/types/nodes';
-import { NodeIcon } from '@/components/node';
 import { format, parseISO, addMinutes, addHours, addDays, subMinutes, subHours, subDays, isToday, startOfMinute, endOfMinute, startOfHour, endOfHour, startOfDay, endOfDay, startOfWeek, endOfWeek } from 'date-fns';
 import DatePicker from 'react-datepicker';
 import type { DatePickerProps } from 'react-datepicker';
@@ -12,6 +11,9 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { Calendar } from 'lucide-react';
 import { Menu, Transition } from '@headlessui/react';
 import { PiCalendarBlankDuotone } from 'react-icons/pi';
+import NodeIcon from '@/components/node/NodeIcon';
+import ShapedNodeIcon from '@/components/node/ShapedNodeIcon';
+import { updateUrlHash } from '@/utils/workflowUtils';
 
 interface WorkflowFiltersProps {
   selectedBot: string[];
@@ -92,6 +94,11 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
   useEffect(() => {
     if (state.nodes && Object.keys(state.nodes).length > 0) {
       const options = Object.values(state.nodes)
+        .filter(node => {
+          // Exclude archived nodes
+          const isArchived = node.status?.toLowerCase() === 'archived' || node.archived;
+          return !isArchived;
+        })
         .map((node: NodeData) => ({
           value: node.id,
           label: stripPrefix(node.id),
@@ -427,12 +434,22 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
     }
   };
   
-  // Filter node options based on search text
-  const filteredOptions = searchText
-    ? nodeOptions.filter(option => 
+  // Filter node options based on search text and exclude archived nodes
+  const filteredOptions = nodeOptions
+    .filter(option => {
+      // Only show non-archived nodes
+      const node = state.nodes[option.value];
+      const isArchived = node?.status?.toLowerCase() === 'archived' || node?.archived;
+      
+      if (isArchived) {
+        return false; // Exclude archived nodes
+      }
+      
+      // Apply search text filter
+      return !searchText || 
         option.label.toLowerCase().includes(searchText.toLowerCase()) || 
-        option.value.toLowerCase().includes(searchText.toLowerCase()))
-    : nodeOptions;
+        option.value.toLowerCase().includes(searchText.toLowerCase());
+    });
 
   // Focus the search input when dropdown opens
   useEffect(() => {
@@ -787,7 +804,17 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
         >
           {primarySelectedNode ? (
             <>
-              <NodeIcon node={primarySelectedNode} size={20} className="mr-2" />
+              {state.nodes[primarySelectedNode]?.type === 'bot' ? (
+                <ShapedNodeIcon 
+                  node={state.nodes[primarySelectedNode]} 
+                  size={20} 
+                  className="mr-2"
+                  primaryNode={primarySelectedNode === selectedOption?.value}
+                  withBackground={true}
+                />
+              ) : (
+                <NodeIcon node={state.nodes[primarySelectedNode]} size={20} className="mr-2" />
+              )}
               <span className="truncate">{selectedOption?.label || stripPrefix(primarySelectedNode)}</span>
             </>
           ) : (
@@ -860,7 +887,17 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
                   onClick={() => handleNodeChange(option.value)}
                   onMouseEnter={() => setHighlightedIndex(index)}
                 >
-                  <NodeIcon node={option.value} size={20} className="mr-2 flex-shrink-0" />
+                  {state.nodes[option.value]?.type === 'bot' ? (
+                    <ShapedNodeIcon 
+                      node={state.nodes[option.value]} 
+                      size={20} 
+                      className="mr-2 flex-shrink-0"
+                      primaryNode={option.value === primarySelectedNode}
+                      withBackground={true}
+                    />
+                  ) : (
+                    <NodeIcon node={state.nodes[option.value]} size={20} className="mr-2 flex-shrink-0" />
+                  )}
                   <span className="truncate">{option.label}</span>
                 </button>
               ))}

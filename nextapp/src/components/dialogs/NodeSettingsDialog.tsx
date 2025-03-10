@@ -178,7 +178,7 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
   // Extract the node ID from the dialog data or props
   const currentNodeId = nodeId || dialogData?.nodeId;
   
-  // Determine if the dialog should be shown
+  // Determine if the dialog should be showr
   const shouldShow = isOpen && currentNodeId;
   
   // Determine the type of node

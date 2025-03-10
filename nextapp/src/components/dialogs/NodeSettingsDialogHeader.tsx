@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useId } from 'react';
-import { X, Pause, Play, ChevronLeft, ChevronRight, GitFork, Settings, ChevronDown, Database, AlertTriangle, Calendar } from 'lucide-react';
+import React, { useState, useId, useEffect } from 'react';
+import { X, Pause, Play, ChevronLeft, ChevronRight, GitFork, Settings, ChevronDown, Database, AlertTriangle, Calendar, Copy, Redo, RotateCcw } from 'lucide-react';
 import { useDialogs } from '@/hooks/useDialogs';
 import { AWSLambdaIcon } from '../icons/AWSLambdaIcon';
 import NodeIcon from '../node/NodeIcon';
+import ShapedNodeIcon from '@/components/node/ShapedNodeIcon';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -297,7 +298,7 @@ export default function NodeSettingsDialogHeader({
   const readQueueIds = Object.keys(readQueues);
   
   // If no queue is selected and there are queues available, select the first one
-  React.useEffect(() => {
+  useEffect(() => {
     if (!selectedQueueId && readQueueIds.length > 0) {
       setSelectedQueueId(readQueueIds[0]);
     }
@@ -584,7 +585,28 @@ export default function NodeSettingsDialogHeader({
       {/* Left section with bot logo, name, and ID */}
       <div className="flex items-center space-x-3">
         {/* Bot logo with status */}
-        <NodeIcon node={{ type: nodeType, status: nodeData?.status }} className="w-6 h-6" />
+        {nodeType === 'bot' ? (
+          <ShapedNodeIcon 
+            node={{
+              ...nodeData,
+              type: nodeType,
+              status: nodeData?.status
+            }} 
+            size={48} 
+            className="w-6 h-6"
+            withBackground={true}
+            primaryNode={false}
+          />
+        ) : (
+          <NodeIcon 
+            node={{ 
+              type: nodeType, 
+              status: nodeData?.status 
+            }} 
+            size={48} 
+            className="w-6 h-6" 
+          />
+        )}
         
         <div>
           <div className="flex items-center space-x-2">
@@ -738,7 +760,7 @@ export default function NodeSettingsDialogHeader({
         {/* Checkpoint display */}
         <div className="flex items-center">
           {/* Wider checkpoint display with queue indicator */}
-          <div className="min-w-[320px] max-w-[320px] overflow-hidden bg-gray-100 dark:bg-gray-800 rounded-l-md text-sm">
+          <div className="min-w-[320px] max-w-[420px] overflow-hidden bg-gray-100 dark:bg-gray-800 rounded-l-md text-sm">
             {selectedQueueDisplayName && (
               <div className="px-3 py-0.5 bg-blue-500/10 border-b border-blue-500/20 flex items-center">
                 <Database size={12} className="text-blue-500 mr-1" />

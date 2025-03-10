@@ -123,10 +123,85 @@ export function getShapePath(shape: string, radius: number): string {
     case 'square':
       return `M ${-radius},${-radius} h ${radius * 2} v ${radius * 2} h ${-radius * 2} Z`;
     case 'triangle':
-      return `M 0,${-radius} L ${radius},${radius} L ${-radius},${radius} Z`;
+      return `M 0,${radius} L ${radius},${-radius} L ${-radius},${-radius} Z`;
     case 'diamond':
       return `M 0,${-radius} L ${radius},0 L 0,${radius} L ${-radius},0 Z`;
     default:
       return `M 0, 0 m -${radius}, 0 a ${radius},${radius} 0 1,0 ${radius * 2},0 a ${radius},${radius} 0 1,0 -${radius * 2},0`;
   }
+}
+
+/**
+ * Get node visualization properties
+ * This centralizes the logic for determining node shapes, colors, and strokes
+ */
+export function getNodeVisualProperties(
+  nodeType: string, 
+  nodeStatus: string, 
+  isAlarmed?: boolean, 
+  isArchived?: boolean,
+  isPrimary?: boolean,
+  withStroke: boolean = false
+) {
+  // Default values
+  let shape = 'circle';
+  let fillColor = '#3b82f6'; // Default blue
+  let showStroke = withStroke;
+  
+  // For bot nodes, map status to shape and color
+  if (nodeType === 'bot') {
+    // Check if the node is alarmed - if so and status is running/paused, treat as danger
+    const effectiveStatus = 
+      (isAlarmed && (nodeStatus === 'running' || nodeStatus === 'paused')) 
+        ? 'danger' 
+        : nodeStatus?.toLowerCase();
+        
+    // Determine shape based on status
+    switch (effectiveStatus) {
+      case 'error':
+      case 'danger':
+        shape = 'triangle'; // Use triangle for error status
+        showStroke = false; // Triangle and diamond never have strokes
+        break;
+      case 'blocked':
+      case 'rogue':
+        shape = 'diamond'; // Use diamond for blocked/rogue
+        showStroke = false; // Triangle and diamond never have strokes
+        break;
+      case 'paused':
+      case 'archived':
+        shape = 'circle'; // Use square for paused/archived
+        // showStroke = false; // Triangle and diamond never have strokes
+        break;
+      default:
+        shape = 'circle'; // Default to circle
+    }
+    
+    // Determine fill color
+    if (isPrimary) {
+      fillColor = '#3b82f6'; // Blue for primary node
+    } else if (isArchived) {
+      fillColor = '#9ca3af'; // Gray for archived nodes
+    } else if (isAlarmed || 
+        effectiveStatus === 'error' || 
+        effectiveStatus === 'blocked' || 
+        effectiveStatus === 'rogue') {
+      fillColor = 'none'; // No color for alarmed or error nodes
+    } else {
+      fillColor = '#3b82f6'; // Green for normal bots
+    }
+  } else {
+    // For non-bot nodes, use blue
+    fillColor = isPrimary ? '#3b82f6' : '#3b82f6';
+  }
+  if(!showStroke) {
+    fillColor = 'none';
+  }
+  
+  return {
+    shape,
+    fillColor,
+    showStroke,
+    strokeColor: showStroke ? '#ffffff' : 'none'
+  };
 } 

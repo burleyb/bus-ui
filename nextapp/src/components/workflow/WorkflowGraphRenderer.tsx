@@ -3,8 +3,8 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
 import { Node, Link, GraphData } from '@/types/workflow';
-import { getNodeImagesSvgString } from '@/components/node/NodeIcon';
-import { getNodeShape, getShapePath, formatTimeAgo, fixedPositions } from '@/utils/workflowUtils';
+import { getNodeImagesSvgString, getNodeImagePath } from '@/components/node/NodeIcon';
+import { getNodeShape, getShapePath, formatTimeAgo, fixedPositions, getNodeVisualProperties } from '@/utils/workflowUtils';
 import { Crosshair, Settings, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
 import ReactDOM from 'react-dom';
@@ -706,37 +706,103 @@ export function WorkflowGraphRenderer({
       }
     });
     
-    // Add node shapes (outer circle)
+    // Add node shapes based on status
     node
-      .append('circle')
+      .append('path')
       .attr('class', 'node-shape')
-      .attr('r', (d) => {
-        // Infinity nodes have no circles
-        if (d.type === 'infinity') return 0;
-        return (d.originalId || d.id) === primaryNode ? 24 : 22;
+      .attr('d', (d) => {
+        // Infinity nodes have no shapes
+        if (d.type === 'infinity') return '';
+        
+        // Get node visual properties using the utility function
+        const isAlarmed = ((d as any).isAlarmed || state.nodes?.[d.id]?.isAlarmed) && 
+                          (d.status === 'running' || d.status === 'paused');
+        const isPrimary = (d.originalId || d.id) === primaryNode;
+        const isArchived = d.status?.toLowerCase() === 'archived' || (d as any).archived;
+        
+        const { shape } = getNodeVisualProperties(
+          d.type || 'unknown',
+          d.status?.toLowerCase() || 'unknown',
+          isAlarmed,
+          isArchived,
+          isPrimary,
+          true // Explicitly request strokes for the workflow graph
+        );
+        
+        // Store shape for later use
+        (d as any)._shape = shape;
+        
+        let radius = isPrimary ? 26 : 22;
+        
+        // Increase size for triangle and diamond shapes
+        if (shape === 'triangle' || shape === 'diamond') {
+          radius *= 1.15; // 15% larger
+        }
+        
+        return getShapePath(shape, radius);
       })
       .attr('fill', (d) => {
-        // Focus node is highlighted
-        if ((d.originalId || d.id) === primaryNode) return '#3b82f6';
+        // Get node visual properties
+        const isAlarmed = ((d as any).isAlarmed || state.nodes?.[d.id]?.isAlarmed) && 
+                          (d.status === 'running' || d.status === 'paused');
+        const isPrimary = (d.originalId || d.id) === primaryNode;
+        const isArchived = d.status?.toLowerCase() === 'archived' || (d as any).archived;
         
-        // Color based on status
-        switch (d.status?.toLowerCase()) {
-          case 'running': return '#10b981'; // Green
-          case 'starting': return '#f59e0b'; // Amber
-          case 'stopped': return '#6b7280'; // Gray
-          case 'paused': return '#8b5cf6'; // Purple
-          case 'error': return '#ef4444'; // Red
-          default: return '#3b82f6'; // Default to blue
-        }
+        const { fillColor } = getNodeVisualProperties(
+          d.type || 'unknown',
+          d.status?.toLowerCase() || 'unknown',
+          isAlarmed,
+          isArchived,
+          isPrimary,
+          true // Explicitly request strokes for the workflow graph
+        );
+        
+        return fillColor;
       })
-      .attr('stroke', '#ffffff')
+      .attr('stroke', (d) => {
+        // Get node visual properties
+        const isAlarmed = ((d as any).isAlarmed || state.nodes?.[d.id]?.isAlarmed) && 
+                          (d.status === 'running' || d.status === 'paused');
+        const isPrimary = (d.originalId || d.id) === primaryNode;
+        const isArchived = d.status?.toLowerCase() === 'archived' || (d as any).archived;
+        
+        const { strokeColor } = getNodeVisualProperties(
+          d.type || 'unknown',
+          d.status?.toLowerCase() || 'unknown',
+          isAlarmed,
+          isArchived,
+          isPrimary,
+          true // Explicitly request strokes for the workflow graph
+        );
+        
+        return strokeColor;
+      })
       .attr('stroke-width', 2);
     
-    // Add inner circle (for image background)
+    // Store the shape for each node for later reference
+    node.each(function(d) {
+      // Shape is already stored in d._shape from earlier step
+      // No need to recalculate it
+    });
+    
+    // Add white shape background for icons that matches the node shape
     node
-      .append('circle')
-      .attr('r', (d) => d.type === 'infinity' ? 0 : 18) // No inner circle for infinity nodes
-      .attr('fill', '#ffffff');
+      .filter(d => d.type !== 'infinity') // Skip infinity nodes
+      .append('path')
+      .attr('d', (d) => {
+        // Use smaller radius for the icon background (90% of shape size)
+        let radius = ((d.originalId || d.id) === primaryNode ? 25 : 22) * 0.9;
+        
+        // Also increase triangle and diamond backgrounds by 15%
+        if ((d as any)._shape === 'triangle' || (d as any)._shape === 'diamond') {
+          radius *= 1.55; // 15% larger
+        }
+        
+        return getShapePath((d as any)._shape || 'circle', radius);
+      })
+      .attr('fill', '#ffffff')
+      .attr('stroke', 'none')
+      .attr('stroke-width', 0);
       
     // Add infinity symbol for infinity nodes
     node.each(function(d) {
@@ -766,14 +832,28 @@ export function WorkflowGraphRenderer({
     node
       .filter(d => d.type !== 'infinity') // Skip infinity nodes
       .append('svg')
-      .attr('width', 32)
-      .attr('height', 32)
-      .attr('x', -16)
-      .attr('y', -16)
+      .attr('width', 40) // Bigger icon size to fill the shape
+      .attr('height', 40)
+      .attr('x', -20)
+      .attr('y', -20)
       .html((d) => {
+        // Get the original node data from state if available, for more accurate icon
+        const nodeData = state.nodes?.[d.originalId || d.id] || d;
+        
+        // Check for alarmed status based on both local and state data
+        const isAlarmed = ((d as any).isAlarmed || state.nodes?.[d.id]?.isAlarmed) && 
+                          (d.status === 'running' || d.status === 'paused');
+        
         // Convert node type to expected format and provide all required parameters
         const iconSvg = getNodeImagesSvgString(
-          { type: d.type || 'unknown' }, 
+          { 
+            id: d.originalId || d.id,
+            type: d.type || 'unknown',
+            status: isAlarmed ? 'danger' : d.status,
+            archived: (d as any).archived || nodeData.archived,
+            paused: (d as any).paused || nodeData.paused,
+            isAlarmed: isAlarmed
+          }, 
           state.nodes || {}, 
           baseUrl
         );

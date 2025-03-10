@@ -7,6 +7,7 @@ import { WorkflowGraphRenderer } from './WorkflowGraphRenderer';
 import { WorkflowGraphData } from './WorkflowGraphData';
 import { GraphData, WorkflowGraphProps } from '@/types/workflow';
 import { useWorkflowGraph } from '@/hooks/useWorkflowGraph';
+import { useAppContext } from '@/context/AppContext';
 
 /**
  * Main WorkflowGraph component that orchestrates the workflow graph visualization.
@@ -24,9 +25,13 @@ export default function WorkflowGraph({
   const tooltipRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
+  // Access app context
+  const { state } = useAppContext();
+  
   // State
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const [noFocusMessage, setNoFocusMessage] = useState<boolean>(true);
+  const [isArchivedMessage, setIsArchivedMessage] = useState<boolean>(false);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   
   // Hooks
@@ -137,13 +142,23 @@ export default function WorkflowGraph({
     updateGraphState({ focusNode: nodeId });
   }, [updateGraphState]);
   
+  // Check if primary node is archived
+  useEffect(() => {
+    if (primaryNode && state.nodes && state.nodes[primaryNode]) {
+      const nodeData = state.nodes[primaryNode];
+      setIsArchivedMessage(nodeData.status === 'archived' || !!nodeData.archived);
+    } else {
+      setIsArchivedMessage(false);
+    }
+  }, [primaryNode, state.nodes]);
+  
   const handleGraphDataReady = useCallback((data: GraphData) => {
     // Update graph data
     setGraphData(data);
     
-    // Show no focus message if there's no data
-    setNoFocusMessage(data.nodes.length === 0);
-  }, []);
+    // Show no focus message if there's no data and node isn't archived
+    setNoFocusMessage(data.nodes.length === 0 && !isArchivedMessage);
+  }, [isArchivedMessage]);
   
     return (
     <div 
@@ -152,13 +167,24 @@ export default function WorkflowGraph({
       style={{ touchAction: 'none' }} // Prevent browser handling of touch events
     >
       {/* No focus message */}
-      {noFocusMessage && (
+      {noFocusMessage && !isArchivedMessage && (
         <div className="absolute inset-0 flex items-center justify-center text-gray-400 dark:text-gray-500">
           <div className="text-center">
             <p className="text-xl font-semibold mb-2">No node selected</p>
             <p className="text-sm">Select a node to visualize its relationships</p>
+          </div>
         </div>
-      </div>
+      )}
+      
+      {/* Archived node message */}
+      {isArchivedMessage && (
+        <div className="absolute inset-0 flex items-center justify-center text-gray-400 dark:text-gray-500">
+          <div className="text-center">
+            <p className="text-xl font-semibold mb-2">Selected node is archived</p>
+            <p className="text-sm">Archived nodes are not displayed in the workflow graph</p>
+            <p className="text-sm">You can unarchive the node from its settings</p>
+          </div>
+        </div>
       )}
       
       {/* Tooltip for additional information */}

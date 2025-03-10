@@ -2,14 +2,18 @@
 
 import React from 'react';
 import { AWSLambdaIcon } from '../icons/AWSLambdaIcon';
+import { useAppContext } from '@/context/AppContext';
 
-interface NodeProps {
+export interface NodeProps {
   type?: string;
+  id?: string;
   status?: string;
   health?: {
     status?: string;
   };
   paused?: boolean;
+  archived?: boolean;
+  isAlarmed?: boolean;
   icon?: string;
   [key: string]: any;
 }
@@ -28,10 +32,6 @@ export function getNodeImagePath(node: NodeProps): string {
   if (node.type === 'add') {
     return '/images/icons/addNode.png';
   }
-  
-  if (node.type === 'infinite') {
-    return '/images/icons/infinite.png';
-  }
 
   const type = node.type?.toLowerCase() || 'bot';
 
@@ -48,7 +48,21 @@ export function getNodeImagePath(node: NodeProps): string {
 
   // For bot nodes (including lambda)
   if (type === 'bot' || type === 'lambda') {
-    const status = (!node.status || node.status?.toLowerCase() === 'running') ? '' : `-${node.status?.toLowerCase()}`;
+    // Handle danger status specially - either explicit danger status or alarmed running/paused bot
+    if (node.status?.toLowerCase() === 'danger' || 
+        (node.isAlarmed && (node.status?.toLowerCase() === 'running' || node.status?.toLowerCase() === 'paused'))) {
+      const pausedSuffix = node.paused ? '-paused' : '';
+      return `/images/nodes/bot-danger${pausedSuffix}.png`;
+    }
+    
+    // Handle blocked/rogue status
+    if (node.status?.toLowerCase() === 'blocked' || node.status?.toLowerCase() === 'rogue') {
+      const pausedSuffix = node.paused ? '-paused' : '';
+      return `/images/nodes/bot-${node.status.toLowerCase()}${pausedSuffix}.png`;
+    }
+    
+    // Handle other statuses
+    const status = (!node.status || node.status?.toLowerCase() === 'running' || node.status?.toLowerCase() === 'idle' || node.status?.toLowerCase() === 'active') ? '' : `-${node.status?.toLowerCase()}`;
     const pausedSuffix = node.paused && (node.status?.toLowerCase() !== 'paused') ? '-paused' : '';
     const filename = `${type}${status}${pausedSuffix}.png`.replace('-archived-paused', '-archived');
     return `/images/nodes/${filename}`;
@@ -76,33 +90,39 @@ export function getNodeImagesSvgString(node: NodeProps, nodes?: any, baseUrl: st
     imgPath = `${window.location.origin}${imgPath}`;
   }
   
-  // Create an SVG with the image
-  return `<image href="${imgPath}" width="100%" height="100%" />`;
+  // Create an SVG with the image with proper centering and scaling
+  return `<image href="${imgPath}" width="90%" height="90%" x="5%" y="5%" preserveAspectRatio="xMidYMid meet" />`;
 }
 
 export default function NodeIcon({ node, size = 32, className = '' }: NodeIconProps) {
   if (!node) return null;
   
+  const { state } = useAppContext();
+  
   const type = node.type?.toLowerCase() || 'unknown';
   const status = node.status?.toLowerCase() || 'unknown';
   const healthStatus = node.health?.status?.toLowerCase() || 'unknown';
   
-  // Determine the status indicator color
-  const getStatusColor = () => {
-    if (status === 'paused' || status === 'stopped') {
-      return 'bg-yellow-500';
-    } else if (status === 'error' || healthStatus === 'error') {
-      return 'bg-red-500';
-    } else if (status === 'running' || healthStatus === 'healthy') {
-      return 'bg-green-500';
-    } else if (healthStatus === 'warning') {
-      return 'bg-yellow-500';
-    }
-    return 'bg-gray-500';
-  };
+  // Determine if the node is alarmed - from the node prop or from the state
+  const isAlarmed = node.isAlarmed || (node.id && state.nodes?.[node.id]?.isAlarmed);
   
-  // Get the image path for the node
-  const imagePath = getNodeImagePath(node);
+  // If this is a bot, use the ShapedNodeIcon component for consistent rendering
+  if (type === 'bot') {
+    // Use dynamic import to avoid circular dependency
+    const ShapedNodeIcon = require('./ShapedNodeIcon').default;
+    return (
+      <ShapedNodeIcon
+        node={{...node, isAlarmed}}
+        size={size}
+        className={className}
+        withBackground={true}
+        primaryNode={false}
+      />
+    );
+  }
+  
+  // For non-bot nodes, use the regular icon
+  const imagePath = getNodeImagePath({ ...node, isAlarmed });
   
   return (
     <div className={`relative ${className}`} style={{ width: size, height: size }}>

@@ -500,21 +500,53 @@ export function useStats() {
       console.log('Processing bot data:', Object.keys(data.nodes.bot).length, 'bots found');
       
       const botsData = Object.values(data.nodes.bot);
-      const bots = botsData.map((bot: any) => ({
-        ...bot,
-        // Normalize status field for UI consistency
-        status: bot.status === 'running' && bot.executions > 0 ? 'active' : 
-                bot.status === 'running' ? 'idle' :
-                (bot.alarms && Object.keys(bot.alarms).length > 0) ? 'alarmed' : 
-                'inactive',
-        // Extract tags from any available fields for filtering
-        tags: [
-          ...(bot.templateId ? [bot.templateId] : []),
-          ...(bot.owner ? [bot.owner] : []),
-          bot.rogue ? 'rogue' : '',
-          bot.source ? 'source' : ''
-        ].filter(Boolean)
-      }));
+      const bots = botsData.map((bot: any) => {
+        // First set archived based on either the status or the archived flag
+        const isArchived = bot.status === 'archived' || bot.archived;
+        
+        // Set paused based on status or paused flag, including archived as paused
+        const isPaused = bot.paused || bot.status === 'paused' || bot.status === 'archived';
+        
+        // Check for errors
+        const isErrored = (bot.logs && bot.logs.errors && bot.logs.errors.length > 0) || bot.rogue === true;
+        
+        // Determine effective status
+        let effectiveStatus = bot.status;
+        
+        // Apply logic from the old postProcess function
+        if (isArchived) {
+          effectiveStatus = 'archived';
+        } else if (bot.rogue === true) {
+          effectiveStatus = 'rogue';
+        } else if (bot.logs && bot.logs.errors && bot.logs.errors.length) {
+          effectiveStatus = 'blocked';
+        } else if (bot.isAlarmed && (bot.status === 'running' || bot.status === 'paused')) {
+          effectiveStatus = 'danger';
+        } else if (isPaused) {
+          effectiveStatus = 'paused';
+        } else {
+          // Apply the new status mapping
+          effectiveStatus = bot.status === 'running' && bot.executions > 0 ? 'active' : 
+                            bot.status === 'running' ? 'idle' :
+                            (bot.alarms && Object.keys(bot.alarms).length > 0) ? 'alarmed' : 
+                            'inactive';
+        }
+        
+        return {
+          ...bot,
+          status: effectiveStatus,
+          archived: isArchived,
+          paused: isPaused,
+          errored: isErrored,
+          // Extract tags from any available fields for filtering
+          tags: [
+            ...(bot.templateId ? [bot.templateId] : []),
+            ...(bot.owner ? [bot.owner] : []),
+            bot.rogue ? 'rogue' : '',
+            bot.source ? 'source' : ''
+          ].filter(Boolean)
+        };
+      });
 
       // Check if bots have actually changed
       if (!areObjectsEqual(bots, state.bots)) {
@@ -575,19 +607,35 @@ export function useStats() {
     // Process queues data if available
     if (data.nodes?.queue) {
       const queuesData = Object.values(data.nodes.queue);
-      const queues = queuesData.map((queue: any) => ({
-        ...queue,
-        // Add computed/derived fields
-        status: queue.alarms && Object.keys(queue.alarms).length > 0 ? 'alarmed' : 'active',
-        // Extract tags for filtering
-        tags: [
-          ...(queue.tags ? queue.tags.split(',').filter(Boolean) : []),
-          ...(queue.owner ? [queue.owner] : [])
-        ].filter(Boolean),
-        // Extract connections from link_to for visualization
-        connections: queue.link_to?.children ? 
-          Object.keys(queue.link_to.children) : []
-      }));
+      const queues = queuesData.map((queue: any) => {
+        // First set archived based on either the status or the archived flag
+        const isArchived = queue.status === 'archived' || queue.archived;
+        
+        // Determine effective status
+        let effectiveStatus;
+        if (isArchived) {
+          effectiveStatus = 'archived';
+        } else if (queue.alarms && Object.keys(queue.alarms).length > 0) {
+          effectiveStatus = 'alarmed';
+        } else {
+          effectiveStatus = 'active';
+        }
+        
+        return {
+          ...queue,
+          // Add computed/derived fields
+          status: effectiveStatus,
+          archived: isArchived,
+          // Extract tags for filtering
+          tags: [
+            ...(queue.tags ? queue.tags.split(',').filter(Boolean) : []),
+            ...(queue.owner ? [queue.owner] : [])
+          ].filter(Boolean),
+          // Extract connections from link_to for visualization
+          connections: queue.link_to?.children ? 
+            Object.keys(queue.link_to.children) : []
+        };
+      });
 
       // Only update if queues have changed
       if (!areObjectsEqual(queues, state.queues)) {
@@ -621,12 +669,30 @@ export function useStats() {
     // Process systems data if available
     if (data.nodes?.system) {
       const systemsData = Object.values(data.nodes.system);
-      const systems = systemsData.map((system: any) => ({
-        ...system,
-        // Normalize status field for UI consistency
-        status: system.status || 'active',
-        type: 'system'
-      }));
+      const systems = systemsData.map((system: any) => {
+        // First set archived based on either the status or the archived flag
+        const isArchived = system.status === 'archived' || system.archived;
+        
+        // Determine effective status
+        let effectiveStatus;
+        if (isArchived) {
+          effectiveStatus = 'archived';
+        } else if (system.rogue === true) {
+          effectiveStatus = 'rogue';
+        } else if (system.logs && system.logs.errors && system.logs.errors.length) {
+          effectiveStatus = 'blocked';
+        } else {
+          effectiveStatus = system.status || 'active';
+        }
+        
+        return {
+          ...system,
+          status: effectiveStatus,
+          type: 'system',
+          archived: isArchived,
+          errored: (system.logs && system.logs.errors && system.logs.errors.length > 0) || system.rogue === true
+        };
+      });
 
       // Only update if systems have changed
       if (!areObjectsEqual(systems, state.systems)) {
