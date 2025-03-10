@@ -522,32 +522,45 @@ export function WorkflowGraphRenderer({
       
       // Add background for better readability
       linkLabels.append('rect')
-        .attr('x', -30)
+        .attr('x', -15)
         .attr('y', -18)
-        .attr('width', 60)
-        .attr('height', 36)
+        .attr('width', 30)
+        .attr('height', 14)
         .attr('fill', 'white')
-        .attr('fill-opacity', 0)
-        .attr('rx', 4);
+        .attr('fill-opacity', 0.9)
+        .attr('rx', 4)
+        .attr('class', 'count-bg');
+        
+      // Add a separate background for timing text
+      linkLabels.append('rect')
+        .attr('x', -25)
+        .attr('y', 7)
+        .attr('width', 50)
+        .attr('height', 14)
+        .attr('fill', 'white')
+        .attr('fill-opacity', 0.9)
+        .attr('rx', 4)
+        .attr('class', 'timing-bg');
       
       // Add count stats
-      linkLabels.append('text')
+      const countTexts = linkLabels.append('text')
         .attr('text-anchor', 'middle')
         .attr('y', -8)
         .attr('font-size', '10px')
         .attr('fill', '#3b82f6')
+        .attr('class', 'count-text')
         .text(function(d) {
           if (!d.stats) return '';
           return d.stats.count ? `${d.stats.count}` : '0';
         });
       
       // Add timing stats (lag or last time)
-      linkLabels.append('text')
+      const timingTexts = linkLabels.append('text')
         .attr('text-anchor', 'middle')
         .attr('y', 15)
         .attr('font-size', '10px')
         .attr('fill', '#3b82f6')
-        .attr('background-color', '#FFF')
+        .attr('class', 'timing-text')
         .text(function(d) {
           if (!d.stats) return '';
           
@@ -583,6 +596,31 @@ export function WorkflowGraphRenderer({
             return '';
           }
         });
+        
+      // Adjust background sizes to fit text content
+      linkLabels.each(function() {
+        const group = d3.select(this);
+        const countText = group.select('.count-text').node() as SVGTextElement;
+        const timingText = group.select('.timing-text').node() as SVGTextElement;
+        
+        if (countText) {
+          const countBBox = countText.getBBox();
+          group.select('.count-bg')
+            .attr('x', countBBox.x - 4)
+            .attr('y', countBBox.y - 1)
+            .attr('width', countBBox.width + 8)
+            .attr('height', countBBox.height + 2);
+        }
+        
+        if (timingText) {
+          const timingBBox = timingText.getBBox();
+          group.select('.timing-bg')
+            .attr('x', timingBBox.x - 4)
+            .attr('y', timingBBox.y - 1)
+            .attr('width', timingBBox.width + 8)
+            .attr('height', timingBBox.height + 2);
+        }
+      });
     }
     
     // Create nodes group
