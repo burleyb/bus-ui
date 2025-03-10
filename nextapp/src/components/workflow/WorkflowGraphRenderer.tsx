@@ -208,7 +208,7 @@ export function WorkflowGraphRenderer({
         ${description ? `<div class="mt-1">Description: ${description}</div>` : ''}
         ${lambdaName ? `<div class="mt-1">Lambda: ${lambdaName}</div>` : ''}
       `;
-    } else if (nodeData.type === 'queue') {
+    } else if (nodeData.type === 'queue' || nodeData.type === 'system') {
       // Queue node
       const lastWrite = nodeData.queues?.write?.last_write ? 
         formatTimeAgo(nodeData.queues.write.last_write) : 'Unknown';
@@ -298,7 +298,7 @@ export function WorkflowGraphRenderer({
           Force Run
         </div>
       `;
-    } else if (nodeData.type === 'queue') {
+    } else if (nodeData.type === 'queue' || nodeData.type === 'system') {
       // Queue-specific menu items
       menuContent = `
         ${commonItems}
@@ -481,8 +481,8 @@ export function WorkflowGraphRenderer({
       const targetY = target.y || 0;
       
       // Determine relationship type for styling
-      const relationType = source.type === 'bot' && target.type === 'queue' ? 'write' :
-                          source.type === 'queue' && target.type === 'bot' ? 'read' : 'default';
+      const relationType = source.type === 'bot' && (target.type === 'queue' || target.type === 'system') ? 'write' :
+                          source.type === 'queue' && (target.type === 'bot' || target.type === 'system')  ? 'read' : 'default';
       
       // Store relationship type on the link data for later use
       d.relationType = relationType;

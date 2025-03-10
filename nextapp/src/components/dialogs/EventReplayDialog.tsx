@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAppContext } from '@/context/AppContext';
 import { useDialogContext } from '@/hooks/useDialogContext';
 
@@ -71,7 +71,13 @@ export default function EventReplayDialog({
 
   return (
     <Dialog open={shouldShow} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent 
+        className="sm:max-w-md" 
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle>Replay Event</DialogTitle>
+        </DialogHeader>
         <div className="p-6">
           <h2 className="text-lg font-semibold mb-4">Replay Event</h2>
           

@@ -1,22 +1,39 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import * as React from 'react';
 import { 
   ZoomIn, 
   ZoomOut, 
   Crosshair, 
-  Hourglass, 
+  LineChart, 
   Bookmark, 
   Share2, 
-  Copy, 
-  Check, 
+  Clock, 
+  CheckCircle,
+  PauseCircle,
+  PlayCircle,
+  Copy,
+  Check,
   ChevronDown,
+  X,
   Pause,
-  Play 
+  Play
 } from 'lucide-react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppContext } from '@/context/AppContext';
+
+// Import Dialog components 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogClose
+} from '@/components/ui/dialog';
+
+// Import the DialogProps type for type assertion
+import type { ComponentType, JSXElementConstructor } from 'react';
 
 interface WorkflowControlsProps {
   selectedNode: string;
@@ -30,14 +47,14 @@ interface SavedBookmark {
 
 export default function WorkflowControls({ selectedNode }: WorkflowControlsProps) {
   // Dialog states
-  const [isBookmarkDialogOpen, setIsBookmarkDialogOpen] = useState(false);
-  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
-  const [bookmarkName, setBookmarkName] = useState('');
-  const [bookmarks, setBookmarks] = useState<SavedBookmark[]>([]);
-  const [isBookmarkDropdownOpen, setIsBookmarkDropdownOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [statsEnabled, setStatsEnabled] = useState(true);
-  const [isPollingPaused, setIsPollingPaused] = useState(false);
+  const [isBookmarkDialogOpen, setIsBookmarkDialogOpen] = React.useState(false);
+  const [isShareDialogOpen, setIsShareDialogOpen] = React.useState(false);
+  const [bookmarkName, setBookmarkName] = React.useState('');
+  const [bookmarks, setBookmarks] = React.useState<SavedBookmark[]>([]);
+  const [isBookmarkDropdownOpen, setIsBookmarkDropdownOpen] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const [statsEnabled, setStatsEnabled] = React.useState(true);
+  const [isPollingPaused, setIsPollingPaused] = React.useState(false);
   
   const queryClient = useQueryClient();
   const { state, dispatch } = useAppContext();
@@ -98,7 +115,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
   };
   
   // Load bookmarks from localStorage
-  useEffect(() => {
+  React.useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
         const savedBookmarks = localStorage.getItem('workflowBookmarks');
@@ -112,7 +129,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
   }, []);
   
   // Check current state of stats when component mounts or hash changes
-  useEffect(() => {
+  React.useEffect(() => {
     const updateStatsStatus = () => {
       const currentParams = getUrlParams();
       setStatsEnabled(Boolean(currentParams.stats));
@@ -136,7 +153,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
   }, []);
 
   // Effect for monitoring polling state changes
-  useEffect(() => {
+  React.useEffect(() => {
     // Log current polling state for debugging
     console.log(`Polling state: ${isPollingPaused ? 'paused' : 'active'}`);
     
@@ -301,7 +318,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
         }`}
         onClick={handleStatsToggle}
       >
-        <Hourglass size={16} />
+        <LineChart size={16} />
       </button>
 
       {/* Polling Toggle */}
@@ -314,7 +331,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
         }`}
         onClick={handlePollingToggle}
       >
-        {isPollingPaused ? <Play size={16} /> : <Pause size={16} />}
+        {isPollingPaused ? <PlayCircle size={16} /> : <PauseCircle size={16} />}
       </button>
       
       {/* Bookmark Controls */}
@@ -372,79 +389,69 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
       
       {/* Save Bookmark Dialog */}
       <Dialog open={isBookmarkDialogOpen} onOpenChange={setIsBookmarkDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Save Workflow</DialogTitle>
           </DialogHeader>
-          <div className="p-4">
-            <div className="mb-4">
-              <label htmlFor="bookmark-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="bookmark-name" className="text-right">
                 Enter workflow name
               </label>
               <input
                 id="bookmark-name"
-                type="text"
                 value={bookmarkName}
                 onChange={(e) => setBookmarkName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                placeholder="My Workflow"
+                className="col-span-3"
               />
             </div>
-            <DialogFooter className="flex justify-end space-x-2 mt-4">
-              <button
-                className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
-                onClick={() => setIsBookmarkDialogOpen(false)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50"
-                onClick={saveBookmark}
-                disabled={!bookmarkName.trim()}
-              >
-                Save
-              </button>
-            </DialogFooter>
           </div>
+          <DialogFooter>
+            <DialogClose>Cancel</DialogClose>
+            <button
+              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+              onClick={saveBookmark}
+              disabled={!bookmarkName.trim()}
+            >
+              Save
+            </button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
       
       {/* Share URL Dialog */}
       <Dialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Share Workflow</DialogTitle>
           </DialogHeader>
-          <div className="p-4">
-            <div className="mb-4">
-              <label htmlFor="share-url" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="share-url" className="text-right">
                 Workflow URL
               </label>
-              <div className="relative">
-                <textarea
-                  id="share-url"
-                  readOnly
-                  className="w-full h-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
-                  value={typeof window !== 'undefined' ? window.location.href : ''}
-                />
-                <button 
-                  className="absolute right-2 top-2 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-600"
-                  onClick={copyToClipboard}
-                  title="Copy to clipboard"
-                >
-                  {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
-                </button>
+              <div className="col-span-3">
+                <div className="flex items-center space-x-2">
+                  <textarea
+                    id="share-url"
+                    readOnly
+                    className="w-full h-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
+                    value={typeof window !== 'undefined' ? window.location.href : ''}
+                  />
+                  <button 
+                    className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-600"
+                    onClick={copyToClipboard}
+                    title="Copy to clipboard"
+                  >
+                    {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
+                  </button>
+                </div>
               </div>
             </div>
-            <DialogFooter className="flex justify-end mt-4">
-              <button
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
-                onClick={() => setIsShareDialogOpen(false)}
-              >
-                Close
-              </button>
-            </DialogFooter>
           </div>
+          <DialogFooter>
+            <DialogClose>Close</DialogClose>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

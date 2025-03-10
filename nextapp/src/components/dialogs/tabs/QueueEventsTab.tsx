@@ -21,7 +21,7 @@ import {
 } from '@/lib/dateUtils';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
-import { Dialog } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { awsNativeFetch } from '@/lib/authUtils';
 
 interface QueueEventsTabProps {
@@ -97,75 +97,75 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title="Replay Event"
-      size="md"
-    >
-      <div className="space-y-6">
-        <div>
-          <p className="text-gray-700 dark:text-gray-300 mb-2">
-            You are about to replay event <span className="font-mono font-medium">{eventId}</span> from queue <span className="font-mono font-medium">{queueId}</span>.
-          </p>
-          <p className="text-gray-700 dark:text-gray-300">
-            Select the bot that should process this event:
-          </p>
-        </div>
-        
-        <div>
-          <label htmlFor="bot-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Target Bot
-          </label>
-          <select
-            id="bot-select"
-            className="w-full rounded-md border border-gray-300 dark:border-gray-700 
-                    bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
-                    focus:ring-2 focus:ring-blue-500"
-            value={selectedBotId}
-            onChange={(e) => setSelectedBotId(e.target.value)}
-          >
-            {botOptions.length === 0 && (
-              <option value="">No bots available</option>
-            )}
-            {botOptions.map((bot) => (
-              <option key={bot.id} value={bot.id}>
-                {bot.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md">
-          <p className="text-sm text-yellow-800 dark:text-yellow-300">
-            <strong>Note:</strong> Replaying an event may cause duplicate processing. Make sure the target bot can handle this safely.
-          </p>
-        </div>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Replay Event</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-6 p-4">
+          <div>
+            <p className="text-gray-700 dark:text-gray-300 mb-2">
+              You are about to replay event <span className="font-mono font-medium">{eventId}</span> from queue <span className="font-mono font-medium">{queueId}</span>.
+            </p>
+            <p className="text-gray-700 dark:text-gray-300">
+              Select the bot that should process this event:
+            </p>
+          </div>
+          
+          <div>
+            <label htmlFor="bot-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Target Bot
+            </label>
+            <select
+              id="bot-select"
+              className="w-full rounded-md border border-gray-300 dark:border-gray-700 
+                      bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
+                      focus:ring-2 focus:ring-blue-500"
+              value={selectedBotId}
+              onChange={(e) => setSelectedBotId(e.target.value)}
+            >
+              {botOptions.length === 0 && (
+                <option value="">No bots available</option>
+              )}
+              {botOptions.map((bot) => (
+                <option key={bot.id} value={bot.id}>
+                  {bot.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md">
+            <p className="text-sm text-yellow-800 dark:text-yellow-300">
+              <strong>Note:</strong> Replaying an event may cause duplicate processing. Make sure the target bot can handle this safely.
+            </p>
+          </div>
 
-        <div className="flex justify-end space-x-3 mt-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 
-                    rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300
-                    bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleReplay}
-            disabled={!selectedBotId}
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm 
-                    font-medium text-white bg-blue-600 hover:bg-blue-700 
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
-                    disabled:bg-blue-400 disabled:cursor-not-allowed"
-          >
-            Replay Event
-          </button>
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-700 
+                      rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300
+                      bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 
+                      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleReplay}
+              disabled={!selectedBotId}
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm 
+                      font-medium text-white bg-blue-600 hover:bg-blue-700 
+                      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                      disabled:bg-blue-400 disabled:cursor-not-allowed"
+            >
+              Replay Event
+            </button>
+          </div>
         </div>
-      </div>
+      </DialogContent>
     </Dialog>
   );
 };
@@ -259,69 +259,69 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
   };
 
   return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      title="Resubmit Event"
-      size="lg"
-    >
-      <div className="space-y-6">
-        <div>
-          <p className="text-gray-700 dark:text-gray-300 mb-2">
-            You are about to resubmit this event to queue <span className="font-mono font-medium">{queueId}</span>.
-          </p>
-          <p className="text-gray-700 dark:text-gray-300">
-            You can edit the event payload before resubmitting:
-          </p>
-        </div>
-        
-        <div>
-          <label htmlFor="payload-editor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Event Payload
-          </label>
-          <textarea
-            id="payload-editor"
-            value={payloadJson}
-            onChange={handleJsonChange}
-            className={`w-full h-96 font-mono text-sm rounded-md border 
-                      bg-white dark:bg-gray-800 px-3 py-2 focus:outline-none 
-                      focus:ring-2 focus:ring-blue-500 ${!isValid ? 'border-red-500' : 'border-gray-300 dark:border-gray-700'}`}
-          />
-          {!isValid && (
-            <p className="text-sm text-red-500 mt-1">{errorMessage}</p>
-          )}
-        </div>
-        
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md">
-          <p className="text-sm text-yellow-800 dark:text-yellow-300">
-            <strong>Note:</strong> Resubmitting an event will create a new copy in the queue with a new event ID.
-          </p>
-        </div>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Resubmit Event</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-6 p-4">
+          <div>
+            <p className="text-gray-700 dark:text-gray-300 mb-2">
+              You are about to resubmit this event to queue <span className="font-mono font-medium">{queueId}</span>.
+            </p>
+            <p className="text-gray-700 dark:text-gray-300">
+              You can edit the event payload before resubmitting:
+            </p>
+          </div>
+          
+          <div>
+            <label htmlFor="payload-editor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Event Payload
+            </label>
+            <textarea
+              id="payload-editor"
+              value={payloadJson}
+              onChange={handleJsonChange}
+              className={`w-full h-96 font-mono text-sm rounded-md border 
+                        bg-white dark:bg-gray-800 px-3 py-2 focus:outline-none 
+                        focus:ring-2 focus:ring-blue-500 ${!isValid ? 'border-red-500' : 'border-gray-300 dark:border-gray-700'}`}
+            />
+            {!isValid && (
+              <p className="text-sm text-red-500 mt-1">{errorMessage}</p>
+            )}
+          </div>
+          
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md">
+            <p className="text-sm text-yellow-800 dark:text-yellow-300">
+              <strong>Note:</strong> Resubmitting an event will create a new copy in the queue with a new event ID.
+            </p>
+          </div>
 
-        <div className="flex justify-end space-x-3 mt-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-700 
-                    rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300
-                    bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleResubmit}
-            disabled={!isValid}
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm 
-                    font-medium text-white bg-blue-600 hover:bg-blue-700 
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
-                    disabled:bg-blue-400 disabled:cursor-not-allowed"
-          >
-            Resubmit Event
-          </button>
+          <div className="flex justify-end space-x-3 mt-6">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 dark:border-gray-700 
+                      rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-300
+                      bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 
+                      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleResubmit}
+              disabled={!isValid}
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm 
+                      font-medium text-white bg-blue-600 hover:bg-blue-700 
+                      focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
+                      disabled:bg-blue-400 disabled:cursor-not-allowed"
+            >
+              Resubmit Event
+            </button>
+          </div>
         </div>
-      </div>
+      </DialogContent>
     </Dialog>
   );
 };
