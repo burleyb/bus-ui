@@ -148,6 +148,31 @@ export function WorkflowGraphRenderer({
   const isContextMenuActive = useRef<boolean>(false);
   const hoveredNodeRef = useRef<string | null>(null);
   
+  // Add a humanize function that matches the original implementation
+  const humanizeDuration = (milliseconds: number, showMilliseconds = false): string => {
+    if (showMilliseconds && milliseconds < 1000) {
+      return Math.round(milliseconds) + 'ms';
+    }
+    
+    const seconds = Math.round(milliseconds / 1000);
+    if (seconds < 60) {
+      return seconds + 's';
+    } else {
+      const minutes = Math.floor(milliseconds / (1000 * 60));
+      if (minutes < 60) {
+        return minutes + 'm' + (seconds % 60 ? ', ' + (seconds % 60) + 's' : '');
+      } else {
+        const hours = Math.floor(milliseconds / (1000 * 60 * 60));
+        if (hours < 24) {
+          return hours + 'h' + (minutes % 60 ? ', ' + (minutes % 60) + 'm' : '');
+        } else {
+          const days = Math.floor(milliseconds / (1000 * 60 * 60 * 24));
+          return days + 'd' + (hours % 24 ? ', ' + (hours % 24) + 'h' : '');
+        }
+      }
+    }
+  };
+  
   // Function to update the tooltip content and position
   const updateTooltip = useCallback((nodeId: string | null, event?: MouseEvent) => {
     // Don't show tooltip if context menu is active
@@ -522,14 +547,41 @@ export function WorkflowGraphRenderer({
         .attr('y', 15)
         .attr('font-size', '10px')
         .attr('fill', '#3b82f6')
+        .attr('background-color', '#FFF')
         .text(function(d) {
           if (!d.stats) return '';
-          if (d.stats.lag !== undefined) {
-            return `Lag: ${d.stats.lag.toFixed(0)}s`;
-          } else if (d.stats.last_time) {
-            return `Last: ${formatTimeAgo(d.stats.last_time)}`;
+          
+          // Handle relationship types
+          if (d.relationType === 'read') {
+            // Queue -> Bot (reading) relationship
+            if (d.stats.lag === undefined || d.stats.lag === null) {
+              return 'N/A';
+            } else if (d.stats.lag < 100) {
+              return '-';
+            } else {
+              // Use the humanize function for lag formatting
+              return 'lag: ' + humanizeDuration(d.stats.lag);
+            }
+          } else if (d.relationType === 'write') {
+            // Bot -> Queue (writing) relationship
+            if (!d.stats.last_time) {
+              return 'N/A';
+            } else {
+              try {
+                // Calculate time difference between now and last_time
+                const lastTime = new Date(d.stats.last_time);
+                const now = new Date();
+                const timeDiff = now.getTime() - lastTime.getTime();
+                
+                // Use the humanize function for time ago formatting
+                return humanizeDuration(timeDiff) + ' ago';
+              } catch (e) {
+                return 'invalid date';
+              }
+            }
+          } else {
+            return '';
           }
-          return '';
         });
     }
     

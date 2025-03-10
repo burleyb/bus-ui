@@ -260,8 +260,8 @@ export function WorkflowGraphData({
 
           // Now nodeData is properly in scope
           const relationType = 
-            (parentNode.type === 'bot' && nodeData.type === 'queue') ? 'write' as const :
-            (parentNode.type === 'queue' && nodeData.type === 'bot') ? 'read' as const : 
+            (parentNode.type === 'bot' && (nodeData.type === 'queue' || nodeData.type === 'system')) ? 'write' as const :
+            ((parentNode.type === 'queue' || nodeData.type === 'system') && nodeData.type === 'bot' ) ? 'read' as const : 
             'default' as const;
           
           // For queue->bot connection (bot reading from queue)
@@ -272,8 +272,9 @@ export function WorkflowGraphData({
               linkStats.count = Number(nodeData.link_to.parent[parentId].units);
             }
             // Still use queue data for lag if available
-            if (nodeData.queues?.read && nodeData.queues.read[parentId]) {
-              linkStats.lag = nodeData.queues.read[parentId].last_source_lag || 0;
+            if (nodeData.link_to?.parent && nodeData.link_to.parent[parentId] && 
+                typeof nodeData.link_to.parent[parentId].last_source_lag !== 'undefined') {
+              linkStats.lag = nodeData.link_to.parent[parentId].last_source_lag || 0;
             }
           }
           
@@ -285,8 +286,9 @@ export function WorkflowGraphData({
               linkStats.count = Number(parentNode.link_to.children[nodeId].units);
             }
             // Still use queue data for last_write time if available
-            if (parentNode.queues?.write && parentNode.queues.write[nodeId]) {
-              linkStats.last_time = parentNode.queues.write[nodeId].last_write || '';
+            if (parentNode.link_to?.children && parentNode.link_to.children[nodeId] && 
+                typeof parentNode.link_to.children[nodeId].last_write !== 'undefined') {
+              linkStats.last_time = parentNode.link_to.children[nodeId].last_write || '';
             }
           }
           
@@ -328,13 +330,13 @@ export function WorkflowGraphData({
                       const parentNode = state.nodes[parentId];
                       
                       if (gpNode && parentNode) {
-                        if (gpNode.type === 'bot' && parentNode.type === 'queue') {
+                        if (gpNode.type === 'bot' && (parentNode.type === 'queue' || parentNode.type === 'system')) {
                           // Bot -> Queue relationship
                           if (gpNode.link_to?.children && gpNode.link_to.children[parentId] && 
                               typeof gpNode.link_to.children[parentId].units !== 'undefined') {
                             cycleLinkStats.count = Number(gpNode.link_to.children[parentId].units);
                           }
-                        } else if (gpNode.type === 'queue' && parentNode.type === 'bot') {
+                        } else if ((gpNode.type === 'queue' || parentNode.type === 'system') && parentNode.type === 'bot') {
                           // Queue -> Bot relationship
                           if (parentNode.link_to?.parent && parentNode.link_to.parent[grandparentId] && 
                               typeof parentNode.link_to.parent[grandparentId].units !== 'undefined') {
@@ -425,9 +427,10 @@ export function WorkflowGraphData({
                 typeof nodeData.link_to.children[childId].units !== 'undefined') {
               linkStats.count = Number(nodeData.link_to.children[childId].units);
             }
-            // Still use queue data for last_write time if available
-            if (nodeData.queues?.write && nodeData.queues.write[childId]) {
-              linkStats.last_time = nodeData.queues.write[childId].last_write || '';
+            
+            if (nodeData.link_to?.children && nodeData.link_to.children[childId] && 
+              typeof nodeData.link_to.children[childId].last_write !== 'undefined') {
+              linkStats.last_time = nodeData.link_to.children[childId].last_write || '';
             }
           }
           
@@ -438,9 +441,10 @@ export function WorkflowGraphData({
                 typeof childNode.link_to.parent[nodeId].units !== 'undefined') {
               linkStats.count = Number(childNode.link_to.parent[nodeId].units);
             }
-            // Still use queue data for lag if available
-            if (childNode.queues?.read && childNode.queues.read[nodeId]) {
-              linkStats.lag = childNode.queues.read[nodeId].last_source_lag || 0;
+            
+            if (childNode.link_to?.parent && childNode.link_to.parent[nodeId] && 
+              typeof childNode.link_to.parent[nodeId].last_write !== 'undefined') {
+              linkStats.last_time = childNode.link_to.parent[nodeId].last_write || '';
             }
           }
           

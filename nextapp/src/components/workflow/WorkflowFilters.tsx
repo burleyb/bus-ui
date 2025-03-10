@@ -142,23 +142,97 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
       // If end date is within the last minute (to account for processing time), 
       // this is likely a standard interval selection
       if (timeDiff < 60000) {
-        if (isWithinMinutes(beginDate, endDate, 15)) {
-          return 'Last 15m';
-        }
-        if (isWithinHours(beginDate, endDate, 1)) {
-          return 'Last 1h';
-        }
-        if (isWithinHours(beginDate, endDate, 6)) {
-          return 'Last 6h';
-        }
-        if (isWithinDays(beginDate, endDate, 1)) {
-          return 'Last 1d';
+        // Calculate and display the current time bucket based on the interval
+        switch (timePeriod.interval) {
+          case 'minute_15': {
+            // Get the current 15-minute bucket
+            const currentMinute = now.getMinutes();
+            const bucketStart = Math.floor(currentMinute / 15) * 15;
+            const bucketStartTime = new Date(now);
+            bucketStartTime.setMinutes(bucketStart, 0, 0);
+            
+            const bucketEndTime = new Date(bucketStartTime);
+            bucketEndTime.setMinutes(bucketStart + 14, 59, 999);
+            
+            return `${format(bucketStartTime, 'h:mma').toLowerCase()} - ${format(bucketEndTime, 'h:mma').toLowerCase()}`;
+          }
+          
+          case 'hour': {
+            // Get the current hour bucket
+            const bucketStartTime = new Date(now);
+            bucketStartTime.setMinutes(0, 0, 0);
+            
+            const bucketEndTime = new Date(bucketStartTime);
+            bucketEndTime.setMinutes(59, 59, 999);
+            
+            return `${format(bucketStartTime, 'h:mma').toLowerCase()} - ${format(bucketEndTime, 'h:mma').toLowerCase()}`;
+          }
+          
+          case 'hour_6': {
+            // Get the current 6-hour bucket
+            const currentHour = now.getHours();
+            const bucketIndex = Math.floor(currentHour / 6);
+            const bucketStartHour = bucketIndex * 6;
+            
+            const bucketStartTime = new Date(now);
+            bucketStartTime.setHours(bucketStartHour, 0, 0, 0);
+            
+            const bucketEndTime = new Date(bucketStartTime);
+            bucketEndTime.setHours(bucketStartHour + 5, 59, 59, 999);
+            
+            return `${format(bucketStartTime, 'h:mma').toLowerCase()} - ${format(bucketEndTime, 'h:mma').toLowerCase()}`;
+          }
+          
+          case 'day': {
+            // Get the current day bucket
+            const bucketStartTime = new Date(now);
+            bucketStartTime.setHours(0, 0, 0, 0);
+            
+            const bucketEndTime = new Date(bucketStartTime);
+            bucketEndTime.setHours(23, 59, 59, 999);
+            
+            return `${format(bucketStartTime, 'MMM d, h:mma').toLowerCase()} - ${format(bucketEndTime, 'h:mma').toLowerCase()}`;
+          }
+          
+          case 'week': {
+            // Get the current week bucket (starting from Sunday or Monday as per locale)
+            const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+            const daysFromStart = currentDay; // Using Sunday as start of week
+            
+            const bucketStartTime = new Date(now);
+            bucketStartTime.setDate(now.getDate() - daysFromStart);
+            bucketStartTime.setHours(0, 0, 0, 0);
+            
+            const bucketEndTime = new Date(bucketStartTime);
+            bucketEndTime.setDate(bucketStartTime.getDate() + 6);
+            bucketEndTime.setHours(23, 59, 59, 999);
+            
+            return `${format(bucketStartTime, 'MMM d')} - ${format(bucketEndTime, 'MMM d')}`;
+          }
+          
+          default:
+            // For custom intervals or as a fallback
+            if (isWithinMinutes(beginDate, endDate, 15)) {
+              return 'Last 15m';
+            }
+            if (isWithinHours(beginDate, endDate, 1)) {
+              return 'Last 1h';
+            }
+            if (isWithinHours(beginDate, endDate, 6)) {
+              return 'Last 6h';
+            }
+            if (isWithinDays(beginDate, endDate, 1)) {
+              return 'Last 1d';
+            }
+            if (isWithinDays(beginDate, endDate, 7)) {
+              return 'Last 1w';
+            }
         }
       }
       
-      // Otherwise, show the date range
-      const beginFormatted = format(beginDate, 'MMM d, HH:mm');
-      const endFormatted = format(endDate, 'MMM d, HH:mm');
+      // Otherwise, show the date range for custom periods
+      const beginFormatted = format(beginDate, 'MMM d, h:mma').toLowerCase();
+      const endFormatted = format(endDate, 'MMM d, h:mma').toLowerCase();
       return `${beginFormatted} to ${endFormatted}`;
     }
     
@@ -526,7 +600,6 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
   
   // Calendar icon and date picker functionality
   const [hashDebouncer] = useState<NodeJS.Timeout | null>(null);
-  const [calendarView, setCalendarView] = useState<'begin' | 'end'>('begin');
   const [tempBeginDate, setTempBeginDate] = useState<Date | null>(null);
   const [tempEndDate, setTempEndDate] = useState<Date | null>(null);
   const [showCalendarPicker, setShowCalendarPicker] = useState<boolean>(false);
@@ -542,22 +615,87 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
   }, [timePeriod.begin, timePeriod.end]);
 
   // Handle temporary date selection
-  const handleDateSelection = (calendarType: 'begin' | 'end', date: Date | null) => {
+  const handleDateSelection = (date: Date | null) => {
     if (!date) return;
     
-    if (calendarType === 'begin') {
-      setTempBeginDate(date);
-      // If begin date is after end date, update end date
-      if (tempEndDate && date > tempEndDate) {
-        setTempEndDate(addHours(date, 1));
+    // Calculate the appropriate time bucket based on the selected date and current interval
+    let beginDate: Date;
+    let endDate: Date;
+    
+    switch (timePeriod.interval) {
+      case 'minute_15': {
+        // Get the 15-minute bucket containing the selected date
+        const currentMinute = date.getMinutes();
+        const bucketStart = Math.floor(currentMinute / 15) * 15;
+        
+        beginDate = new Date(date);
+        beginDate.setMinutes(bucketStart, 0, 0);
+        
+        endDate = new Date(beginDate);
+        endDate.setMinutes(bucketStart + 14, 59, 999);
+        break;
       }
-    } else {
-      setTempEndDate(date);
-      // If end date is before begin date, update begin date
-      if (tempBeginDate && date < tempBeginDate) {
-        setTempBeginDate(subHours(date, 1));
+      
+      case 'hour': {
+        // Get the hour bucket containing the selected date
+        beginDate = new Date(date);
+        beginDate.setMinutes(0, 0, 0);
+        
+        endDate = new Date(beginDate);
+        endDate.setMinutes(59, 59, 999);
+        break;
+      }
+      
+      case 'hour_6': {
+        // Get the 6-hour bucket containing the selected date
+        const currentHour = date.getHours();
+        const bucketIndex = Math.floor(currentHour / 6);
+        const bucketStartHour = bucketIndex * 6;
+        
+        beginDate = new Date(date);
+        beginDate.setHours(bucketStartHour, 0, 0, 0);
+        
+        endDate = new Date(beginDate);
+        endDate.setHours(bucketStartHour + 5, 59, 59, 999);
+        break;
+      }
+      
+      case 'day': {
+        // Get the day bucket containing the selected date
+        beginDate = new Date(date);
+        beginDate.setHours(0, 0, 0, 0);
+        
+        endDate = new Date(beginDate);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      }
+      
+      case 'week': {
+        // Get the week bucket containing the selected date (Sunday to Saturday)
+        const currentDay = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        
+        beginDate = new Date(date);
+        beginDate.setDate(date.getDate() - currentDay); // Go back to Sunday
+        beginDate.setHours(0, 0, 0, 0);
+        
+        endDate = new Date(beginDate);
+        endDate.setDate(beginDate.getDate() + 6); // Go forward to Saturday
+        endDate.setHours(23, 59, 59, 999);
+        break;
+      }
+      
+      default: {
+        // Default to 1-hour bucket if unknown interval
+        beginDate = new Date(date);
+        beginDate.setMinutes(0, 0, 0);
+        
+        endDate = new Date(beginDate);
+        endDate.setMinutes(59, 59, 999);
       }
     }
+    
+    setTempBeginDate(beginDate);
+    setTempEndDate(endDate);
   };
 
   // Handle quick interval selection
@@ -599,7 +737,6 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
       });
     }
     setShowCalendarPicker(false);
-    setCalendarView('begin');
   };
 
   // Cancel date selection
@@ -611,7 +748,7 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
     if (timePeriod.end) {
       setTempEndDate(parseISO(timePeriod.end));
     }
-    setCalendarView('begin');
+    setShowCalendarPicker(false);
   };
 
   // Expose methods through the ref
@@ -766,30 +903,13 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
           {showCalendarPicker && (
             <div className="absolute z-10 bg-white dark:bg-gray-800 shadow-lg rounded-md p-3 border border-gray-200 dark:border-gray-700 mt-2 right-0 min-w-[355px]">
               <div className="flex flex-col">
-                <div className="flex justify-between items-center mb-3">
-                  <div className="flex space-x-3">
-                    <button
-                      className={`text-xs px-2 py-1 rounded ${calendarView === 'begin' ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' : 'bg-gray-100 dark:bg-gray-700'}`}
-                      onClick={() => setCalendarView('begin')}
-                    >
-                      Begin Time
-                    </button>
-                    <button
-                      className={`text-xs px-2 py-1 rounded ${calendarView === 'end' ? 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200' : 'bg-gray-100 dark:bg-gray-700'}`}
-                      onClick={() => setCalendarView('end')}
-                    >
-                      End Time
-                    </button>
-                  </div>
-                </div>
-                
                 <div className="mb-3">
                   {/* @ts-ignore */}
                   <DatePicker
-                    selected={calendarView === 'begin' ? tempBeginDate : tempEndDate}
-                    onChange={(date) => handleDateSelection(calendarView === 'begin' ? 'begin' : 'end', date)}
+                    selected={tempBeginDate}
+                    onChange={(date) => handleDateSelection(date)}
                     showTimeSelect
-                    timeFormat="HH:mm"
+                    timeFormat="h:mm aa"
                     timeIntervals={15}
                     dateFormat="MMMM d, yyyy h:mm aa"
                     inline
@@ -829,25 +949,19 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
                   </button>
                 </div>
                 
-                <div className="flex justify-between">
-                  <div className="text-xs">
-                    <div><span className="font-semibold">Begin:</span> {tempBeginDate ? format(tempBeginDate, 'MMM d, yyyy HH:mm') : 'Not set'}</div>
-                    <div><span className="font-semibold">End:</span> {tempEndDate ? format(tempEndDate, 'MMM d, yyyy HH:mm') : 'Not set'}</div>
-                  </div>
-                  <div className="flex space-x-2">
-                    <button 
-                      className="text-xs bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
-                      onClick={() => setShowCalendarPicker(false)}
-                    >
-                      Cancel
-                    </button>
-                    <button 
-                      className="text-xs bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600"
-                      onClick={applyDateSelection}
-                    >
-                      Apply
-                    </button>
-                  </div>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    className="px-3 py-1 text-xs rounded bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
+                    onClick={cancelDateSelection}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="px-3 py-1 text-xs rounded bg-blue-500 text-white hover:bg-blue-600"
+                    onClick={applyDateSelection}
+                  >
+                    Apply
+                  </button>
                 </div>
               </div>
             </div>

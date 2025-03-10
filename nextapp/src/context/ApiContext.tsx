@@ -399,8 +399,27 @@ export function useStats() {
           dispatch({ type: 'UPDATE_STATE', payload: { updatingStats: true } });
         }
         
-        // Call API with time period parameters and current timestamp
-        return await API.getStats(range, count, new Date().toISOString());
+        // Determine the timestamp to use based on whether there's an end time in the URL hash
+        let timestamp: string;
+        
+        // Check if timePeriod has an end property (it might just have interval)
+        const timePeriodObj = state?.urlObj?.timePeriod as { interval: string; end?: string };
+        
+        if (timePeriodObj?.end) {
+          // If an end time exists in the URL hash, use it but round to end of minute
+          const endDate = new Date(timePeriodObj.end);
+          // Round up to the last second of the minute
+          endDate.setSeconds(59);
+          timestamp = endDate.toISOString();
+          console.log('Using timestamp from URL hash (rounded to end of minute):', timestamp);
+        } else {
+          // If no end time exists, use the current time
+          timestamp = new Date().toISOString();
+          console.log('Using current timestamp:', timestamp);
+        }
+        
+        // Call API with time period parameters and the determined timestamp
+        return await API.getStats(range, count, timestamp);
       } finally {
         // Record the time of this update
         if (dispatch) {
