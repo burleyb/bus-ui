@@ -86,15 +86,21 @@ export function updateUrlHash(newParams: Record<string, any>): void {
   if (typeof window === 'undefined') return;
   
   try {
+    console.log('updateUrlHash called with:', newParams);
+    
     // Get current parameters
     const currentParams = parseUrlHash();
+    console.log('Current URL hash params:', currentParams);
     
     // Merge with new parameters
     const updatedParams = { ...currentParams, ...newParams };
+    console.log('Merged URL hash params:', updatedParams);
     
     // Convert to JSON string, encode, and update URL hash
     const hashStr = JSON.stringify(updatedParams);
     window.location.hash = encodeURIComponent(hashStr);
+    
+    console.log('URL hash updated to:', window.location.hash);
   } catch (error) {
     console.error('Error updating URL hash:', error);
   }

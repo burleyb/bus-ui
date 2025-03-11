@@ -115,7 +115,7 @@ export default function QueueDashboardTab({ nodeData, timePeriod, onClose }: Que
 
   // Safeguard against null nodeData
   if (!activeData) {
-    return (
+  return (
       <div className="flex justify-center items-center min-h-[400px]">
         <div className="text-gray-500">No data available</div>
       </div>
@@ -499,7 +499,7 @@ export default function QueueDashboardTab({ nodeData, timePeriod, onClose }: Que
                                 title="Open bot settings"
                               >
                                 {writeBot.label}
-                              </span>
+              </span>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -581,7 +581,7 @@ export default function QueueDashboardTab({ nodeData, timePeriod, onClose }: Que
                                 title="Open bot settings"
                               >
                                 {readBot.label}
-                              </span>
+              </span>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-center">
@@ -616,7 +616,7 @@ export default function QueueDashboardTab({ nodeData, timePeriod, onClose }: Que
                                   height={50}
                                 />
                               )}
-                            </div>
+            </div>
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{readBot.values?.reduce(function(total: number, read: any) {
                             return total + (read.value || 0)
@@ -628,7 +628,7 @@ export default function QueueDashboardTab({ nodeData, timePeriod, onClose }: Que
                       )})}
                     </tbody>
                   </table>
-                </div>
+          </div>
               ) : (
                 <div className="text-center py-8 text-gray-500 dark:text-gray-400">No bots reading from this queue</div>
               )}
@@ -721,9 +721,9 @@ export default function QueueDashboardTab({ nodeData, timePeriod, onClose }: Que
                   </div>
                   <div className="text-xs text-gray-500 mt-2">
                     Total events read by all bots in this time period
-                  </div>
-                </div>
-                
+        </div>
+      </div>
+      
                 {/* Right side: Chart */}
                 <div className="col-span-2 h-full">
                   {eventsReadData && eventsReadData.length > 0 ? (
@@ -784,8 +784,8 @@ export default function QueueDashboardTab({ nodeData, timePeriod, onClose }: Que
                   <div className="text-xs text-gray-500 mt-2">
                     Average age of events read by bots at the time they were read
                   </div>
-                </div>
-                
+      </div>
+      
                 {/* Right side: Chart */}
                 <div className="col-span-2 h-full">
                   {lagData && lagData.length > 0 ? (

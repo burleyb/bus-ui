@@ -31,6 +31,23 @@ const queryClient = new QueryClient({
   },
 });
 
+// Helper function for fetching and parsing API responses
+const fetchAndParse = async (url: string, options?: RequestInit) => {
+  const response = await awsNativeFetch(url, options);
+  
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+  }
+  
+  try {
+    return await response.json();
+  } catch (jsonError: unknown) {
+    console.error(`JSON parsing error for ${url}:`, jsonError);
+    const errorMessage = jsonError instanceof Error ? jsonError.message : 'Unknown JSON parse error';
+    throw new Error(`Invalid JSON response from ${url}: ${errorMessage}`);
+  }
+};
+
 // Define API methods - all are using axios now via the awsNativeFetch wrapper
 const API = {
   // Dashboard related
@@ -44,11 +61,7 @@ const API = {
     const queryString = params.toString();
     const url = `/api/dashboard${queryString ? `?${queryString}` : ''}`;
     
-    const response = await awsNativeFetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch dashboard: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchAndParse(url);
   },
 
   // Logs related
@@ -64,11 +77,7 @@ const API = {
     const queryString = params.toString();
     const url = `/api/logs/${botId}${queryString ? `?${queryString}` : ''}`;
     
-    const response = await awsNativeFetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch logs: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchAndParse(url);
   },
 
   // Trace related
@@ -81,46 +90,26 @@ const API = {
     const queryString = params.toString();
     const url = `/api/trace/${queueId}/events${queryString ? `?${queryString}` : ''}`;
     
-    const response = await awsNativeFetch(url);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch trace events: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchAndParse(url);
   },
   
   getEventDetails: async (queueId: string, eventId: string) => {
-    const response = await awsNativeFetch(`/api/trace/${queueId}/events/${eventId}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch event details: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchAndParse(`/api/queue/${queueId}/event/${eventId}`);
   },
 
   // Settings related
   getSettings: async () => {
-    const response = await awsNativeFetch('/api/settings');
-    if (!response.ok) {
-      throw new Error(`Failed to fetch settings: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchAndParse('/api/settings');
   },
 
   // SDK related
   getSdkConfig: async () => {
-    const response = await awsNativeFetch('/api/sdkConfig');
-    if (!response.ok) {
-      throw new Error(`Failed to fetch SDK configuration: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchAndParse('/api/sdk_config');
   },
 
   // Cron related
   getCron: async (id: string) => {
-    const response = await awsNativeFetch(`/api/cron/${id}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch cron data: ${response.statusText}`);
-    }
-    return response.json();
+    return fetchAndParse(`/api/cron/${id}`);
   },
   
   saveCron: async (data: { 
@@ -270,40 +259,34 @@ const API = {
   },
   
   // Stats related - provides essential system data
-  getStats: async (range?: string, count?: number | string, timestamp?: string) => {
-    try {
-      // Build query parameters
-      const params = new URLSearchParams();
-      if (range) params.append('range', range);
-      if (count) params.append('count', count.toString());
-      if (timestamp) params.append('timestamp', timestamp);
-      
-      // Build API URL with relative path
-      const queryString = params.toString();
-      const apiUrl = `/api/stats_v2${queryString ? `?${queryString}` : ''}`;
-      
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('Preparing to fetch stats from:', apiUrl);
-      }
-      
-      // Use our custom fetch implementation with AWS SigV4
-      const response = await awsNativeFetch(apiUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status} ${response.statusText}`);
-      }
-      
-      return response.json();
-    } catch (error) {
-      console.error('Error fetching stats:', error);
-      throw error;
-    }
+  getStats: async (range: string, count: number, timestamp: string) => {
+    const url = `/api/stats_v2?range=${range}&count=${count}&timestamp=${encodeURIComponent(timestamp)}`;
+    return fetchAndParse(url);
+  },
+
+  getNodes: async () => {
+    return fetchAndParse('/api/nodes');
+  },
+
+  getBots: async () => {
+    return fetchAndParse('/api/bots');
+  },
+
+  getQueues: async () => {
+    return fetchAndParse('/api/queues');
+  },
+
+  getSystems: async () => {
+    return fetchAndParse('/api/systems');
+  },
+
+  getNodeDashboard: async (nodeId: string, range: string, count: number, timestamp: string) => {
+    const url = `/api/dashboard/${nodeId}?range=${range}&count=${count}&timestamp=${encodeURIComponent(timestamp)}`;
+    return fetchAndParse(url);
+  },
+
+  getNodeConnections: async (nodeId: string) => {
+    return fetchAndParse(`/api/connections/${nodeId}`);
   },
 };
 
@@ -365,89 +348,389 @@ export function useDashboard(id: string, rangeCount?: any, timestamp?: any) {
 }
 
 export function useStats() {
+  console.log('Initializing useStats hook');
   const { state, dispatch } = useAppContext();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refetchFn, setRefetchFn] = useState<() => void>(() => {});
   
-  // Add console log to track hook initialization
-  console.log('useStats hook initialized');
+  // Helper function to format a date with timezone information
+  function formatDateWithTimezone(date: Date): string {
+    const pad = (num: number) => (num < 10 ? `0${num}` : `${num}`);
+    
+    const year = date.getFullYear();
+    const month = pad(date.getMonth() + 1);
+    const day = pad(date.getDate());
+    const hours = pad(date.getHours());
+    const minutes = pad(date.getMinutes());
+    const seconds = pad(date.getSeconds());
+    
+    // Get timezone offset in minutes and convert to hours and minutes
+    const tzOffset = date.getTimezoneOffset();
+    const tzSign = tzOffset <= 0 ? '+' : '-';
+    const tzHours = pad(Math.abs(Math.floor(tzOffset / 60)));
+    const tzMinutes = pad(Math.abs(tzOffset % 60));
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}${tzSign}${tzHours}:${tzMinutes}`;
+  }
 
-  // Extract time period from application state (default to 15 minutes if not set)
-  const timePeriod = useMemo(() => 
-    state?.urlObj?.timePeriod?.interval || 'minute_15',
-  [state?.urlObj?.timePeriod?.interval]);
-  
-  // Parse the time period into range and count
-  const [range, countStr] = useMemo(() => {
-    const parts = timePeriod.split('_');
-    return parts.length > 1 ? [parts[0], parts[1]] : ['minute', '15'];
-  }, [timePeriod]);
-  
-  const count = useMemo(() => 
-    parseInt(countStr, 10),
-  [countStr]);
-  
-  // Create query with time period parameters
-  const query = useQuery<StatsData, Error, StatsData, [string, string, number]>({
-    queryKey: ['stats', range, count],
-    queryFn: async () => {
-      try {
-        // Only set loading if this is the first load or if it's been more than 5 seconds since the last update
-        const shouldShowLoading = !state?.nodes || Object.keys(state?.nodes || {}).length === 0 || 
-                               (!state?.lastStatsUpdate || 
-                                (new Date().getTime() - (state?.lastStatsUpdate || 0)) > 5000);
-        
-        if (shouldShowLoading && dispatch) {
-          dispatch({ type: 'UPDATE_STATE', payload: { updatingStats: true } });
-        }
-        
-        // Determine the timestamp to use based on whether there's an end time in the URL hash
-        let timestamp: string;
-        
-        // Check if timePeriod has an end property (it might just have interval)
-        const timePeriodObj = state?.urlObj?.timePeriod as { interval: string; end?: string };
-        
-        if (timePeriodObj?.end) {
-          // If an end time exists in the URL hash, use it but round to end of minute
-          const endDate = new Date(timePeriodObj.end);
-          // Round up to the last second of the minute
-          endDate.setSeconds(59);
-          timestamp = endDate.toISOString();
-          console.log('Using timestamp from URL hash (rounded to end of minute):', timestamp);
-        } else {
-          // If no end time exists, use the current time
-          timestamp = new Date().toISOString();
-          console.log('Using current timestamp:', timestamp);
-        }
-        
-        // Call API with time period parameters and the determined timestamp
-        return await API.getStats(range, count, timestamp);
-      } finally {
-        // Record the time of this update
-        if (dispatch) {
-          const now = new Date().getTime();
-          dispatch({ 
-            type: 'UPDATE_STATE', 
-            payload: { 
-              updatingStats: false,
-              lastStatsUpdate: now
-            } 
-          });
+  // Default values for range and count
+  let range = 'minute';
+  let count = 15;
+  let timePeriodString = '';
+  let currentInterval = '';
+  let hourCount = 1; // Track if we're looking at 1 or 6 hours
+
+  // Only run browser-specific code if window is defined
+  if (typeof window !== 'undefined') {
+    try {
+      // Try to get interval from URL hash first
+      const hashValue = decodeURIComponent(window.location.hash.replace('#', ''));
+      if (hashValue) {
+        const hashObj = JSON.parse(hashValue);
+        if (hashObj?.timePeriod?.interval) {
+          const interval = hashObj.timePeriod.interval;
+          currentInterval = interval;
+          
+          // Parse intervals with underscore format (like hour_6, hour_12, etc.)
+          if (interval.includes('_')) {
+            const [base, countStr] = interval.split('_');
+            const parsedCount = parseInt(countStr, 10);
+            
+            if (!isNaN(parsedCount)) {
+              currentInterval = base;
+              hourCount = parsedCount;
+              console.log(`Parsed underscore format: ${interval} -> range=${base}, count=${parsedCount}`);
+            }
+          }
+          
+          // Also check by time difference as a fallback
+          if (hashObj?.timePeriod?.start && hashObj?.timePeriod?.end) {
+            const startDate = new Date(hashObj.timePeriod.start);
+            const endDate = new Date(hashObj.timePeriod.end);
+            
+            // Calculate difference in hours/minutes/etc based on currentInterval
+            if (currentInterval === 'hour') {
+              const diffHours = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60));
+              if (diffHours > 1 && hourCount === 1) {
+                hourCount = diffHours;
+                console.log(`Detected multi-hour interval by time difference: ${diffHours} hours`);
+              }
+            }
+          }
+          
+          // Convert interval to a format that parseTimePeriod can understand
+          if (currentInterval === 'minute') {
+            timePeriodString = '15m';
+          } else if (currentInterval === 'hour') {
+            timePeriodString = `${hourCount}hr`;
+          } else if (currentInterval === 'day') {
+            timePeriodString = '1d';
+          } else if (currentInterval === 'week') {
+            timePeriodString = '1w';
+          }
+          
+          // Use the existing parseTimePeriod function for consistency
+          const { range: parsedRange, count: parsedCount } = parseTimePeriod(timePeriodString);
+          range = parsedRange;
+          count = parsedCount;
+          
+          console.log(`Using interval from URL hash: ${interval}, mapped to timePeriod: ${timePeriodString}, range: ${range}, count: ${count}`);
+          
+          // Also log the begin and end times if available
+          if (hashObj?.timePeriod?.begin && hashObj?.timePeriod?.end) {
+            const beginDate = new Date(hashObj.timePeriod.begin);
+            const endDate = new Date(hashObj.timePeriod.end);
+            console.log(`Time period: ${beginDate.toLocaleString()} to ${endDate.toLocaleString()}`);
+          }
         }
       }
+    } catch (e) {
+      console.error('Error parsing URL hash for interval:', e);
+    }
+  }
+
+  // Fallback to state.urlObj if direct hash parsing failed
+  if (!timePeriodString && state?.urlObj?.timePeriod?.interval) {
+    const interval = state.urlObj.timePeriod.interval;
+    currentInterval = interval;
+    
+    // Parse intervals with underscore format (like hour_6, hour_12, etc.)
+    if (interval.includes('_')) {
+      const [base, countStr] = interval.split('_');
+      const parsedCount = parseInt(countStr, 10);
+      
+      if (!isNaN(parsedCount)) {
+        currentInterval = base;
+        hourCount = parsedCount;
+        console.log(`Parsed underscore format from state: ${interval} -> range=${base}, count=${parsedCount}`);
+      }
+    }
+    
+    // Also check by time difference as a fallback
+    if (state?.urlObj?.timePeriod && 
+        'begin' in state.urlObj.timePeriod && 
+        'end' in state.urlObj.timePeriod) {
+      const beginDate = new Date(state.urlObj.timePeriod.begin as string);
+      const endDate = new Date(state.urlObj.timePeriod.end as string);
+      
+      // Calculate difference based on currentInterval
+      if (currentInterval === 'hour') {
+        const diffHours = Math.round((endDate.getTime() - beginDate.getTime()) / (1000 * 60 * 60));
+        if (diffHours > 1 && hourCount === 1) {
+          hourCount = diffHours;
+          console.log(`Detected multi-hour interval by time difference from state: ${diffHours} hours`);
+        }
+      }
+    }
+    
+    // Convert interval to a format that parseTimePeriod can understand
+    if (currentInterval === 'minute') {
+      timePeriodString = '15m';
+    } else if (currentInterval === 'hour') {
+      timePeriodString = `${hourCount}hr`;
+    } else if (currentInterval === 'day') {
+      timePeriodString = '1d';
+    } else if (currentInterval === 'week') {
+      timePeriodString = '1w';
+    }
+    
+    // Use the existing parseTimePeriod function for consistency
+    const { range: parsedRange, count: parsedCount } = parseTimePeriod(timePeriodString);
+    range = parsedRange;
+    count = parsedCount;
+    
+    console.log(`Using interval from state.urlObj: ${interval}, mapped to timePeriod: ${timePeriodString}, range: ${range}, count: ${count}`);
+  }
+  
+  // Debug log the detection of multi-hour interval
+  if (currentInterval === 'hour' && hourCount > 1) {
+    console.log(`Will use range=hour&count=${hourCount} for API query`);
+  }
+
+  // Get timestamp from URL hash using state.urlObj
+  let timestamp = null;
+  
+  // Check if we have timePeriod data in the state
+  if (state?.urlObj?.timePeriod && 'end' in state.urlObj.timePeriod) {
+    let selectedTime = new Date(state.urlObj.timePeriod.end as string);
+    let endTime;
+    
+    // Find the appropriate bucket based on the interval
+    switch (currentInterval) {
+      case 'minute':
+        // For 15-minute interval: find the 15-minute bucket that contains the selected time
+        // Buckets are: 00-14, 15-29, 30-44, 45-59
+        const minutes = selectedTime.getMinutes();
+        const bucketIndex = Math.floor(minutes / 15);
+        // End of the bucket is (bucketIndex * 15) + 14 minutes, 59 seconds
+        endTime = new Date(selectedTime.getFullYear(), selectedTime.getMonth(), selectedTime.getDate(),
+                        selectedTime.getHours(), bucketIndex * 15 + 14, 59, 999);
+        console.log('Found 15-minute bucket ending at:', endTime.toLocaleString());
+        break;
+        
+      case 'hour':
+        // For hour interval: go to the end of the hour containing the selected time
+        endTime = new Date(selectedTime.getFullYear(), selectedTime.getMonth(), selectedTime.getDate(),
+                         selectedTime.getHours(), 59, 59, 999);
+        console.log('Found hour bucket ending at:', endTime.toLocaleString());
+        break;
+        
+      case 'day':
+        // For day interval: go to the end of the day containing the selected time
+        endTime = new Date(selectedTime.getFullYear(), selectedTime.getMonth(), selectedTime.getDate(), 
+                        23, 59, 59, 999);
+        console.log('Found day bucket ending at:', endTime.toLocaleString());
+        break;
+        
+      case 'week':
+        // For week interval: find the end of the week containing the selected time
+        // In this case, we use the end of the day as the timestamp
+        // We need to find the Saturday of the week (end of week)
+        const dayOfWeek = selectedTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        let endOfWeek;
+        
+        if (dayOfWeek === 6) { // If it's already Saturday
+          endOfWeek = new Date(selectedTime);
+        } else {
+          // Calculate days until Saturday
+          const daysUntilSaturday = 6 - dayOfWeek;
+          endOfWeek = new Date(selectedTime);
+          endOfWeek.setDate(selectedTime.getDate() + daysUntilSaturday);
+        }
+        
+        // Set to end of the day
+        endTime = new Date(endOfWeek.getFullYear(), endOfWeek.getMonth(), endOfWeek.getDate(),
+                         23, 59, 59, 999);
+        console.log('Found week bucket ending at:', endTime.toLocaleString());
+        break;
+        
+      default:
+        // Default to using the selected time as is
+        endTime = selectedTime;
+        console.log('Using selected timestamp as-is for unknown interval:', endTime.toLocaleString());
+    }
+    
+    timestamp = formatDateWithTimezone(endTime);
+    console.log('Using timestamp for API query:', timestamp);
+  }
+
+  // Final fallback to current time if all else fails
+  if (!timestamp) {
+    let now = new Date();
+    let endTime;
+    
+    // Find the appropriate bucket based on the interval
+    switch (currentInterval) {
+      case 'minute':
+        // For 15-minute interval: find the current 15-minute bucket
+        const minutes = now.getMinutes();
+        const bucketIndex = Math.floor(minutes / 15);
+        // End of the bucket is (bucketIndex * 15) + 14 minutes, 59 seconds
+        endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                         now.getHours(), bucketIndex * 15 + 14, 59, 999);
+        console.log('Found current 15-minute bucket ending at:', endTime.toLocaleString());
+        break;
+        
+      case 'hour':
+        // For hour interval: go to the end of the current hour
+        endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(),
+                         now.getHours(), 59, 59, 999);
+        console.log('Found current hour bucket ending at:', endTime.toLocaleString());
+        break;
+        
+      case 'day':
+        // For day interval: go to the end of the current day
+        endTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 
+                        23, 59, 59, 999);
+        console.log('Found current day bucket ending at:', endTime.toLocaleString());
+        break;
+        
+      case 'week':
+        // For week interval: find the end of the current week
+        const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+        let endOfWeek;
+        
+        if (dayOfWeek === 6) { // If it's already Saturday
+          endOfWeek = new Date(now);
+        } else {
+          // Calculate days until Saturday
+          const daysUntilSaturday = 6 - dayOfWeek;
+          endOfWeek = new Date(now);
+          endOfWeek.setDate(now.getDate() + daysUntilSaturday);
+        }
+        
+        // Set to end of the day
+        endTime = new Date(endOfWeek.getFullYear(), endOfWeek.getMonth(), endOfWeek.getDate(),
+                         23, 59, 59, 999);
+        console.log('Found current week bucket ending at:', endTime.toLocaleString());
+        break;
+        
+      default:
+        // Default to using the current time as is
+        endTime = now;
+        console.log('Using current timestamp as-is for unknown interval:', endTime.toLocaleString());
+    }
+    
+    timestamp = formatDateWithTimezone(endTime);
+    console.log('Using current time as timestamp:', timestamp);
+  }
+
+  const query = useQuery({
+    queryKey: ['stats_v2', range, count, timestamp, state?.statsPollingPaused],
+    queryFn: async () => {
+      try {
+        setLoading(true);
+        
+        // Set query parameters based on the interval
+        let queryRange, queryCount;
+        
+        // Set parameters exactly according to the requirements
+        switch (currentInterval) {
+          case 'minute':
+            // 15 minute interval: range=minute&count=15
+            queryRange = 'minute';
+            queryCount = 15;
+            break;
+            
+          case 'hour':
+            if (hourCount > 1) {
+              // 6 hour interval: range=hour&count=6
+              queryRange = 'hour';
+              queryCount = hourCount;
+            } else {
+              // 1 hour interval: range=hour&count=1
+              queryRange = 'hour';
+              queryCount = 1;
+            }
+            break;
+            
+          case 'day':
+            // 1 day interval: range=day&count=1
+            queryRange = 'day';
+            queryCount = 1;
+            break;
+            
+          case 'week':
+            // 1 week interval: range=day&count=7
+            queryRange = 'day';
+            queryCount = 7;
+            break;
+            
+          default:
+            // Default to 15-minute view if unknown
+            queryRange = 'minute';
+            queryCount = 15;
+            console.log('Using default range and count for unknown interval:', currentInterval);
+        }
+        
+        console.log(`Setting query parameters: range=${queryRange}, count=${queryCount} for interval ${currentInterval}`);
+        
+        let url = `/api/stats_v2?range=${queryRange}&count=${queryCount}`;
+        if (timestamp) {
+          url += `&timestamp=${encodeURIComponent(timestamp)}`;
+        }
+        
+        console.log('Fetching stats with URL:', url);
+        const response = await awsNativeFetch(url);
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch stats: ${response.statusText}`);
+        }
+        
+        const jsonData = await response.json();
+        console.log('Received stats data:', jsonData);
+        
+        handleStatsData(jsonData, dispatch);
+        setData(jsonData);
+        return jsonData;
+      } catch (err) {
+        console.error('Error fetching stats:', err);
+        setError((err as Error).message);
+        return null;
+      } finally {
+        setLoading(false);
+      }
     },
-    // Poll every 10 seconds if not paused, otherwise don't poll
-    refetchInterval: state?.statsPollingPaused ? Infinity : 10000,
-    // Data stays fresh for 9.5 seconds
     staleTime: 9500,
-    // Don't refetch on window focus as we're already polling
     refetchOnWindowFocus: false,
+    refetchInterval: state?.statsPollingPaused ? undefined : 10000
   });
+
+  // Store the refetch function
+  useEffect(() => {
+    if (query.refetch) {
+      setRefetchFn(() => query.refetch);
+    }
+  }, [query.refetch]);
 
   // Process the stats data when it becomes available
   useEffect(() => {
-    if (query.data && dispatch) {
-      handleStatsData(query.data, dispatch);
+    if (data && dispatch) {
+      handleStatsData(data, dispatch);
     }
-  }, [query.data, dispatch]);
+  }, [data, dispatch]);
 
   // Define the expected shape of the stats data
   interface StatsData {
@@ -492,7 +775,7 @@ export function useStats() {
   // Process the stats data and update global state
   const handleStatsData = (data: StatsData, dispatch: React.Dispatch<any>) => {
     // Prepare a single state update to apply at the end
-    const stateUpdates: Partial<AppState> = {};
+    const stateUpdates: Partial<any> = {};
     let hasChanges = false;
 
     // Process bots data if available
@@ -730,11 +1013,11 @@ export function useStats() {
   };
 
   return {
-    data: query.data,
-    isLoading: state.updatingStats,
-    isError: query.isError,
-    error: query.error,
-    refetch: query.refetch
+    data: data,
+    isLoading: loading,
+    isError: !!error,
+    error: error,
+    refetch: refetchFn
   };
 }
 
@@ -752,14 +1035,6 @@ export function useTraceEvents(queueId: string, startTime?: string, endTime?: st
     queryFn: () => API.getTraceEvents(queueId, startTime, endTime),
     enabled: !!queueId,
     placeholderData: { events: [] }
-  });
-}
-
-export function useEventDetails(queueId: string, eventId: string) {
-  return useQuery({
-    queryKey: ['eventDetails', queueId, eventId],
-    queryFn: () => API.getEventDetails(queueId, eventId),
-    enabled: !!queueId && !!eventId
   });
 }
 
@@ -797,14 +1072,17 @@ export function useCron(id: string) {
 export function useBots() {
   console.log('useBots hook initialized');
   const { state } = useAppContext();
+  const statsQuery = useStats();
   
   // Create a derived query that just returns the bot data from global state
-  // This matches the structure that CatalogList.tsx expects
+  // but also provides the refetch capability from stats query
   return {
     data: state?.bots || [],
     isLoading: state?.updatingStats || false,
     isError: false,
-    error: null
+    error: null,
+    // Forward the refetch method from the stats query
+    refetch: statsQuery.refetch
   };
 }
 
@@ -824,7 +1102,15 @@ export function useBotDetails(botId: string) {
           throw new Error(`Failed to fetch bot details: ${response.statusText}`);
         }
         
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError: unknown) {
+          console.error(`JSON parsing error in bot details for ${botId}:`, jsonError);
+          const errorMessage = jsonError instanceof Error ? jsonError.message : 'Unknown JSON parse error';
+          throw new Error(`Invalid JSON response for bot ${botId}: ${errorMessage}`);
+        }
+        
         console.log(`Successfully fetched bot details for: ${botId}`, data);
         return data;
       } catch (error) {
@@ -849,6 +1135,7 @@ export function useBotDetails(botId: string) {
       }
     },
     enabled: !!botId,
+    refetchInterval: state?.statsPollingPaused ? Infinity : 10000,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000)
   });
@@ -869,7 +1156,15 @@ export function useQueueDetails(queueId: string) {
           throw new Error(`Failed to fetch queue details: ${response.statusText}`);
         }
         
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError: unknown) {
+          console.error(`JSON parsing error in queue details for ${queueId}:`, jsonError);
+          const errorMessage = jsonError instanceof Error ? jsonError.message : 'Unknown JSON parse error';
+          throw new Error(`Invalid JSON response for queue ${queueId}: ${errorMessage}`);
+        }
+        
         console.log(`Successfully fetched queue details for: ${queueId}`, data);
         return data;
       } catch (error) {
@@ -894,6 +1189,7 @@ export function useQueueDetails(queueId: string) {
       }
     },
     enabled: !!queueId,
+    refetchInterval: state?.statsPollingPaused ? Infinity : 10000,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000)
   });
@@ -914,7 +1210,15 @@ export function useSystemDetails(systemId: string) {
           throw new Error(`Failed to fetch system details: ${response.statusText}`);
         }
         
-        const data = await response.json();
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError: unknown) {
+          console.error(`JSON parsing error in system details for ${systemId}:`, jsonError);
+          const errorMessage = jsonError instanceof Error ? jsonError.message : 'Unknown JSON parse error';
+          throw new Error(`Invalid JSON response for system ${systemId}: ${errorMessage}`);
+        }
+        
         console.log(`Successfully fetched system details for: ${systemId}`, data);
         return data;
       } catch (error) {
@@ -939,6 +1243,7 @@ export function useSystemDetails(systemId: string) {
       }
     },
     enabled: !!systemId,
+    refetchInterval: state?.statsPollingPaused ? Infinity : 10000,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000)
   });
@@ -1190,5 +1495,67 @@ export function useMetricsData(
     // Keep data fresh while in view
     staleTime: 1000 * 60 * 2, // 2 minutes
     placeholderData: (previousData) => previousData, // Show previous data while refetching
+  });
+}
+
+/**
+ * Custom hook to fetch node details data with auto-refresh
+ * @param nodeId The ID of the node to fetch data for
+ * @param nodeType The type of node (bot, queue, system)
+ * @param timePeriod The time period for details data (e.g., '15m', '1hr')
+ * @param refetchInterval Optional refetch interval in milliseconds
+ */
+export function useNodeDetailsData(
+  nodeId: string,
+  nodeType: 'bot' | 'queue' | 'system',
+  timePeriod: string = '15m',
+  refetchInterval: number | false = false
+) {
+  // Parse the time period string into range and count
+  const timePeriodConfig = parseTimePeriod(timePeriod);
+  const timestamp = new Date().toISOString();
+  
+  return useQuery({
+    queryKey: ['nodeDetails', nodeId, nodeType, timePeriod],
+    queryFn: async () => {
+      if (!nodeId) return null;
+      
+      try {
+        // Build the URL
+        const apiUrl = `/api/dashboard/${nodeId}?range=${timePeriodConfig.range}&count=${timePeriodConfig.count}&timestamp=${encodeURIComponent(timestamp)}`;
+        
+        const response = await awsNativeFetch(apiUrl);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch node details: ${response.status}`);
+        }
+        
+        let data;
+        try {
+          data = await response.json();
+        } catch (jsonError: unknown) {
+          console.error(`JSON parsing error in node details for ${nodeId}:`, jsonError);
+          const errorMessage = jsonError instanceof Error ? jsonError.message : 'Unknown JSON parse error';
+          throw new Error(`Invalid JSON response for node ${nodeId}: ${errorMessage}`);
+        }
+        
+        return data;
+      } catch (error) {
+        console.error(`Error fetching ${nodeType} details:`, error);
+        throw error;
+      }
+    },
+    enabled: !!nodeId,
+    refetchInterval,
+    // Keep data fresh while in view
+    staleTime: 1000 * 10 , 
+    placeholderData: (previousData) => previousData, // Show previous data while refetching
+  });
+}
+
+export function useEventDetails(queueId: string, eventId: string) {
+  return useQuery({
+    queryKey: ['eventDetails', queueId, eventId],
+    queryFn: () => API.getEventDetails(queueId, eventId),
+    enabled: !!queueId && !!eventId
   });
 }

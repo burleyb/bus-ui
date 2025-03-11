@@ -115,7 +115,7 @@ export default function SystemDashboardTab({ nodeData, timePeriod, onClose }: Sy
 
   // Safeguard against null nodeData
   if (!activeData) {
-    return (
+  return (
       <div className="flex justify-center items-center min-h-[400px]">
         <div className="text-gray-500">No data available</div>
       </div>
@@ -596,8 +596,8 @@ export default function SystemDashboardTab({ nodeData, timePeriod, onClose }: Sy
                   * Activity charts show historical event counts. Hover over numbers for more details.
                 </div>
               )}
-            </div>
-            
+      </div>
+      
             {/* Events read by bots from this system */}
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
               <h3 className="text-lg font-medium mb-4">Events Read By Bots From This System</h3>
@@ -832,9 +832,9 @@ export default function SystemDashboardTab({ nodeData, timePeriod, onClose }: Sy
                   </div>
                   <div className="text-xs text-gray-500 mt-2">
                     Average age of events read by bots at the time they were read
-                  </div>
-                </div>
-                
+            </div>
+          </div>
+          
                 {/* Right side: Chart */}
                 <div className="col-span-2 h-full">
                   {lagData && lagData.length > 0 ? (
@@ -875,7 +875,7 @@ export default function SystemDashboardTab({ nodeData, timePeriod, onClose }: Sy
                       No data available
                     </div>
                   )}
-                </div>
+            </div>
               </CardContent>
             </Card>
           </div>

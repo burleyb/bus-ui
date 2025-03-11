@@ -138,112 +138,135 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
   
   // Format the time period for display
   const formatTimePeriod = () => {
+    // If we have begin and end dates, use the exact selected time period
     if (timePeriod.begin && timePeriod.end) {
-      const beginDate = parseISO(timePeriod.begin);
       const endDate = parseISO(timePeriod.end);
       
-      // If dates are just a standard interval, show the interval name
-      const now = new Date();
-      const timeDiff = Math.abs(now.getTime() - endDate.getTime());
-      
-      // If end date is within the last minute (to account for processing time), 
-      // this is likely a standard interval selection
-      if (timeDiff < 60000) {
-        // Calculate and display the current time bucket based on the interval
-        switch (timePeriod.interval) {
-          case 'minute_15': {
-            // Get the current 15-minute bucket
-            const currentMinute = now.getMinutes();
-            const bucketStart = Math.floor(currentMinute / 15) * 15;
-            const bucketStartTime = new Date(now);
-            bucketStartTime.setMinutes(bucketStart, 0, 0);
-            
-            const bucketEndTime = new Date(bucketStartTime);
-            bucketEndTime.setMinutes(bucketStart + 14, 59, 999);
-            
-            return `${format(bucketStartTime, 'h:mma').toLowerCase()} - ${format(bucketEndTime, 'h:mma').toLowerCase()}`;
-          }
+      // Format the display based on the interval, exactly as specified
+      switch (timePeriod.interval) {
+        case 'minute_15': {
+          // Find which 15-minute bucket contains the end time
+          const minutes = endDate.getMinutes();
+          const bucketIndex = Math.floor(minutes / 15);
+          const bucketStart = bucketIndex * 15;
           
-          case 'hour': {
-            // Get the current hour bucket
-            const bucketStartTime = new Date(now);
-            bucketStartTime.setMinutes(0, 0, 0);
-            
-            const bucketEndTime = new Date(bucketStartTime);
-            bucketEndTime.setMinutes(59, 59, 999);
-            
-            return `${format(bucketStartTime, 'h:mma').toLowerCase()} - ${format(bucketEndTime, 'h:mma').toLowerCase()}`;
-          }
+          const bucketStartTime = new Date(endDate);
+          bucketStartTime.setMinutes(bucketStart, 0, 0);
           
-          case 'hour_6': {
-            // Get the current 6-hour bucket
-            const currentHour = now.getHours();
-            const bucketIndex = Math.floor(currentHour / 6);
-            const bucketStartHour = bucketIndex * 6;
-            
-            const bucketStartTime = new Date(now);
-            bucketStartTime.setHours(bucketStartHour, 0, 0, 0);
-            
-            const bucketEndTime = new Date(bucketStartTime);
-            bucketEndTime.setHours(bucketStartHour + 5, 59, 59, 999);
-            
-            return `${format(bucketStartTime, 'h:mma').toLowerCase()} - ${format(bucketEndTime, 'h:mma').toLowerCase()}`;
-          }
+          const bucketEndTime = new Date(bucketStartTime);
+          bucketEndTime.setMinutes(bucketStart + 14, 59, 999);
           
-          case 'day': {
-            // Get the current day bucket
-            const bucketStartTime = new Date(now);
-            bucketStartTime.setHours(0, 0, 0, 0);
-            
-            const bucketEndTime = new Date(bucketStartTime);
-            bucketEndTime.setHours(23, 59, 59, 999);
-            
-            return `${format(bucketStartTime, 'MMM d, h:mma').toLowerCase()} - ${format(bucketEndTime, 'h:mma').toLowerCase()}`;
-          }
+          // Format: "6/27/2024 5:30 - 5:44 PM"
+          return `${format(bucketStartTime, 'M/d/yyyy')} ${format(bucketStartTime, 'h:mm')} - ${format(bucketEndTime, 'h:mm')} ${format(bucketEndTime, 'a')}`;
+        }
+        
+        case 'hour': {
+          // 1 hour bucket: "6/27/2024 5:00-5:59 PM"
+          const hourStart = new Date(endDate);
+          hourStart.setMinutes(0, 0, 0);
           
-          case 'week': {
-            // Get the current week bucket (starting from Sunday or Monday as per locale)
-            const currentDay = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-            const daysFromStart = currentDay; // Using Sunday as start of week
-            
-            const bucketStartTime = new Date(now);
-            bucketStartTime.setDate(now.getDate() - daysFromStart);
-            bucketStartTime.setHours(0, 0, 0, 0);
-            
-            const bucketEndTime = new Date(bucketStartTime);
-            bucketEndTime.setDate(bucketStartTime.getDate() + 6);
-            bucketEndTime.setHours(23, 59, 59, 999);
-            
-            return `${format(bucketStartTime, 'MMM d')} - ${format(bucketEndTime, 'MMM d')}`;
-          }
+          const hourEnd = new Date(hourStart);
+          hourEnd.setMinutes(59, 59, 999);
           
-          default:
-            // For custom intervals or as a fallback
-            if (isWithinMinutes(beginDate, endDate, 15)) {
-              return 'Last 15m';
-            }
-            if (isWithinHours(beginDate, endDate, 1)) {
-              return 'Last 1h';
-            }
-            if (isWithinHours(beginDate, endDate, 6)) {
-              return 'Last 6h';
-            }
-            if (isWithinDays(beginDate, endDate, 1)) {
-              return 'Last 1d';
-            }
-            if (isWithinDays(beginDate, endDate, 7)) {
-              return 'Last 1w';
-            }
+          // Format: "6/27/2024 5:00-5:59 PM"
+          return `${format(hourStart, 'M/d/yyyy')} ${format(hourStart, 'h:mm')}-${format(hourEnd, 'h:mm')} ${format(hourEnd, 'a')}`;
+        }
+        
+        case 'hour_6': {
+          // 6 hour bucket: "Jun 27, 2024 5:59 PM"
+          const hourEnd = new Date(endDate);
+          hourEnd.setMinutes(59, 59, 999);
+          
+          // Format: "Jun 27, 2024 5:59 PM"
+          return `${format(hourEnd, 'MMM d, yyyy')} ${format(hourEnd, 'h:mm')} ${format(hourEnd, 'a')}`;
+        }
+        
+        case 'day': {
+          // 1 day bucket: "6/27/2024"
+          return format(endDate, 'M/d/yyyy');
+        }
+        
+        case 'week': {
+          // For week interval, calculate the 7-day period ending on the selected date
+          const weekEndDate = new Date(endDate);
+          
+          // Start date is 6 days before (to make a 7-day period)
+          const weekStartDate = new Date(weekEndDate);
+          weekStartDate.setDate(weekEndDate.getDate() - 6);
+          
+          // Format: "6/21/2024 - 6/27/2024"
+          return `${format(weekStartDate, 'M/d/yyyy')} - ${format(weekEndDate, 'M/d/yyyy')}`;
+        }
+        
+        default: {
+          // For any other cases not explicitly handled
+          return `${format(endDate, 'M/d/yyyy h:mm a')}`;
         }
       }
+    } else {
+      // In real-time mode (no begin/end times), show the current time bucket
+      const now = new Date();
       
-      // Otherwise, show the date range for custom periods
-      const beginFormatted = format(beginDate, 'MMM d, h:mma').toLowerCase();
-      const endFormatted = format(endDate, 'MMM d, h:mma').toLowerCase();
-      return `${beginFormatted} to ${endFormatted}`;
+      // Format based on the current interval
+      switch (timePeriod.interval) {
+        case 'minute_15': {
+          // Current 15-minute bucket
+          const minutes = now.getMinutes();
+          const bucketIndex = Math.floor(minutes / 15);
+          const bucketStart = bucketIndex * 15;
+          
+          const bucketStartTime = new Date(now);
+          bucketStartTime.setMinutes(bucketStart, 0, 0);
+          
+          const bucketEndTime = new Date(bucketStartTime);
+          bucketEndTime.setMinutes(bucketStart + 14, 59, 999);
+          
+          // Format: "6/27/2024 5:30 - 5:44 PM (Now)"
+          return `${format(bucketStartTime, 'M/d/yyyy')} ${format(bucketStartTime, 'h:mm')} - ${format(bucketEndTime, 'h:mm')} ${format(bucketEndTime, 'a')} (Now)`;
+        }
+        
+        case 'hour': {
+          // Current hour bucket
+          const hourStart = new Date(now);
+          hourStart.setMinutes(0, 0, 0);
+          
+          const hourEnd = new Date(hourStart);
+          hourEnd.setMinutes(59, 59, 999);
+          
+          // Format: "6/27/2024 5:00-5:59 PM (Now)"
+          return `${format(hourStart, 'M/d/yyyy')} ${format(hourStart, 'h:mm')}-${format(hourEnd, 'h:mm')} ${format(hourEnd, 'a')} (Now)`;
+        }
+        
+        case 'hour_6': {
+          // Current hour end for 6hr view
+          const hourEnd = new Date(now);
+          hourEnd.setMinutes(59, 59, 999);
+          
+          // Format: "Jun 27, 2024 5:59 PM (Now)"
+          return `${format(hourEnd, 'MMM d, yyyy')} ${format(hourEnd, 'h:mm')} ${format(hourEnd, 'a')} (Now)`;
+        }
+        
+        case 'day': {
+          // Current day
+          return `${format(now, 'M/d/yyyy')} (Now)`;
+        }
+        
+        case 'week': {
+          // Current date and 6 days prior
+          const weekEndDate = new Date(now);
+          
+          // Start date is 6 days before (to make a 7-day period)
+          const weekStartDate = new Date(weekEndDate);
+          weekStartDate.setDate(weekEndDate.getDate() - 6);
+          
+          // Format: "6/21/2024 - 6/27/2024 (Now)"
+          return `${format(weekStartDate, 'M/d/yyyy')} - ${format(weekEndDate, 'M/d/yyyy')} (Now)`;
+        }
+        
+        default:
+          return `Current Time (Now)`;
+      }
     }
-    
-    return 'Select time period';
   };
   
   // Check if two dates are within a specific number of minutes
@@ -326,16 +349,17 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
     }
   };
   
-  // Set time to now based on current interval
+  // Set time to now (realtime mode)
   const handleNow = () => {
-    const now = new Date();
-    const { forward } = getTimeAdjusters(timePeriod.interval);
+    console.log('Setting to realtime mode - removing begin/end from timePeriod');
     
-    updateTimePeriod({
-      ...timePeriod,
-      begin: now.toISOString(),
-      end: forward(now).toISOString()
-    });
+    // Remove begin and end from timePeriod to enable realtime mode
+    // Keep only the interval
+    const realtimeTimePeriod = {
+      interval: timePeriod.interval
+    };
+    
+    updateTimePeriod(realtimeTimePeriod);
   };
   
   // Change the interval
@@ -379,56 +403,20 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
   
   // Update the URL with new time period
   const updateTimePeriod = (newTimePeriod: TimePeriod) => {
+    console.log('--- UpdateTimePeriod called ---');
+    console.log('Current timePeriod:', timePeriod);
+    console.log('New timePeriod:', newTimePeriod);
+    
+    // Update state first
     setTimePeriod(newTimePeriod);
     
     try {
-      // Save current hash data if it exists
-      let hashObj: any = {
-        selected: selectedBot,
-        view: "node",
-        timePeriod: newTimePeriod,
-        offset: [0, 0],
-        node: primarySelectedNode || ""
-      };
+      // Use the utility function to update the hash
+      console.log('Updating URL hash with:', { timePeriod: newTimePeriod });
+      updateUrlHash({ timePeriod: newTimePeriod });
       
-      // Try to preserve existing hash data
-      if (window.location.hash && window.location.hash.length > 1) {
-        // Remove the '#' and decode the hash string
-        let hashStr = window.location.hash.substring(1);
-        
-        try {
-          hashStr = decodeURIComponent(hashStr);
-          console.debug('Decoded hash string in updateTimePeriod:', hashStr);
-        } catch (decodeError) {
-          console.error('Error decoding hash in updateTimePeriod:', decodeError);
-          // Continue with creating a new hash object
-        }
-        
-        // Only try to parse if it looks like valid JSON
-        if (hashStr && hashStr.trim().startsWith('{') && hashStr.trim().endsWith('}')) {
-          try {
-            const hashData = JSON.parse(hashStr);
-            
-            // Verify the parsed result is an object
-            if (hashData && typeof hashData === 'object' && !Array.isArray(hashData)) {
-              // Update only the time period
-              hashObj = {
-                ...hashData,
-                timePeriod: newTimePeriod
-              };
-            }
-          } catch (parseError) {
-            console.error('Error parsing hash in updateTimePeriod:', parseError);
-            // Continue with the default hashObj
-          }
-        } else {
-          console.warn('Hash string is not valid JSON format:', hashStr);
-        }
-      }
-      
-      // Convert to JSON, encode, and update the URL hash
-      const hashStr = JSON.stringify(hashObj);
-      window.location.hash = encodeURIComponent(hashStr);
+      // Log for debugging
+      console.log('Updated URL hash with new time period:', newTimePeriod);
     } catch (error) {
       console.error('Error updating hash with new time period:', error);
     }
@@ -635,83 +623,36 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
   const handleDateSelection = (date: Date | null) => {
     if (!date) return;
     
-    // Calculate the appropriate time bucket based on the selected date and current interval
-    let beginDate: Date;
-    let endDate: Date;
+    console.log('Date selected in date picker:', date.toISOString());
     
+    // Store the exact date selected (no bucketizing)
+    setTempBeginDate(date);
+    
+    // Calculate end date based on the interval for display purposes only
+    let endDate = new Date(date);
+    
+    // Add appropriate interval duration
     switch (timePeriod.interval) {
-      case 'minute_15': {
-        // Get the 15-minute bucket containing the selected date
-        const currentMinute = date.getMinutes();
-        const bucketStart = Math.floor(currentMinute / 15) * 15;
-        
-        beginDate = new Date(date);
-        beginDate.setMinutes(bucketStart, 0, 0);
-        
-        endDate = new Date(beginDate);
-        endDate.setMinutes(bucketStart + 14, 59, 999);
+      case 'minute_15':
+        endDate = new Date(date.getTime() + 15 * 60 * 1000); // Add 15 minutes
         break;
-      }
-      
-      case 'hour': {
-        // Get the hour bucket containing the selected date
-        beginDate = new Date(date);
-        beginDate.setMinutes(0, 0, 0);
-        
-        endDate = new Date(beginDate);
-        endDate.setMinutes(59, 59, 999);
+      case 'hour':
+        endDate = new Date(date.getTime() + 60 * 60 * 1000); // Add 1 hour
         break;
-      }
-      
-      case 'hour_6': {
-        // Get the 6-hour bucket containing the selected date
-        const currentHour = date.getHours();
-        const bucketIndex = Math.floor(currentHour / 6);
-        const bucketStartHour = bucketIndex * 6;
-        
-        beginDate = new Date(date);
-        beginDate.setHours(bucketStartHour, 0, 0, 0);
-        
-        endDate = new Date(beginDate);
-        endDate.setHours(bucketStartHour + 5, 59, 59, 999);
+      case 'hour_6':
+        endDate = new Date(date.getTime() + 6 * 60 * 60 * 1000); // Add 6 hours
         break;
-      }
-      
-      case 'day': {
-        // Get the day bucket containing the selected date
-        beginDate = new Date(date);
-        beginDate.setHours(0, 0, 0, 0);
-        
-        endDate = new Date(beginDate);
-        endDate.setHours(23, 59, 59, 999);
+      case 'day':
+        endDate = new Date(date.getTime() + 24 * 60 * 60 * 1000); // Add 1 day
         break;
-      }
-      
-      case 'week': {
-        // Get the week bucket containing the selected date (Sunday to Saturday)
-        const currentDay = date.getDay(); // 0 = Sunday, 1 = Monday, etc.
-        
-        beginDate = new Date(date);
-        beginDate.setDate(date.getDate() - currentDay); // Go back to Sunday
-        beginDate.setHours(0, 0, 0, 0);
-        
-        endDate = new Date(beginDate);
-        endDate.setDate(beginDate.getDate() + 6); // Go forward to Saturday
-        endDate.setHours(23, 59, 59, 999);
+      case 'week':
+        endDate = new Date(date.getTime() + 7 * 24 * 60 * 60 * 1000); // Add 7 days
         break;
-      }
-      
-      default: {
-        // Default to 1-hour bucket if unknown interval
-        beginDate = new Date(date);
-        beginDate.setMinutes(0, 0, 0);
-        
-        endDate = new Date(beginDate);
-        endDate.setMinutes(59, 59, 999);
-      }
+      default:
+        endDate = new Date(date.getTime() + 60 * 60 * 1000); // Default to 1 hour
     }
     
-    setTempBeginDate(beginDate);
+    console.log('Setting end date to:', endDate.toISOString());
     setTempEndDate(endDate);
   };
 
@@ -747,11 +688,19 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
   // Apply the selected date range
   const applyDateSelection = () => {
     if (tempBeginDate && tempEndDate) {
-      updateTimePeriod({
+      // Log the date state before updating
+      console.log('Applying date selection:');
+      console.log('- tempBeginDate:', tempBeginDate.toISOString());
+      console.log('- tempEndDate:', tempEndDate.toISOString());
+      
+      const newTimePeriod = {
         ...timePeriod,
         begin: tempBeginDate.toISOString(),
         end: tempEndDate.toISOString()
-      });
+      };
+      
+      console.log('- New time period:', newTimePeriod);
+      updateTimePeriod(newTimePeriod);
     }
     setShowCalendarPicker(false);
   };
@@ -1064,4 +1013,4 @@ const WorkflowFilters = forwardRef(function WorkflowFilters({
   );
 });
 
-export default WorkflowFilters; 
+export default WorkflowFilters;
