@@ -1,169 +1,176 @@
 "use client";
 
 import { useState } from 'react';
-import { awsNativeFetch } from '@/lib/authUtils';
 import { useToast } from '@/components/ui/toast';
+import { API } from '@/context/ApiContext';
+import { useQueryClient } from '@tanstack/react-query';
 
-interface BotActionsResult {
+interface UseBotActionsResult {
   isLoading: boolean;
+  error: Error | null;
   forceRunBot: (botId: string) => Promise<void>;
-  changeCheckpoint: (nodeId: string, checkpoint: string) => Promise<void>;
-  toggleBotStatus: (botId: string, isPaused: boolean) => Promise<void>;
-  error: string | null;
+  toggleBotStatus: (botId: string, isPaused?: boolean) => Promise<void>;
+  changeCheckpoint: (botId: string, checkpoint: string) => Promise<void>;
 }
 
-export function useBotActions(): BotActionsResult {
+/**
+ * Custom hook for bot actions like force run, toggle status, change checkpoint
+ */
+export function useBotActions(): UseBotActionsResult {
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { addToast } = useToast();
+  const [error, setError] = useState<Error | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
+  /**
+   * Force run a bot
+   */
   const forceRunBot = async (botId: string): Promise<void> => {
     if (!botId) {
-      setError("Bot ID is required");
-      addToast({
-        title: "Error",
-        description: "Bot ID is required",
-        variant: "destructive"
-      });
-      return;
+      const error = new Error('Bot ID is required for force run');
+      setError(error);
+      throw error;
     }
 
-    setIsLoading(true);
-    setError(null);
-
     try {
-      const response = await awsNativeFetch('https://rstreams.symmatiq.com/dev/api/cron/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          id: botId,
-          executeNow: true
-        })
+      setIsLoading(true);
+      setError(null);
+
+      await API.saveCron({
+        id: botId,
+        forceRun: true
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to force run bot: ${response.status}`);
-      }
+      // Invalidate queries related to this bot
+      queryClient.invalidateQueries({ queryKey: ['botDetails', botId] });
+      queryClient.invalidateQueries({ queryKey: ['bot-logs', botId] });
 
-      const data = await response.json();
-      addToast({
-        title: "Success",
-        description: "Bot force run triggered successfully",
-        variant: "default"
+      toast({
+        title: 'Success',
+        description: 'Bot is now running',
+        variant: 'success',
       });
-      return data;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      setError(errorMessage);
-      addToast({
-        title: "Error",
-        description: `Error forcing bot run: ${errorMessage}`,
-        variant: "destructive"
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to force run bot');
+      setError(error);
+      console.error('Error forcing bot run:', error);
+      
+      toast({
+        title: 'Error',
+        description: `Failed to run bot: ${error.message}`,
+        variant: 'destructive',
       });
+      
       throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const changeCheckpoint = async (nodeId: string, checkpoint: string): Promise<void> => {
-    if (!nodeId || !checkpoint) {
-      setError("Node ID and checkpoint are required");
-      addToast({
-        title: "Error",
-        description: "Node ID and checkpoint are required",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // This is a placeholder implementation. In a real app, you'd call an actual API endpoint
-      const response = await awsNativeFetch(`/api/nodes/${nodeId}/checkpoint`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          checkpoint
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to change checkpoint: ${response.status}`);
-      }
-
-      const data = await response.json();
-      addToast({
-        title: "Success",
-        description: "Checkpoint updated successfully",
-        variant: "default"
-      });
-      return data;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      setError(errorMessage);
-      addToast({
-        title: "Error",
-        description: `Error changing checkpoint: ${errorMessage}`,
-        variant: "destructive"
-      });
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const toggleBotStatus = async (botId: string, isPaused: boolean): Promise<void> => {
+  /**
+   * Toggle a bot's paused status
+   */
+  const toggleBotStatus = async (botId: string, isPaused?: boolean): Promise<void> => {
     if (!botId) {
-      setError("Bot ID is required");
-      addToast({
-        title: "Error",
-        description: "Bot ID is required",
-        variant: "destructive"
-      });
-      return;
+      const error = new Error('Bot ID is required for toggle status');
+      setError(error);
+      throw error;
     }
 
-    setIsLoading(true);
-    setError(null);
-
     try {
-      // This is a placeholder implementation. In a real app, you'd call an actual API endpoint
-      const response = await awsNativeFetch(`/api/bots/${botId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          status: isPaused ? 'RUNNING' : 'PAUSED'
-        })
-      });
+      setIsLoading(true);
+      setError(null);
 
-      if (!response.ok) {
-        throw new Error(`Failed to toggle bot status: ${response.status}`);
+      // If isPaused is provided, use it directly; otherwise, get the current bot details
+      // and toggle the paused status
+      let newPausedStatus: boolean;
+      
+      if (typeof isPaused === 'boolean') {
+        newPausedStatus = isPaused;
+      } else {
+        // Get current bot details to determine current paused state
+        const botDetailsResponse = await fetch(`/api/cron/${botId}`);
+        if (!botDetailsResponse.ok) {
+          throw new Error(`Failed to get bot details: ${botDetailsResponse.statusText}`);
+        }
+        const botDetails = await botDetailsResponse.json();
+        newPausedStatus = !botDetails.paused;
       }
 
-      const data = await response.json();
-      addToast({
-        title: "Success",
-        description: `Bot ${isPaused ? 'resumed' : 'paused'} successfully`,
-        variant: "default"
+      await API.saveCron({
+        id: botId,
+        paused: newPausedStatus
       });
-      return data;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      setError(errorMessage);
-      addToast({
-        title: "Error",
-        description: `Error toggling bot status: ${errorMessage}`,
-        variant: "destructive"
+
+      // Invalidate queries related to this bot
+      queryClient.invalidateQueries({ queryKey: ['botDetails', botId] });
+
+      toast({
+        title: 'Success',
+        description: newPausedStatus ? 'Bot paused' : 'Bot resumed',
+        variant: 'success',
       });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to toggle bot status');
+      setError(error);
+      console.error('Error toggling bot status:', error);
+      
+      toast({
+        title: 'Error',
+        description: `Failed to toggle bot status: ${error.message}`,
+        variant: 'destructive',
+      });
+      
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  /**
+   * Change a bot's checkpoint
+   */
+  const changeCheckpoint = async (botId: string, checkpoint: string): Promise<void> => {
+    if (!botId) {
+      const error = new Error('Bot ID is required for changing checkpoint');
+      setError(error);
+      throw error;
+    }
+
+    if (!checkpoint) {
+      const error = new Error('Checkpoint value is required');
+      setError(error);
+      throw error;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      await API.saveCron({
+        id: botId,
+        checkpoint
+      });
+
+      // Invalidate queries related to this bot
+      queryClient.invalidateQueries({ queryKey: ['botDetails', botId] });
+
+      toast({
+        title: 'Success',
+        description: 'Checkpoint updated successfully',
+        variant: 'success',
+      });
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error('Failed to change checkpoint');
+      setError(error);
+      console.error('Error changing checkpoint:', error);
+      
+      toast({
+        title: 'Error',
+        description: `Failed to change checkpoint: ${error.message}`,
+        variant: 'destructive',
+      });
+      
       throw error;
     } finally {
       setIsLoading(false);
@@ -172,9 +179,9 @@ export function useBotActions(): BotActionsResult {
 
   return {
     isLoading,
+    error,
     forceRunBot,
-    changeCheckpoint,
     toggleBotStatus,
-    error
+    changeCheckpoint
   };
 } 
