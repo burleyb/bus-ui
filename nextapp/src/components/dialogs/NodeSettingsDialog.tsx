@@ -7,7 +7,6 @@ import { FullScreenModal } from '@/components/ui/fullscreen-modal';
 import { useDialogContext } from '@/hooks/useDialogContext';
 import BotDashboardTab from './tabs/BotDashboardTab';
 import BotCodeTab from './tabs/BotCodeTab';
-import BotSettingsTab from './tabs/BotSettingsTab';
 import BotTriggersTab from './tabs/BotTriggersTab';
 import QueueDashboardTab from './tabs/QueueDashboardTab';
 import QueueEventsTab from './tabs/QueueEventsTab';
@@ -16,6 +15,7 @@ import SystemDashboardTab from './tabs/SystemDashboardTab';
 import SystemEventsTab from './tabs/SystemEventsTab';
 import SystemSettingsTab from './tabs/SystemSettingsTab';
 import BotLogsTab from './tabs/BotLogsTab';
+import BotSettingsTab from './tabs/BotSettingsTab';
 import { useToast } from '../ui/toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,7 @@ import {
 } from '@/context/ApiContext';
 import { NodeData } from '@/types/node';
 import { awsNativeFetch } from '@/lib/authUtils';
+import { BotData } from '@/types/bot';
 
 // Time period options for stats
 type TimePeriod = '15m' | '1hr' | '6hr' | '1d' | '1w' | 'custom';
@@ -166,9 +167,13 @@ function CustomTimePeriodDialog({
   );
 }
 
-export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) {
+export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsDialogProps) {
   const { dialogData, closeDialog, isOpen } = useDialogContext() || {};
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const dialogNodeId = dialogData?.nodeId;
+  const dialogNodeType = dialogData?.nodeType;
+  const dialogInitialTab = dialogData?.initialTab;
+  
+  const [activeTab, setActiveTab] = useState(dialogInitialTab || "dashboard");
   const { addToast } = useToast();
   const [timePeriod, setTimePeriod] = useState<TimePeriod>('15m');
   const [customTimePeriod, setCustomTimePeriod] = useState<TimePeriodConfig>({ range: 'minute', count: 15 });
@@ -177,17 +182,23 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
   // Track whether this is an initial load or just a time period refresh
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   
+  // Callbacks for handling navigation with unsaved changes
+  const [tabChangeCallback, setTabChangeCallback] = useState<((canProceed: boolean) => boolean) | null>(null);
+  const [closeCallback, setCloseCallback] = useState<((canProceed: boolean) => boolean) | null>(null);
+  
   // Determine current time period config
   const currentTimePeriodConfig = timePeriod === 'custom' ? customTimePeriod : TIME_PERIOD_CONFIGS[timePeriod];
   
   // Extract the node ID from the dialog data or props
-  const currentNodeId = nodeId || dialogData?.nodeId;
+  const currentNodeId = propNodeId || dialogNodeId;
   
   // Determine if the dialog should be shown
   const shouldShow = isOpen && currentNodeId;
   
   // Determine the type of node
-  const nodeType = currentNodeId?.split(':')[0] || '';
+  const derivedNodeType = currentNodeId?.split(':')[0] || '';
+  // Use dialogNodeType if provided, otherwise use the derived type
+  const nodeType = dialogNodeType || derivedNodeType;
   
   // Get timestamp for API calls
   const timestamp = new Date().toISOString();
@@ -497,8 +508,30 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     setTimeout(() => refetchDashboard(), 0);
   };
   
-  // Function to handle dialog close
+  // Function to handle tab change with confirmation
+  const handleTabChange = (tabValue: string) => {
+    if (tabChangeCallback) {
+      const canChange = tabChangeCallback(true);
+      if (!canChange) {
+        return;
+      }
+    }
+    
+    setActiveTab(tabValue);
+  };
+  
+  // Function to handle dialog close with confirmation
   const handleClose = () => {
+    // Check if there's a callback registered for close
+    if (closeCallback) {
+      const canProceed = closeCallback(true);
+      if (!canProceed) {
+        // Close was prevented by the callback
+        return;
+      }
+    }
+    
+    // If we get here, either there's no callback or it returned true
     if (closeDialog) {
       closeDialog();
     }
@@ -537,7 +570,7 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
         />
         
         <div className="flex-1 flex flex-col overflow-hidden">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex-1 flex flex-col overflow-hidden">
+          <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full flex-1 flex flex-col overflow-hidden">
             <div className="border-b border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center px-4">
                 <TabsList className="h-10">
@@ -635,7 +668,11 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
                   )}
                   
                   <TabsContent value="settings" className="mt-0 h-full overflow-y-auto">
-                    {nodeType === 'bot' && <BotSettingsTab nodeData={nodeData} />}
+                    {nodeType === 'bot' && (
+                      <BotSettingsTab 
+                        nodeData={nodeData as unknown as BotData} 
+                      />
+                    )}
                     {nodeType === 'queue' && <QueueSettingsTab nodeData={nodeData} />}
                     {nodeType === 'system' && <SystemSettingsTab nodeData={nodeData} />}
                   </TabsContent>
