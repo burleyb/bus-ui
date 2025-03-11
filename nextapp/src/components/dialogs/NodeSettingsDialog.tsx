@@ -22,7 +22,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { X } from 'lucide-react';
-import { useBotDetails, useQueueDetails, useSystemDetails } from '@/context/ApiContext';
+import { 
+  useBotDetails, 
+  useQueueDetails, 
+  useSystemDetails, 
+  useNodeDetailsData 
+} from '@/context/ApiContext';
 import { NodeData } from '@/types/node';
 import { awsNativeFetch } from '@/lib/authUtils';
 
@@ -178,7 +183,7 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
   // Extract the node ID from the dialog data or props
   const currentNodeId = nodeId || dialogData?.nodeId;
   
-  // Determine if the dialog should be showr
+  // Determine if the dialog should be shown
   const shouldShow = isOpen && currentNodeId;
   
   // Determine the type of node
@@ -186,6 +191,20 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
   
   // Get timestamp for API calls
   const timestamp = new Date().toISOString();
+  
+  // Use TanStack Query for node details data with auto-refresh
+  const {
+    data: dashboardData,
+    isLoading: isDashboardLoading,
+    isError: isDashboardError,
+    error: dashboardError,
+    refetch: refetchDashboard
+  } = useNodeDetailsData(
+    currentNodeId || '', 
+    nodeType as 'bot' | 'queue' | 'system', 
+    timePeriod,
+    shouldShow ? 60000 : false // Only refetch if dialog is open, every 60 seconds
+  );
   
   // Get the appropriate data based on node type
   const {
@@ -245,12 +264,6 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     }
   }, [botDetails, queueDetails, systemDetails, nodeType]);
   
-  // For dashboard data, we'll use a direct fetch instead of the hook
-  const [dashboardData, setDashboardData] = useState<any>(null);
-  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
-  const [isDashboardError, setIsDashboardError] = useState(false);
-  const [dashboardError, setDashboardError] = useState<Error | null>(null);
-  
   // Log dashboard data when it changes
   useEffect(() => {
     if (dashboardData) {
@@ -272,56 +285,6 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     }
   }, [dashboardData, currentNodeId]);
   
-  // Function to fetch dashboard data
-  const fetchDashboardData = async (isRefresh = false) => {
-    if (!currentNodeId) return;
-    
-    // Only set loading state on initial load, not on time period refresh
-    if (!isRefresh) {
-      setIsDashboardLoading(true);
-    }
-    
-    setIsDashboardError(false);
-    setDashboardError(null);
-    
-    try {
-      // Build the URL with the format shown in the example
-      // Example: /api/dashboard/bot:BURLEYB_botWriteSavedTracks?range=minute&count=15&timestamp=...
-      const apiUrl = `/api/dashboard/${currentNodeId}?range=${currentTimePeriodConfig.range}&count=${currentTimePeriodConfig.count}&timestamp=${encodeURIComponent(timestamp)}`;
-      
-      const response = await awsNativeFetch(apiUrl);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch dashboard data: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      setDashboardData(data);
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
-      setIsDashboardError(true);
-      setDashboardError(error instanceof Error ? error : new Error(String(error)));
-    } finally {
-      setIsDashboardLoading(false);
-      // If this was an initial load, mark it as complete
-      if (isInitialLoad) {
-        setIsInitialLoad(false);
-      }
-    }
-  };
-  
-  // Fetch dashboard data when component mounts or time period changes
-  useEffect(() => {
-    if (shouldShow && currentNodeId) {
-      // If dialog first opens or node changes, do a full load
-      if (isInitialLoad) {
-        fetchDashboardData(false);
-      } else {
-        // If just the time period changed, do a quiet refresh
-        fetchDashboardData(true);
-      }
-    }
-  }, [shouldShow, currentNodeId, timePeriod, customTimePeriod]);
-  
   // Reset initial load state when dialog closes or node changes
   useEffect(() => {
     if (!shouldShow || !currentNodeId) {
@@ -329,13 +292,8 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     }
   }, [shouldShow, currentNodeId]);
   
-  // Function to manually refetch dashboard data
-  const refetchDashboard = () => {
-    fetchDashboardData(true);
-  };
-  
-  // Combine all loading states, but only include dashboard loading for initial loads
-  const isLoading = isBotLoading || isQueueLoading || isSystemLoading || (isInitialLoad && isDashboardLoading);
+  // Combine all loading states
+  const isLoading = isBotLoading || isQueueLoading || isSystemLoading || isDashboardLoading;
   
   // Combine error states
   const hasError = isBotError || isQueueError || isSystemError || isDashboardError;
@@ -523,7 +481,7 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     
     if (period !== 'custom') {
       // If a standard time period is selected, refetch the dashboard data quietly
-      setTimeout(() => fetchDashboardData(true), 0);
+      setTimeout(() => refetchDashboard(), 0);
     } else {
       // If custom is selected, show the custom dialog
       setShowCustomPeriodDialog(true);
@@ -536,7 +494,7 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     setTimePeriod('custom');
     // Refetch data with new time period - use setTimeout to ensure state is updated first
     // Do a quiet refresh without showing loading state
-    setTimeout(() => fetchDashboardData(true), 0);
+    setTimeout(() => refetchDashboard(), 0);
   };
   
   // Function to handle dialog close

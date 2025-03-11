@@ -892,18 +892,37 @@ export function WorkflowGraphRenderer({
         // Skip adding stats to infinity nodes
         if (d.type === 'infinity') return;
         
+        // Only show executions and errors for bot nodes
+        if (d.type !== 'bot') return;
+        
         const lineCount = nodeLabelLineCount.get(d.id) || 1;
         const statsY = 36 + (lineCount * 15); // Base position + line height adjustment
         
-        d3.select(this)
+        // Create stats text element
+        const statsGroup = d3.select(this)
           .append('text')
           .attr('y', statsY)  // Position based on label height
           .attr('x', 0)   // Center horizontally
           .attr('text-anchor', 'middle')
-          .attr('fill', '#4B5563')  // Slightly lighter color for stats
-          .style('font-size', '10px')  // Smaller font size for stats
+          .style('font-size', '10px');  // Smaller font size for stats
+        
+        // Add executions count
+        statsGroup.append('tspan')
+          .attr('fill', '#4B5563')  // Gray color for executions
           .text(() => {
-            return `${d.executions ? `${d.executions}` : '0'} / ${d.errors ? `${d.errors}` : '0'}`;
+            return `${d.executions || 0}`;
+          });
+        
+        // Add separator
+        statsGroup.append('tspan')
+          .attr('fill', '#4B5563')
+          .text(' / ');
+        
+        // Add errors count with red color
+        statsGroup.append('tspan')
+          .attr('fill', '#ef4444')  // Red color for errors
+          .text(() => {
+            return `${d.errors || 0}`;
           });
       });
     }
@@ -1343,6 +1362,7 @@ export function WorkflowGraphRenderer({
         .attr('dominant-baseline', 'middle')
         .attr('fill', '#e53e3e')
         .attr('font-size', '12px')
+        .attr('width', 550)
         .text('Some nodes were automatically collapsed to prevent browser freezing (node limit: 125)');
       
       // Clean up on unmount

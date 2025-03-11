@@ -72,14 +72,7 @@ export default function BotsList({ searchTerm, filterField, filterValue }: BotsL
   const [sortField, setSortField] = useState('id');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   
-  // Set up auto refresh every 60 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      botsQuery.refetch();
-    }, 60000);
-    
-    return () => clearInterval(interval);
-  }, [botsQuery]);
+  // The data is already being refreshed by the useStats hook which polls every 10 seconds
   
   // Handle sort click
   const handleSort = (field: string) => {
@@ -109,10 +102,7 @@ export default function BotsList({ searchTerm, filterField, filterValue }: BotsL
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900/30 rounded-lg p-4">
         <h3 className="text-red-800 dark:text-red-400 font-medium">Failed to load bots</h3>
         <p className="text-red-700 dark:text-red-300 text-sm mt-1">
-          {botsQuery.error instanceof Error 
-            ? botsQuery.error.message 
-            : 'An unknown error occurred'
-          }
+          An error occurred while fetching bot data
         </p>
       </div>
     );
@@ -206,7 +196,7 @@ export default function BotsList({ searchTerm, filterField, filterValue }: BotsL
             {sortedBots.length} {sortedBots.length === 1 ? 'bot' : 'bots'} need attention
           </span>
           <button 
-            onClick={() => botsQuery.refetch()}
+            onClick={() => botsQuery.refetch?.()}
             className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"
             aria-label="Refresh"
           >
@@ -277,7 +267,7 @@ export default function BotsList({ searchTerm, filterField, filterValue }: BotsL
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex flex-wrap gap-1">
-                    {bot.tags && bot.tags.map(tag => (
+                    {bot.tags && bot.tags.map((tag: string) => (
                       <span 
                         key={tag} 
                         className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300"

@@ -53,6 +53,17 @@ export function useWorkflowGraph({
     const parseHash = () => {
       const hashData = parseUrlHash();
       
+      // Determine the new focus node
+      let newFocusNode = '';
+      if (hashData.node) {
+        newFocusNode = hashData.node;
+      } else if (hashData.selected && Array.isArray(hashData.selected) && hashData.selected.length > 0) {
+        newFocusNode = hashData.selected[0];
+      }
+      
+      // Check if we're changing to a different node
+      const isChangingNode = newFocusNode && focusNode !== newFocusNode;
+      
       // Set selected nodes from hash
       if (hashData.selected && Array.isArray(hashData.selected) && hashData.selected.length > 0) {
         setSelectedNodes(hashData.selected);
@@ -92,19 +103,27 @@ export function useWorkflowGraph({
         setShowStats(Boolean(hashData.stats));
       }
       
-      // Get collapsed and expanded state from hash
-      const newCollapsedState = {
-        collapsed: {
-          left: Array.isArray(hashData.collapsed?.left) ? hashData.collapsed.left : [],
-          right: Array.isArray(hashData.collapsed?.right) ? hashData.collapsed.right : []
-        },
-        expanded: {
-          left: Array.isArray(hashData.expanded?.left) ? hashData.expanded.left : [],
-          right: Array.isArray(hashData.expanded?.right) ? hashData.expanded.right : []
-        }
-      };
-      
-      setCollapsedState(newCollapsedState);
+      // If we're changing nodes, reset the collapsed state
+      if (isChangingNode) {
+        setCollapsedState({
+          collapsed: { left: [], right: [] },
+          expanded: { left: [], right: [] }
+        });
+      } else {
+        // Otherwise, get collapsed and expanded state from hash
+        const newCollapsedState = {
+          collapsed: {
+            left: Array.isArray(hashData.collapsed?.left) ? hashData.collapsed.left : [],
+            right: Array.isArray(hashData.collapsed?.right) ? hashData.collapsed.right : []
+          },
+          expanded: {
+            left: Array.isArray(hashData.expanded?.left) ? hashData.expanded.left : [],
+            right: Array.isArray(hashData.expanded?.right) ? hashData.expanded.right : []
+          }
+        };
+        
+        setCollapsedState(newCollapsedState);
+      }
     };
     
     // Parse hash initially
@@ -117,7 +136,7 @@ export function useWorkflowGraph({
     return () => {
       window.removeEventListener('hashchange', parseHash);
     };
-  }, []);
+  }, [focusNode]);
   
   // Debounced function to update URL hash
   const debouncedUpdateHash = useCallback(
@@ -149,10 +168,20 @@ export function useWorkflowGraph({
       if (params.focusNode) {
         setSelectedNodes([params.focusNode]);
         
-        // Update hash immediately for focus/selected changes
+        // Reset the collapsed/expanded state when changing focus node
+        const resetCollapsedState: CollapsedState = {
+          collapsed: { left: [], right: [] },
+          expanded: { left: [], right: [] }
+        };
+        
+        setCollapsedState(resetCollapsedState);
+        
+        // Update hash immediately for focus/selected changes and reset the collapsed state
         updateUrlHash({
           node: params.focusNode,
-          selected: [params.focusNode]
+          selected: [params.focusNode],
+          collapsed: resetCollapsedState.collapsed,
+          expanded: resetCollapsedState.expanded
         });
       }
     }

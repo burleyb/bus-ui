@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { GitFork } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,7 @@ import { useMetricsData } from '@/context/ApiContext';
 import { useWorkflowGraph } from '@/hooks/useWorkflowGraph';
 import moment from 'moment';
 import { useDialogs } from '@/hooks/useDialogs';
+import { useNodeDetailsData } from '@/context/ApiContext';
 
 interface BotDashboardTabProps {
   nodeData: any;
@@ -81,6 +82,13 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
   
   // Last updated time from the query
   const lastUpdated = dataUpdatedAt ? new Date(dataUpdatedAt) : new Date();
+  
+  // Use the new useNodeDetailsData hook to get details data
+  const { 
+    data: detailsData, 
+    isLoading: isDetailsLoading, 
+    error: detailsError 
+  } = useNodeDetailsData(nodeData?.id, 'bot', timePeriod, 60000);
   
   // Use a combined data object with original node data and metrics data
   const activeData = React.useMemo(() => {

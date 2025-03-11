@@ -886,26 +886,28 @@ export default function NodeSettingsDialogHeader({
       
       {/* Right section with controls */}
       <div className="flex items-center space-x-4">
-        {/* Play/Pause button - More prominent now */}
-        <Button
-          variant={isPaused ? "outline" : "primary"}
-          size="sm"
-          className={`px-3 py-1 flex items-center gap-1 ${
-            isPaused 
-              ? "border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-gray-800" 
-              : "bg-green-600 hover:bg-green-700 text-white"
-          }`}
-          onClick={handlePlayPause}
-          title={isPaused ? "Resume" : "Pause"}
-          disabled={botPauseMutation.isPending}
-        >
-          {isPaused ? <Play size={16} /> : <Pause size={16} />}
-          <span>{isPaused ? "Resume" : "Pause"}</span>
-          {botPauseMutation.isPending && <span className="ml-1 animate-spin">⟳</span>}
-        </Button>
+        {/* Play/Pause button - Only shown for bots */}
+        {nodeType === 'bot' && (
+          <Button
+            variant={isPaused ? "outline" : "primary"}
+            size="sm"
+            className={`px-3 py-1 flex items-center gap-1 ${
+              isPaused 
+                ? "border-yellow-500 text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-gray-800" 
+                : "bg-green-600 hover:bg-green-700 text-white"
+            }`}
+            onClick={handlePlayPause}
+            title={isPaused ? "Resume" : "Pause"}
+            disabled={botPauseMutation.isPending}
+          >
+            {isPaused ? <Play size={16} /> : <Pause size={16} />}
+            <span>{isPaused ? "Resume" : "Pause"}</span>
+            {botPauseMutation.isPending && <span className="ml-1 animate-spin">⟳</span>}
+          </Button>
+        )}
         
-        {/* Queue selector dropdown for multiple read queues */}
-        {readQueueIds.length > 1 && (
+        {/* Queue selector dropdown for multiple read queues - Only for bots */}
+        {nodeType === 'bot' && readQueueIds.length > 1 && (
           <div className="isolated-dropdown">
             <QueueSelectorDropdown
               readQueueIds={readQueueIds}
@@ -919,34 +921,36 @@ export default function NodeSettingsDialogHeader({
           </div>
         )}
         
-        {/* Checkpoint display */}
-        <div className="flex items-center">
-          {/* Wider checkpoint display with queue indicator */}
-          <div className="min-w-[320px] max-w-[420px] overflow-hidden bg-gray-100 dark:bg-gray-800 rounded-l-md text-sm">
-            {selectedQueueDisplayName && (
-              <div className="px-3 py-0.5 bg-blue-500/10 border-b border-blue-500/20 flex items-center">
-                <Database size={12} className="text-blue-500 mr-1" />
-                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium truncate">
-                  {selectedQueueDisplayName}
-                </span>
+        {/* Checkpoint display - Only for bots */}
+        {nodeType === 'bot' && (
+          <div className="flex items-center">
+            {/* Wider checkpoint display with queue indicator */}
+            <div className="min-w-[320px] max-w-[420px] overflow-hidden bg-gray-100 dark:bg-gray-800 rounded-l-md text-sm">
+              {selectedQueueDisplayName && (
+                <div className="px-3 py-0.5 bg-blue-500/10 border-b border-blue-500/20 flex items-center">
+                  <Database size={12} className="text-blue-500 mr-1" />
+                  <span className="text-xs text-blue-600 dark:text-blue-400 font-medium truncate">
+                    {selectedQueueDisplayName}
+                  </span>
+                </div>
+              )}
+              <div className="px-3 py-1 font-mono overflow-x-auto">
+                {checkpoint || 'No checkpoint'}
               </div>
-            )}
-            <div className="px-3 py-1 font-mono overflow-x-auto">
-              {checkpoint || 'No checkpoint'}
+            </div>
+            
+            <div className="isolated-dropdown">
+              <CheckpointActionsDropdown
+                onCopyCheckpoint={handleCopyCheckpoint}
+                onChangeCheckpoint={handleChangeCheckpoint}
+                onForceRun={handleForceRun}
+                isOpen={openDropdownId === 'checkpointActions'}
+                onToggle={() => setOpenDropdownId(openDropdownId === 'checkpointActions' ? null : 'checkpointActions')}
+                dropdownId="checkpointActions"
+              />
             </div>
           </div>
-          
-          <div className="isolated-dropdown">
-            <CheckpointActionsDropdown
-              onCopyCheckpoint={handleCopyCheckpoint}
-              onChangeCheckpoint={handleChangeCheckpoint}
-              onForceRun={handleForceRun}
-              isOpen={openDropdownId === 'checkpointActions'}
-              onToggle={() => setOpenDropdownId(openDropdownId === 'checkpointActions' ? null : 'checkpointActions')}
-              dropdownId="checkpointActions"
-            />
-          </div>
-        </div>
+        )}
       {/* Node navigation controls */}
       <div className="flex items-center space-x-2">
         {/* Parent node navigation */}

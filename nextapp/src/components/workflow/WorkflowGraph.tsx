@@ -33,6 +33,7 @@ export default function WorkflowGraph({
   const [noFocusMessage, setNoFocusMessage] = useState<boolean>(true);
   const [isArchivedMessage, setIsArchivedMessage] = useState<boolean>(false);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [isLegendExpanded, setIsLegendExpanded] = useState(false);
   
   // Hooks
   const { openNodeSettingsDialog } = useDialogs();
@@ -160,6 +161,11 @@ export default function WorkflowGraph({
     setNoFocusMessage(data.nodes.length === 0 && !isArchivedMessage);
   }, [isArchivedMessage]);
   
+  // Toggle legend expanded state
+  const toggleLegend = useCallback(() => {
+    setIsLegendExpanded(prev => !prev);
+  }, []);
+  
     return (
     <div 
       ref={containerRef} 
@@ -203,34 +209,107 @@ export default function WorkflowGraph({
       ></svg>
       
       {/* Legend - positioned at bottom right */}
-      <div className="absolute bottom-2 right-2 bg-white dark:bg-gray-800 p-2 rounded shadow border border-gray-200 dark:border-gray-700">
-        <div className="text-xs text-gray-700 dark:text-gray-300 font-semibold mb-1">Legend</div>
-        <div className="grid grid-cols-1 gap-2 text-xs">
-          <div className="flex items-center">
-            <div className="h-4 w-4 mr-1">
-              <svg viewBox="0 0 20 20" width="20" height="20">
-                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot.png`} width="100%" height="100%" />
+      <div className="absolute bottom-2 right-2 bg-white dark:bg-gray-800 p-2 rounded shadow border border-gray-200 dark:border-gray-700 max-h-[80%] overflow-y-auto">
+        <div className="flex justify-between items-center">
+          <div className="text-xs text-gray-700 dark:text-gray-300 font-semibold mb-1">Legend</div>
+          <button 
+            onClick={toggleLegend} 
+            className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 focus:outline-none"
+            aria-label={isLegendExpanded ? "Collapse legend" : "Expand legend"}
+          >
+            {isLegendExpanded ? (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
-            </div>
-            <span className="text-gray-700 dark:text-gray-300">Bot</span>
-          </div>
-          <div className="flex items-center">
-            <div className="h-4 w-4 mr-1">
-              <svg viewBox="0 0 20 20" width="20" height="20">
-                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/queue.png`} width="100%" height="100%" />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
-            </div>
-            <span className="text-gray-700 dark:text-gray-300">Queue</span>
-          </div>
-          <div className="flex items-center">
-            <div className="h-4 w-4 mr-1">
-              <svg viewBox="0 0 20 20" width="20" height="20">
-                <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/system.png`} width="100%" height="100%" />
-              </svg>
-            </div>
-            <span className="text-gray-700 dark:text-gray-300">System</span>
-          </div>
+            )}
+          </button>
         </div>
+
+        {isLegendExpanded && (
+          <>
+            {/* Node Types */}
+            <div className="mb-2">
+              <div className="text-xs text-gray-600 dark:text-gray-400 font-medium mb-1">Node Types</div>
+              <div className="grid grid-cols-1 gap-1 text-xs">
+                <div className="flex items-center">
+                  <div className="h-4 w-4 mr-1">
+                    <svg viewBox="0 0 20 20" width="20" height="20">
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot.png`} width="100%" height="100%" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">Bot</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="h-4 w-4 mr-1">
+                    <svg viewBox="0 0 20 20" width="20" height="20">
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/queue.png`} width="100%" height="100%" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">Queue</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="h-4 w-4 mr-1">
+                    <svg viewBox="0 0 20 20" width="20" height="20">
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/system.png`} width="100%" height="100%" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">System</span>
+                </div>
+              </div>
+            </div>
+            
+            {/* Bot Statuses */}
+            <div>
+              <div className="text-xs text-gray-600 dark:text-gray-400 font-medium mb-1">Bot Statuses</div>
+              <div className="grid grid-cols-1 gap-1 text-xs">
+                <div className="flex items-center">
+                  <div className="h-4 w-4 mr-1">
+                    <svg viewBox="0 0 20 20" width="20" height="20">
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot-paused.png`} width="100%" height="100%" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">Paused - The bot is paused and will not run</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="h-4 w-4 mr-1">
+                    <svg viewBox="0 0 20 20" width="20" height="20">
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot-archived.png`} width="100%" height="100%" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">Archived - The bot will not run and is not monitored</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="h-4 w-4 mr-1">
+                    <svg viewBox="0 0 20 20" width="20" height="20">
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot-danger.png`} width="100%" height="100%" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">Danger - The bot is running slowly and has a backlog of events</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="h-4 w-4 mr-1">
+                    <svg viewBox="0 0 20 20" width="20" height="20">
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot-blocked.png`} width="100%" height="100%" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">Blocked - The bot is erroring and is not processing events</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="h-4 w-4 mr-1">
+                    <svg viewBox="0 0 20 20" width="20" height="20">
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot-rogue.png`} width="100%" height="100%" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">Rogue - The bot has errored enough times that we will not try to run it again</span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
       
       {/* Event handlers */}

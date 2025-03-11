@@ -144,12 +144,18 @@ export function WorkflowGraphData({
             type: nodeData.type || 'unknown',
             group: group, // 0 = input, 1 = focus, 2 = output
             generation: generation,
-            executions: nodeData.stats?.executions,
-            errors: nodeData.stats?.errors,
+            // Get executions and errors data from either stats object or direct properties
+            executions: nodeData.stats?.executions || nodeData.executions || 0,
+            errors: nodeData.stats?.errors || nodeData.errors || 0,
             queues: nodeData.queues,
             link_to: nodeData.link_to,
             isAutoCollapsed: true // Add a flag to indicate this node was auto-collapsed
           };
+          
+          // Debug log for stats data source
+          if (nodeData.type === 'bot') {
+            console.log(`Node stats for ${nodeId}: executions=${node.executions} (from ${nodeData.stats?.executions !== undefined ? 'stats' : nodeData.executions !== undefined ? 'direct' : 'default'}), errors=${node.errors} (from ${nodeData.stats?.errors !== undefined ? 'stats' : nodeData.errors !== undefined ? 'direct' : 'default'})`);
+          }
           
           // Add node to graph
           newGraphData.nodes.push(node);
@@ -169,11 +175,17 @@ export function WorkflowGraphData({
         type: nodeData.type || 'unknown',
         group: group, // 0 = input, 1 = focus, 2 = output
         generation: generation,
-        executions: nodeData.stats?.executions,
-        errors: nodeData.stats?.errors,
+        // Get executions and errors data from either stats object or direct properties
+        executions: nodeData.stats?.executions || nodeData.executions || 0,
+        errors: nodeData.stats?.errors || nodeData.errors || 0,
         queues: nodeData.queues,
         link_to: nodeData.link_to
       };
+      
+      // Debug log for stats data source
+      if (nodeData.type === 'bot') {
+        console.log(`Node stats for ${nodeId}: executions=${node.executions} (from ${nodeData.stats?.executions !== undefined ? 'stats' : nodeData.executions !== undefined ? 'direct' : 'default'}), errors=${node.errors} (from ${nodeData.stats?.errors !== undefined ? 'stats' : nodeData.errors !== undefined ? 'direct' : 'default'})`);
+      }
       
       // Add node to graph
       newGraphData.nodes.push(node);
