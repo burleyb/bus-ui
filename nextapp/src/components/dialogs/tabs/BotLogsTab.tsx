@@ -7,6 +7,7 @@ import { RefreshCw } from 'lucide-react';
 import { useToast } from '@/components/ui/toast';
 import { awsNativeFetch } from '@/lib/authUtils';
 import { formatDistanceToNow } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
 
 interface BotLogsTabProps {
   nodeData: any;
@@ -19,11 +20,8 @@ interface LogEntry {
 
 export default function BotLogsTab({ nodeData }: BotLogsTabProps) {
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
   const logContainerRef = useRef<HTMLDivElement>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Get the bot ID from nodeData
   const botId = nodeData?.id || '';
@@ -37,14 +35,12 @@ export default function BotLogsTab({ nodeData }: BotLogsTabProps) {
     );
   }
 
-  // Function to fetch logs from the API
-  const fetchLogs = async () => {
-    if (!botId) return;
-    
-    setIsLoading(true);
-    setError(null);
-    
-    try {
+  // Use TanStack Query for fetching and polling logs
+  const { isLoading, error, refetch } = useQuery({
+    queryKey: ['bot-logs', botId],
+    queryFn: async () => {
+      if (!botId) return null;
+      
       // Get current timestamp in milliseconds
       const startTime = Date.now();
       // Format the URL as specified in the user's request
@@ -56,114 +52,51 @@ export default function BotLogsTab({ nodeData }: BotLogsTabProps) {
         throw new Error(`Failed to fetch logs: ${response.statusText}`);
       }
       
-      const data = await response.json();
-      
-      // Process the response data into our logs format
-      if (Array.isArray(data)) {
-        setLogs(data.map((entry: any) => ({
-          timestamp: entry.timestamp || new Date().toISOString(),
-          message: entry.message || entry.toString()
-        })));
-      } else {
-        // If data is not an array, handle it differently
-        console.log('Log response structure:', data);
+      try {
+        const data = await response.json();
         
-        // Try to extract logs from the response if it has a different structure
-        if (data && data.logs && Array.isArray(data.logs)) {
-          setLogs(data.logs.map((entry: any) => ({
-            timestamp: entry.timestamp || new Date().toISOString(),
-            message: entry.message || entry.toString()
-          })));
-        } else {
-          // If no recognizable logs structure, set empty array
-          setLogs([]);
+        // Process the response data into our logs format
+        if (Array.isArray(data) && data.length > 0) {
+          setLogs(prevLogs => {
+            // Create a set of existing timestamps to filter out duplicates
+            const existingTimestamps = new Set(prevLogs.map(log => log.timestamp));
+            
+            // Filter new logs to only include entries with timestamps not already in the existing logs
+            const newLogs = data
+              .filter((entry: any) => entry.timestamp && !existingTimestamps.has(entry.timestamp))
+              .map((entry: any) => ({
+                timestamp: entry.timestamp,
+                message: entry.message || entry.toString()
+              }));
+            
+            // Append new logs to existing logs
+            return [...prevLogs, ...newLogs];
+          });
+        } else if (data && data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
+          setLogs(prevLogs => {
+            const existingTimestamps = new Set(prevLogs.map(log => log.timestamp));
+            
+            const newLogs = data.logs
+              .filter((entry: any) => entry.timestamp && !existingTimestamps.has(entry.timestamp))
+              .map((entry: any) => ({
+                timestamp: entry.timestamp,
+                message: entry.message || entry.toString()
+              }));
+            
+            return [...prevLogs, ...newLogs];
+          });
         }
+        
+        return data;
+      } catch (jsonError) {
+        console.error('Error parsing logs JSON:', jsonError);
+        throw new Error('Failed to parse logs data');
       }
-    } catch (error: any) {
-      console.error('Error fetching logs:', error);
-      setError(error.message || 'Failed to fetch logs');
-      addToast({
-        title: 'Error fetching logs',
-        description: error.message || 'Failed to fetch logs',
-        type: 'error',
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Function to update logs without replacing existing ones
-  const updateLogs = async () => {
-    if (!botId) return;
-    
-    try {
-      // Get current timestamp in milliseconds
-      const startTime = Date.now();
-      // Format the URL as specified in the user's request
-      const url = `/api/logs/${botId}/all?start=${startTime}`;
-      
-      const response = await awsNativeFetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to update logs: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      // Process the response data and append new logs
-      if (Array.isArray(data) && data.length > 0) {
-        setLogs(prevLogs => {
-          // Create a set of existing timestamps to filter out duplicates
-          const existingTimestamps = new Set(prevLogs.map(log => log.timestamp));
-          
-          // Filter new logs to only include entries with timestamps not already in the existing logs
-          const newLogs = data
-            .filter((entry: any) => entry.timestamp && !existingTimestamps.has(entry.timestamp))
-            .map((entry: any) => ({
-              timestamp: entry.timestamp,
-              message: entry.message || entry.toString()
-            }));
-          
-          // Append new logs to existing logs
-          return [...prevLogs, ...newLogs];
-        });
-      } else if (data && data.logs && Array.isArray(data.logs) && data.logs.length > 0) {
-        setLogs(prevLogs => {
-          const existingTimestamps = new Set(prevLogs.map(log => log.timestamp));
-          
-          const newLogs = data.logs
-            .filter((entry: any) => entry.timestamp && !existingTimestamps.has(entry.timestamp))
-            .map((entry: any) => ({
-              timestamp: entry.timestamp,
-              message: entry.message || entry.toString()
-            }));
-          
-          return [...prevLogs, ...newLogs];
-        });
-      }
-    } catch (error: any) {
-      console.error('Error updating logs:', error);
-      // Don't show a toast for update errors to avoid spamming the user
-    }
-  };
-
-  // Initialize logs and polling
-  useEffect(() => {
-    // Initial fetch
-    fetchLogs();
-    
-    // Set up polling every 20 seconds
-    pollingIntervalRef.current = setInterval(() => {
-      updateLogs();
-    }, 20000);
-    
-    // Cleanup function
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, [botId]);
+    },
+    enabled: !!botId,
+    refetchInterval: 20000, // Refetch every 20 seconds
+    refetchOnWindowFocus: false
+  });
 
   // Scroll to bottom when new logs are added
   useEffect(() => {
@@ -171,6 +104,18 @@ export default function BotLogsTab({ nodeData }: BotLogsTabProps) {
       logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
     }
   }, [logs]);
+
+  // Add an effect to handle errors
+  useEffect(() => {
+    if (error) {
+      console.error('Error fetching logs:', error);
+      addToast({
+        title: 'Error fetching logs',
+        description: error instanceof Error ? error.message : 'Failed to fetch logs',
+        type: 'error',
+      });
+    }
+  }, [error, addToast]);
 
   // Format date for display
   const formatDate = (dateString: string) => {
@@ -184,7 +129,7 @@ export default function BotLogsTab({ nodeData }: BotLogsTabProps) {
 
   // Handle manual refresh
   const handleRefresh = () => {
-    fetchLogs();
+    refetch();
   };
 
   return (
@@ -196,7 +141,7 @@ export default function BotLogsTab({ nodeData }: BotLogsTabProps) {
           </span>
           {error && (
             <span className="text-sm text-red-500 ml-2">
-              Error: {error}
+              Error: {error instanceof Error ? error.message : 'Unknown error'}
             </span>
           )}
         </div>
