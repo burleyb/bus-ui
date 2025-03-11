@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useId, useEffect } from 'react';
+import React, { useState, useId, useEffect, useRef } from 'react';
 import { X, Pause, Play, ChevronLeft, ChevronRight, GitFork, Settings, ChevronDown, Database, AlertTriangle, Calendar, Copy, Redo, RotateCcw } from 'lucide-react';
 import { useDialogs } from '@/hooks/useDialogs';
 import { AWSLambdaIcon } from '../icons/AWSLambdaIcon';
@@ -92,44 +92,96 @@ function ReadQueueIndicator({
 const CheckpointActionsDropdown = ({
   onCopyCheckpoint,
   onChangeCheckpoint,
-  onForceRun
+  onForceRun,
+  isOpen,
+  onToggle,
+  dropdownId
 }: {
   onCopyCheckpoint: () => void;
   onChangeCheckpoint: () => void;
   onForceRun: () => void;
+  isOpen: boolean;
+  onToggle: () => void;
+  dropdownId: string;
 }) => {
-  // Create a unique ID for this dropdown instance
-  const dropdownId = useId();
+  // Use a ref to detect clicks outside the dropdown
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Handle clicks outside the dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) && isOpen) {
+        onToggle();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onToggle]);
   
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button 
-          variant="ghost" 
-          className="h-8 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-2 py-1 rounded-r-md border-l border-gray-300 dark:border-gray-600"
-          aria-label="Checkpoint actions"
-          data-dropdown-id={dropdownId}
-          onClick={(e) => e.stopPropagation()}
+    <div className="checkpoint-actions-dropdown" style={{ position: 'relative', zIndex: 52 }} ref={dropdownRef}>
+      <Button 
+        variant="ghost" 
+        className="h-8 bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 px-2 py-1 rounded-r-md border-l border-gray-300 dark:border-gray-600"
+        aria-label="Checkpoint actions"
+        data-dropdown-id={dropdownId}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+      >
+        <div className="flex items-center">
+          <Settings size={14} />
+          <ChevronDown size={14} />
+        </div>
+      </Button>
+      
+      {isOpen && (
+        <div 
+          className="absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white dark:bg-gray-900 ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+          role="menu"
+          aria-orientation="vertical"
+          aria-labelledby="checkpoint-actions-button"
         >
-          <div className="flex items-center">
-            <Settings size={14} />
-            <ChevronDown size={14} />
+          <div className="py-1" role="none">
+            <button
+              className="text-left w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+              role="menuitem"
+              onClick={() => {
+                onCopyCheckpoint();
+                onToggle();
+              }}
+            >
+              Copy Checkpoint
+            </button>
+            <button
+              className="text-left w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+              role="menuitem"
+              onClick={() => {
+                onChangeCheckpoint();
+                onToggle();
+              }}
+            >
+              Change Checkpoint
+            </button>
+            <div className="h-px bg-gray-200 dark:bg-gray-700 my-1"></div>
+            <button
+              className="text-left w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+              role="menuitem"
+              onClick={() => {
+                onForceRun();
+                onToggle();
+              }}
+            >
+              Force Run
+            </button>
           </div>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={onCopyCheckpoint}>
-          Copy Checkpoint
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={onChangeCheckpoint}>
-          Change Checkpoint
-        </DropdownMenuItem>
-        <div className="h-px bg-muted my-1"></div>
-        <DropdownMenuItem onClick={onForceRun}>
-          Force Run
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -138,68 +190,100 @@ const QueueSelectorDropdown = ({
   readQueueIds, 
   readQueues, 
   selectedQueueId, 
-  onQueueSelect 
+  onQueueSelect,
+  isOpen,
+  onToggle,
+  dropdownId
 }: { 
   readQueueIds: string[];
   readQueues: Record<string, any>; 
   selectedQueueId: string;
   onQueueSelect: (queueId: string) => void;
+  isOpen: boolean;
+  onToggle: () => void;
+  dropdownId: string;
 }) => {
-  // Create a unique ID for this dropdown instance
-  const dropdownId = useId();
+  // Use a ref to detect clicks outside the dropdown
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Handle clicks outside the dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) && isOpen) {
+        onToggle();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onToggle]);
   
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="rounded-r-none h-8 px-2 flex items-center gap-1"
-          aria-label="Queue selector"
-          data-dropdown-id={dropdownId}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Database size={14} className="text-blue-500" />
-          <Badge 
-            variant="secondary" 
-            className="h-4 px-1 text-xs flex items-center justify-center"
-          >
-            {readQueueIds.length}
-          </Badge>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent 
-        align="end" 
-        className="min-w-[400px] max-w-[500px] max-h-[400px] overflow-y-auto bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-lg"
+    <div className="queue-selector-dropdown" style={{ position: 'relative', zIndex: 52 }} ref={dropdownRef}>
+      <Button 
+        variant="outline" 
+        size="sm" 
+        className="rounded-r-none h-8 px-2 flex items-center gap-1"
+        aria-label="Queue selector"
+        data-dropdown-id={dropdownId}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
       >
-        <div className="px-2 py-1 text-xs text-muted-foreground font-semibold">Select Queue</div>
-        <div className="h-px bg-muted my-1"></div>
-        {readQueueIds.map(queueId => {
-          // Format queue name for display
-          const displayName = queueId.split(':').pop() || queueId;
-          const isSelected = selectedQueueId === queueId;
-          return (
-            <DropdownMenuItem 
-              key={queueId}
-              onClick={() => onQueueSelect(queueId)}
-              className={`${isSelected ? "bg-blue-50 dark:bg-blue-900/20" : ""} py-2`}
-            >
-              <div className="flex flex-col w-full">
-                <div className="flex items-center">
-                  {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></div>}
-                  <span className={`font-medium ${isSelected ? "text-blue-600 dark:text-blue-400" : ""} truncate max-w-[450px]`}>
-                    {displayName}
-                  </span>
-                </div>
-                {displayName !== queueId && (
-                  <span className="text-xs text-muted-foreground font-mono ml-3 truncate max-w-[450px]">{queueId}</span>
-                )}
-              </div>
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <Database size={14} className="text-blue-500" />
+        <Badge 
+          variant="secondary" 
+          className="h-4 px-1 text-xs flex items-center justify-center"
+        >
+          {readQueueIds.length}
+        </Badge>
+      </Button>
+      
+      {isOpen && (
+        <div 
+          className="absolute left-0 mt-2 min-w-[400px] max-w-[500px] max-h-[400px] overflow-y-auto rounded-md shadow-lg bg-white dark:bg-gray-900 ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+          role="menu"
+          aria-orientation="vertical"
+          aria-labelledby="queue-selector-button"
+        >
+          <div className="px-2 py-1 text-xs text-gray-500 dark:text-gray-400 font-semibold">Select Queue</div>
+          <div className="h-px bg-gray-200 dark:bg-gray-700 my-1"></div>
+          <div className="py-1" role="none">
+            {readQueueIds.map(queueId => {
+              // Format queue name for display
+              const displayName = queueId.split(':').pop() || queueId;
+              const isSelected = selectedQueueId === queueId;
+              return (
+                <button
+                  key={queueId}
+                  className={`text-left w-full px-4 py-2 text-sm ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+                  role="menuitem"
+                  onClick={() => {
+                    onQueueSelect(queueId);
+                    onToggle();
+                  }}
+                >
+                  <div className="flex flex-col w-full">
+                    <div className="flex items-center">
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></div>}
+                      <span className={`font-medium ${isSelected ? "text-blue-600 dark:text-blue-400" : "text-gray-700 dark:text-gray-200"} truncate max-w-[450px]`}>
+                        {displayName}
+                      </span>
+                    </div>
+                    {displayName !== queueId && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400 font-mono ml-3 truncate max-w-[450px]">{queueId}</span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 
@@ -249,6 +333,168 @@ const isCheckpointInFuture = (checkpoint: string): boolean => {
   return checkpointDate > now;
 };
 
+// Create a custom parent node dropdown component
+const ParentNodesDropdown = ({ 
+  parentNodes, 
+  onNavigate,
+  isOpen,
+  onToggle,
+  dropdownId
+}: { 
+  parentNodes: string[]; 
+  onNavigate: (nodeId: string) => void;
+  isOpen: boolean;
+  onToggle: () => void;
+  dropdownId: string;
+}) => {
+  // Use a ref to detect clicks outside the dropdown
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  
+  // Handle clicks outside the dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) && isOpen) {
+        onToggle();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onToggle]);
+  
+  return (
+    <div className="parent-nodes-dropdown" style={{ position: 'relative', zIndex: 51 }} ref={dropdownRef}>
+      <Button
+        variant="outline"
+        size="sm"
+        title="Parent Nodes"
+        className="flex items-center relative"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        data-dropdown-id={dropdownId}
+      >
+        <ChevronLeft size={16} />
+        <Badge className="absolute -top-2 -left-2 h-5 w-5 flex items-center justify-center p-0">
+          {parentNodes.length}
+        </Badge>
+      </Button>
+      
+      {isOpen && (
+        <div 
+          className="absolute right-0 mt-2 min-w-[14rem] max-w-[30rem] w-max rounded-md shadow-lg bg-white dark:bg-gray-900 ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+          role="menu"
+          aria-orientation="vertical"
+          aria-labelledby="parent-nodes-button"
+          ref={contentRef}
+        >
+          <div className="py-1" role="none">
+            {parentNodes.map(parentId => (
+              <button
+                key={parentId}
+                className="text-left w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap overflow-hidden text-ellipsis"
+                role="menuitem"
+                onClick={() => {
+                  onNavigate(parentId);
+                  onToggle();
+                }}
+                title={parentId}
+              >
+                {parentId}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Create a custom child node dropdown component
+const ChildNodesDropdown = ({ 
+  childNodes, 
+  onNavigate,
+  isOpen,
+  onToggle,
+  dropdownId
+}: { 
+  childNodes: string[]; 
+  onNavigate: (nodeId: string) => void;
+  isOpen: boolean;
+  onToggle: () => void;
+  dropdownId: string;
+}) => {
+  // Use a ref to detect clicks outside the dropdown
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  
+  // Handle clicks outside the dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node) && isOpen) {
+        onToggle();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onToggle]);
+  
+  return (
+    <div className="child-nodes-dropdown" style={{ position: 'relative', zIndex: 51 }} ref={dropdownRef}>
+      <Button
+        variant="outline"
+        size="sm"
+        title="Child Nodes"
+        className="flex items-center relative"
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        data-dropdown-id={dropdownId}
+      >
+        <ChevronRight size={16} />
+        <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0">
+          {childNodes.length}
+        </Badge>
+      </Button>
+      
+      {isOpen && (
+        <div 
+          className="absolute right-0 mt-2 min-w-[14rem] max-w-[30rem] w-max rounded-md shadow-lg bg-white dark:bg-gray-900 ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+          role="menu"
+          aria-orientation="vertical"
+          aria-labelledby="child-nodes-button"
+          ref={contentRef}
+        >
+          <div className="py-1" role="none">
+            {childNodes.map(childId => (
+              <button
+                key={childId}
+                className="text-left w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 whitespace-nowrap overflow-hidden text-ellipsis"
+                role="menuitem"
+                onClick={() => {
+                  onNavigate(childId);
+                  onToggle();
+                }}
+                title={childId}
+              >
+                {childId}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function NodeSettingsDialogHeader({ 
   nodeData, 
   onClose,
@@ -274,6 +520,9 @@ export default function NodeSettingsDialogHeader({
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [isChangingCheckpoint, setIsChangingCheckpoint] = useState(false);
   
+  // Add state to track which dropdown is open
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  
   // Use the API hooks for bot operations
   const botPauseMutation = useBotPause();
   const botCheckpointMutation = useBotCheckpoint();
@@ -287,8 +536,8 @@ export default function NodeSettingsDialogHeader({
   const nodeType = nodeData?.type || 'unknown';
   const nodeFullId = nodeData?.id ? `${nodeType}:${nodeData.id}` : 'Loading...';
   const nodeId = nodeData?.id || '';
-  const parentNodes = nodeData?.parentNodes || [];
-  const childNodes = nodeData?.childNodes || [];
+  const parentNodes = (typeof nodeData?.parentNodes === 'object' && !Array.isArray(nodeData?.parentNodes) ? Object.keys(nodeData?.parentNodes) : nodeData?.parentNodes || []) || [];
+  const childNodes = (typeof nodeData?.childNodes === 'object' && !Array.isArray(nodeData?.childNodes) ? Object.keys(nodeData?.childNodes) : nodeData?.childNodes || []) || [];
   
   // Check if the node is paused/stopped
   const isPaused = localIsPaused || nodeData?.paused || nodeData?.status === 'PAUSED' || nodeData?.status === 'STOPPED';
@@ -537,10 +786,6 @@ export default function NodeSettingsDialogHeader({
   
   // Function to handle navigate to parent
   const handleNavigateToParent = (parentNodeId: string) => {
-    // Close current dialog and open parent node settings
-    if (onClose) {
-      onClose();
-    }
     
     // Small delay to ensure current dialog is closed
     setTimeout(() => {
@@ -550,10 +795,6 @@ export default function NodeSettingsDialogHeader({
   
   // Function to handle navigate to child
   const handleNavigateToChild = (childNodeId: string) => {
-    // Close current dialog and open child node settings
-    if (onClose) {
-      onClose();
-    }
     
     // Small delay to ensure current dialog is closed
     setTimeout(() => {
@@ -581,7 +822,7 @@ export default function NodeSettingsDialogHeader({
   const selectedQueueDisplayName = getSelectedQueueDisplayName();
 
   return (
-    <header className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex justify-between items-center">
+    <header className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex justify-between items-center dropdown-isolation-container">
       {/* Left section with bot logo, name, and ID */}
       <div className="flex items-center space-x-3">
         {/* Bot logo with status */}
@@ -641,91 +882,7 @@ export default function NodeSettingsDialogHeader({
           </div>
         </div>
       </div>
-      
-      {/* Node navigation controls */}
-      <div className="flex items-center space-x-2">
-        {/* Parent node navigation */}
-        {parentNodes.length > 0 && (
-          parentNodes.length === 1 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleNavigateToParent(parentNodes[0])}
-              title="Go to Parent Node"
-              className="flex items-center"
-            >
-              <ChevronLeft size={16} />
-            </Button>
-          ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  title="Parent Nodes"
-                  className="flex items-center relative"
-                >
-                  <ChevronLeft size={16} />
-                  <Badge className="absolute -top-2 -left-2 h-5 w-5 flex items-center justify-center p-0">
-                    {parentNodes.length}
-                  </Badge>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {parentNodes.map(parentId => (
-                  <DropdownMenuItem 
-                    key={parentId}
-                    onClick={() => handleNavigateToParent(parentId)}
-                  >
-                    {parentId}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )
-        )}
-        
-        {/* Child node navigation */}
-        {childNodes.length > 0 && (
-          childNodes.length === 1 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleNavigateToChild(childNodes[0])}
-              title="Go to Child Node"
-              className="flex items-center"
-            >
-              <ChevronRight size={16} />
-            </Button>
-          ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  title="Child Nodes"
-                  className="flex items-center relative"
-                >
-                  <ChevronRight size={16} />
-                  <Badge className="absolute -top-2 -right-2 h-5 w-5 flex items-center justify-center p-0">
-                    {childNodes.length}
-                  </Badge>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {childNodes.map(childId => (
-                  <DropdownMenuItem 
-                    key={childId}
-                    onClick={() => handleNavigateToChild(childId)}
-                  >
-                    {childId}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )
-        )}
-      </div>
+
       
       {/* Right section with controls */}
       <div className="flex items-center space-x-4">
@@ -749,12 +906,17 @@ export default function NodeSettingsDialogHeader({
         
         {/* Queue selector dropdown for multiple read queues */}
         {readQueueIds.length > 1 && (
-          <QueueSelectorDropdown
-            readQueueIds={readQueueIds}
-            readQueues={readQueues}
-            selectedQueueId={selectedQueueId}
-            onQueueSelect={handleQueueSelect}
-          />
+          <div className="isolated-dropdown">
+            <QueueSelectorDropdown
+              readQueueIds={readQueueIds}
+              readQueues={readQueues}
+              selectedQueueId={selectedQueueId}
+              onQueueSelect={handleQueueSelect}
+              isOpen={openDropdownId === 'queueSelector'}
+              onToggle={() => setOpenDropdownId(openDropdownId === 'queueSelector' ? null : 'queueSelector')}
+              dropdownId="queueSelector"
+            />
+          </div>
         )}
         
         {/* Checkpoint display */}
@@ -774,13 +936,66 @@ export default function NodeSettingsDialogHeader({
             </div>
           </div>
           
-          <CheckpointActionsDropdown
-            onCopyCheckpoint={handleCopyCheckpoint}
-            onChangeCheckpoint={handleChangeCheckpoint}
-            onForceRun={handleForceRun}
-          />
+          <div className="isolated-dropdown">
+            <CheckpointActionsDropdown
+              onCopyCheckpoint={handleCopyCheckpoint}
+              onChangeCheckpoint={handleChangeCheckpoint}
+              onForceRun={handleForceRun}
+              isOpen={openDropdownId === 'checkpointActions'}
+              onToggle={() => setOpenDropdownId(openDropdownId === 'checkpointActions' ? null : 'checkpointActions')}
+              dropdownId="checkpointActions"
+            />
+          </div>
         </div>
+      {/* Node navigation controls */}
+      <div className="flex items-center space-x-2">
+        {/* Parent node navigation */}
+        {parentNodes.length > 0 && (
+          parentNodes.length === 1 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleNavigateToParent(parentNodes[0])}
+              title="Go to Parent Node"
+              className="flex items-center"
+            >
+              <ChevronLeft size={16} />
+            </Button>
+          ) : (
+            <ParentNodesDropdown
+              parentNodes={parentNodes}
+              onNavigate={handleNavigateToParent}
+              isOpen={openDropdownId === 'parentNodes'}
+              onToggle={() => setOpenDropdownId(openDropdownId === 'parentNodes' ? null : 'parentNodes')}
+              dropdownId="parentNodes"
+            />
+          )
+        )}
         
+        {/* Child node navigation */}
+        {childNodes.length > 0 && (
+          childNodes.length === 1 ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleNavigateToChild(childNodes[0])}
+              title="Go to Child Node"
+              className="flex items-center"
+            >
+              <ChevronRight size={16} />
+            </Button>
+          ) : (
+            <ChildNodesDropdown
+              childNodes={childNodes}
+              onNavigate={handleNavigateToChild}
+              isOpen={openDropdownId === 'childNodes'}
+              onToggle={() => setOpenDropdownId(openDropdownId === 'childNodes' ? null : 'childNodes')}
+              dropdownId="childNodes"
+            />
+          )
+        )}
+      </div>
+
         {/* Close button */}
         <Button
           variant="ghost"
@@ -952,6 +1167,7 @@ export default function NodeSettingsDialogHeader({
           </div>
         </div>
       )}
+      
     </header>
   );
 } 

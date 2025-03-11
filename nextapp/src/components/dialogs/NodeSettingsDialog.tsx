@@ -209,12 +209,68 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     error: systemError
   } = useSystemDetails(nodeType === 'system' ? currentNodeId : '');
   
+  // Add detailed logging for debugging
+  useEffect(() => {
+    if (currentNodeId) {
+      console.log('[NodeSettingsDialog] Current node ID:', currentNodeId);
+      console.log('[NodeSettingsDialog] Should show dialog:', shouldShow);
+    }
+  }, [currentNodeId, shouldShow]);
+  
+  // Log node details when they change
+  useEffect(() => {
+    const details = botDetails || queueDetails || systemDetails;
+    if (details) {
+      console.log(`[NodeSettingsDialog] ${nodeType} details loaded:`, details);
+      console.log(`[NodeSettingsDialog] ${nodeType} details has link_to:`, !!details.link_to);
+      
+      if (details.link_to) {
+        console.log(`[NodeSettingsDialog] ${nodeType} parent nodes:`, details.link_to.parent || []);
+        console.log(`[NodeSettingsDialog] ${nodeType} child nodes:`, details.link_to.children || []);
+      } else {
+        console.log(`[NodeSettingsDialog] No link_to data found in ${nodeType} details`);
+        
+        // For bots, check if we need to fetch additional data
+        if (nodeType === 'bot') {
+          console.log('[NodeSettingsDialog] Bot details structure:', Object.keys(details));
+          // Check if there's any relationship data in a different location
+          if (details.parent_nodes) {
+            console.log('[NodeSettingsDialog] Found parent_nodes in bot details:', details.parent_nodes);
+          }
+          if (details.child_nodes) {
+            console.log('[NodeSettingsDialog] Found child_nodes in bot details:', details.child_nodes);
+          }
+        }
+      }
+    }
+  }, [botDetails, queueDetails, systemDetails, nodeType]);
+  
   // For dashboard data, we'll use a direct fetch instead of the hook
-  // to ensure the URL structure is correct
   const [dashboardData, setDashboardData] = useState<any>(null);
   const [isDashboardLoading, setIsDashboardLoading] = useState(false);
   const [isDashboardError, setIsDashboardError] = useState(false);
   const [dashboardError, setDashboardError] = useState<Error | null>(null);
+  
+  // Log dashboard data when it changes
+  useEffect(() => {
+    if (dashboardData) {
+      console.log('[NodeSettingsDialog] Dashboard data loaded');
+      
+      // Check if the dashboard data has nodes information
+      if (dashboardData.nodes && dashboardData.nodes[currentNodeId]) {
+        const nodeStats = dashboardData.nodes[currentNodeId];
+        console.log('[NodeSettingsDialog] Found node in dashboard data:', nodeStats);
+        
+        if (nodeStats.link_to) {
+          console.log('[NodeSettingsDialog] Dashboard data has link_to for this node:', nodeStats.link_to);
+        } else {
+          console.log('[NodeSettingsDialog] Dashboard data does not have link_to for this node');
+        }
+      } else {
+        console.log('[NodeSettingsDialog] Node not found in dashboard data nodes');
+      }
+    }
+  }, [dashboardData, currentNodeId]);
   
   // Function to fetch dashboard data
   const fetchDashboardData = async (isRefresh = false) => {
@@ -288,12 +344,15 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
   const nodeData: NodeData | null = React.useMemo(() => {
     if (!currentNodeId) return null;
     
+    console.log(`[NodeSettingsDialog] Building nodeData for ${nodeType} with ID ${currentNodeId}`);
+    
     // Base node data common to all types
     const baseData = {
       id: currentNodeId,
       name: currentNodeId.split(':').pop() || currentNodeId,
       type: (nodeType === 'bot' ? 'bot' : (nodeType === 'queue' ? 'queue' : nodeType === 'system' ? 'system' : 'unknown')) as NodeData['type'],
       status: 'UNKNOWN' as NodeData['status'],
+      // Initialize with empty arrays
       parentNodes: [] as string[],
       childNodes: [] as string[]
     } as NodeData;
@@ -301,20 +360,111 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
     // Get detailed node data based on type
     let detailedData = {};
     if (nodeType === 'bot' && botDetails) {
+      console.log(`[NodeSettingsDialog] Processing bot details:`, botDetails);
       detailedData = {
         ...botDetails,
         status: botDetails.paused ? 'PAUSED' : 'RUNNING'
       };
     } else if (nodeType === 'queue' && queueDetails) {
+      console.log(`[NodeSettingsDialog] Processing queue details:`, queueDetails);
       detailedData = {
         ...queueDetails,
         status: 'ACTIVE' // Default for queues
       };
     } else if (nodeType === 'system' && systemDetails) {
+      console.log(`[NodeSettingsDialog] Processing system details:`, systemDetails);
       detailedData = {
         ...systemDetails,
         status: 'ACTIVE' // Default for systems
       };
+    }
+    
+    // Update parentNodes and childNodes from detailedData if available
+    if (detailedData && (detailedData as any).link_to) {
+      console.log(`[NodeSettingsDialog] Found link_to data in ${nodeType} details:`, (detailedData as any).link_to);
+      baseData.parentNodes = (detailedData as any).link_to.parent || [];
+      baseData.childNodes = (detailedData as any).link_to.children || [];
+    } 
+    // For bots, try multiple fallback mechanisms to get relationship data
+    else if (nodeType === 'bot') {
+      console.log(`[NodeSettingsDialog] No link_to data found in bot details, checking alternatives`);
+      
+      // Try to find relationship data in different properties of bot details
+      if (botDetails) {
+        
+        // Check for relationships in queues
+        if (botDetails.checkpoints) {
+          console.log(`[NodeSettingsDialog] Checking bot checkpoints for relationship data:`, botDetails.checkpoints);
+          
+          // Extract parent nodes from read queues
+          if (botDetails.checkpoints.read) {
+            const readQueueIds = Object.keys(botDetails.checkpoints.read);
+            if (readQueueIds.length > 0) {
+              console.log(`[NodeSettingsDialog] Found read queues that could be parent nodes:`, readQueueIds);
+              // Add read queues as parent nodes if not already included
+              readQueueIds.forEach(queueId => {
+                if (!baseData.parentNodes.includes(queueId)) {
+                  baseData.parentNodes.push(queueId);
+                }
+              });
+            }
+          }
+          
+          // Extract child nodes from write queues
+          if (botDetails.checkpoints.write) {
+            const writeQueueIds = Object.keys(botDetails.checkpoints.write);
+            if (writeQueueIds.length > 0) {
+              console.log(`[NodeSettingsDialog] Found write queues that could be child nodes:`, writeQueueIds);
+              // Add write queues as child nodes if not already included
+              writeQueueIds.forEach(queueId => {
+                if (!baseData.childNodes.includes(queueId)) {
+                  baseData.childNodes.push(queueId);
+                }
+              });
+            }
+          }
+        }
+      }
+      
+      // Try to get relationship data from dashboard data as a last resort
+      if (dashboardData && dashboardData.nodes) {
+        // Try to find the node in the dashboard data
+        const nodeStats = dashboardData.nodes[currentNodeId];
+        if (nodeStats) {
+          console.log(`[NodeSettingsDialog] Found node in dashboard data:`, nodeStats);
+          
+          if (nodeStats.link_to) {
+            console.log(`[NodeSettingsDialog] Found link_to data for bot in dashboard data:`, nodeStats.link_to);
+            
+            // Only add parent nodes if we haven't found any yet
+            if (baseData.parentNodes.length === 0 && nodeStats.link_to.parent) {
+              baseData.parentNodes = nodeStats.link_to.parent;
+            }
+            
+            // Only add child nodes if we haven't found any yet
+            if (baseData.childNodes.length === 0 && nodeStats.link_to.children) {
+              baseData.childNodes = nodeStats.link_to.children;
+            }
+          }
+          
+          // Check for other relationship properties in dashboard data
+          if (nodeStats.parent_nodes && baseData.parentNodes.length === 0) {
+            console.log(`[NodeSettingsDialog] Found parent_nodes in dashboard data:`, nodeStats.parent_nodes);
+            baseData.parentNodes = Array.isArray(nodeStats.parent_nodes) ? nodeStats.parent_nodes : [nodeStats.parent_nodes];
+          }
+          
+          if (nodeStats.child_nodes && baseData.childNodes.length === 0) {
+            console.log(`[NodeSettingsDialog] Found child_nodes in dashboard data:`, nodeStats.child_nodes);
+            baseData.childNodes = Array.isArray(nodeStats.child_nodes) ? nodeStats.child_nodes : [nodeStats.child_nodes];
+          }
+        } else {
+          console.log(`[NodeSettingsDialog] Node not found in dashboard data nodes`);
+        }
+      }
+      
+      // Check if we found any relationships
+      console.log(`[NodeSettingsDialog] Final parent nodes for ${currentNodeId}:`, baseData.parentNodes);
+      console.log(`[NodeSettingsDialog] Final child nodes for ${currentNodeId}:`, baseData.childNodes);
     }
     
     // Add dashboard stats if available
@@ -343,6 +493,29 @@ export default function NodeSettingsDialog({ nodeId }: NodeSettingsDialogProps) 
       ...statsData
     };
   }, [currentNodeId, nodeType, botDetails, queueDetails, systemDetails, dashboardData]);
+  
+  // Log the final nodeData object
+  useEffect(() => {
+    if (nodeData) {
+      console.log('[NodeSettingsDialog] Final nodeData object:', {
+        id: nodeData.id,
+        type: nodeData.type,
+        parentNodes: nodeData.parentNodes,
+        childNodes: nodeData.childNodes
+      });
+      
+      // Check if navigation buttons should be visible
+      const hasParentNodes = Array.isArray(nodeData.parentNodes) && nodeData.parentNodes.length > 0;
+      const hasChildNodes = Array.isArray(nodeData.childNodes) && nodeData.childNodes.length > 0;
+      
+      console.log('[NodeSettingsDialog] Navigation visibility:', {
+        hasParentNodes,
+        hasChildNodes,
+        parentNodesCount: hasParentNodes ? nodeData.parentNodes.length : 0,
+        childNodesCount: hasChildNodes ? nodeData.childNodes.length : 0
+      });
+    }
+  }, [nodeData]);
   
   // Handle time period change
   const handleTimePeriodChange = (period: TimePeriod) => {
