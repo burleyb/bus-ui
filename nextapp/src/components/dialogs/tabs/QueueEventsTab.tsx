@@ -23,6 +23,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { awsNativeFetch } from '@/lib/authUtils';
+import JSONEditorComponent from '@/components/json/JSONEditorComponent';
 
 interface QueueEventsTabProps {
   nodeData: any;
@@ -178,9 +179,10 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
   eventId,
   event
 }) => {
-  const [payloadJson, setPayloadJson] = useState<string>('');
+  const [payloadData, setPayloadData] = useState<any>(null);
   const [isValid, setIsValid] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [editorMode, setEditorMode] = useState<'tree' | 'code' | 'form' | 'text'>('code');
 
   // Initialize payload when dialog opens
   useEffect(() => {
@@ -191,37 +193,33 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
           ...event.payload,
           original_eid: eventId
         };
-        setPayloadJson(JSON.stringify(enhancedPayload, null, 2));
+        setPayloadData(enhancedPayload);
         setIsValid(true);
         setErrorMessage('');
       } catch (error) {
         console.error('Error formatting payload:', error);
-        setPayloadJson(JSON.stringify(event.payload || {}, null, 2));
+        setPayloadData(event.payload || {});
       }
     }
   }, [event, eventId]);
 
-  // Validate JSON when it changes
-  const handleJsonChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value;
-    setPayloadJson(value);
-    
-    try {
-      JSON.parse(value);
-      setIsValid(true);
-      setErrorMessage('');
-    } catch (error) {
-      setIsValid(false);
-      setErrorMessage(error instanceof Error ? error.message : 'Invalid JSON');
-    }
+  // Handle payload change
+  const handlePayloadChange = (data: any) => {
+    setPayloadData(data);
+    setIsValid(true);
+    setErrorMessage('');
+  };
+
+  // Handle editor errors
+  const handleEditorError = (error: Error) => {
+    setIsValid(false);
+    setErrorMessage(error.message);
   };
 
   const handleResubmit = async () => {
-    if (!isValid) return;
+    if (!isValid || !payloadData) return;
     
     try {
-      const payload = JSON.parse(payloadJson);
-      
       // Extract botId from queueId
       const botIdPart = queueId.split(':')[1];
       const botId = botIdPart ? `bot:${botIdPart}` : '';
@@ -229,7 +227,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
       const data = {
         botId: botId,
         queue: queueId,
-        payload: payload
+        payload: payloadData
       };
       
       console.log('Resubmitting with data:', data);
@@ -250,7 +248,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
       const responseData = await response.json();
       console.log('Event resubmitted successfully:', responseData);
       
-      alert(`Event has been resubmitted to ${queueId}`);
+      alert(`Event has been resubmitted to queue ${queueId}`);
       onClose();
     } catch (error) {
       console.error('Error resubmitting event:', error);
@@ -260,32 +258,51 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-[750px] sm:max-h-[80vh]">
         <DialogHeader>
           <DialogTitle>Resubmit Event</DialogTitle>
         </DialogHeader>
         <div className="space-y-6 p-4">
           <div>
             <p className="text-gray-700 dark:text-gray-300 mb-2">
-              You are about to resubmit this event to queue <span className="font-mono font-medium">{queueId}</span>.
+              You are about to resubmit event <span className="font-mono font-medium">{eventId}</span> to queue <span className="font-mono font-medium">{queueId}</span>.
             </p>
             <p className="text-gray-700 dark:text-gray-300">
-              You can edit the event payload before resubmitting:
+              You can modify the payload before resubmitting:
             </p>
           </div>
           
-          <div>
-            <label htmlFor="payload-editor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Event Payload
-            </label>
-            <textarea
-              id="payload-editor"
-              value={payloadJson}
-              onChange={handleJsonChange}
-              className={`w-full h-96 font-mono text-sm rounded-md border 
-                        bg-white dark:bg-gray-800 px-3 py-2 focus:outline-none 
-                        focus:ring-2 focus:ring-blue-500 ${!isValid ? 'border-red-500' : 'border-gray-300 dark:border-gray-700'}`}
-            />
+          <div className="flex flex-col h-[450px]">
+            <div className="flex justify-between items-center mb-2">
+              <label htmlFor="payload-editor" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Event Payload
+              </label>
+              {/* Editor Mode Selector */}
+              <div className="flex space-x-1">
+                {['code', 'tree', 'form', 'text'].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setEditorMode(m as any)}
+                    className={`text-xs px-2 py-0.5 rounded ${
+                      editorMode === m
+                        ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                        : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    {m.charAt(0).toUpperCase() + m.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex-1 rounded-md overflow-hidden border border-gray-300 dark:border-gray-700">
+              <JSONEditorComponent 
+                data={payloadData}
+                mode={editorMode}
+                height="100%"
+                onChange={handlePayloadChange}
+                onError={handleEditorError}
+              />
+            </div>
             {!isValid && (
               <p className="text-sm text-red-500 mt-1">{errorMessage}</p>
             )}
@@ -293,7 +310,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
           
           <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md">
             <p className="text-sm text-yellow-800 dark:text-yellow-300">
-              <strong>Note:</strong> Resubmitting an event will create a new copy in the queue with a new event ID.
+              <strong>Note:</strong> Resubmitting an event creates a new copy. Make sure to update any IDs/timestamps to avoid duplicates.
             </p>
           </div>
 
@@ -345,6 +362,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   const [dialogEventId, setDialogEventId] = useState<string>('');
   const [botOptions, setBotOptions] = useState<Array<{id: string, name: string}>>([]);
   const [isLoadingBots, setIsLoadingBots] = useState(false);
+  const [jsonEditorMode, setJsonEditorMode] = useState<'tree' | 'code' | 'form' | 'view' | 'text'>('tree');
 
   // Calculate the EID based on selected time range or custom date
   const eid = useMemo(() => {
@@ -624,6 +642,25 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     });
   };
   
+  const handleJsonChange = (data: any) => {
+    // Handle JSON change in the editor
+    if (!selectedEventId || !data) return;
+
+    // Find and update the event in our cached events array
+    const updatedEvents = cachedEvents.map(event => {
+      if ((event.eventId === selectedEventId || event.eid === selectedEventId)) {
+        return {
+          ...event,
+          payload: data
+        };
+      }
+      return event;
+    });
+
+    // Update the cached events with the modified data
+    setCachedEvents(updatedEvents);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col space-y-2">
@@ -710,8 +747,8 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
         <div>Searching queue: {queueId} | EID: {resumptionToken || eid.substring(0, 20)}...{searchText && ` | Search: "${searchText}"`}</div>
         <div>Events found: {events.length}{resumptionToken && ' | More events available'}</div>
         {lastQueryFailed && <div className="text-amber-500">Last query returned no results. Try adjusting your search parameters.</div>}
-          </div>
-          
+      </div>
+      
       {/* Split view layout */}
       <div className="flex h-[calc(100vh-300px)] min-h-[500px] border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
         {/* Left half - Events table */}
@@ -724,11 +761,11 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
           ) : isError ? (
             <div className="flex items-center justify-center h-full text-red-500 dark:text-red-400">
               <p>Error loading events. Please try again.</p>
-          </div>
+            </div>
           ) : events.length === 0 ? (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
               <p>{lastQueryFailed ? "Query returned no results. Try adjusting your search parameters." : "No events found."}</p>
-        </div>
+            </div>
           ) : (
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-800 sticky top-0 z-10">
@@ -775,47 +812,70 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                             onClick={() => handleTraceEvent(eventId)}
                           >
                             <Zap size={16} />
-                    </button>
-                        <button
+                          </button>
+                          <button
                             title="Replay from this event" 
                             className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
                             onClick={() => handleReplayEvent(eventId)}
                           >
                             <RotateCw size={16} />
-                        </button>
-                        <button
+                          </button>
+                          <button
                             title="Resubmit this event" 
                             className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-300"
                             onClick={() => handleResubmitEvent(eventId)}
                           >
                             <Target size={16} />
-                        </button>
-                      </div>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
-                  )}
-                </div>
+          )}
+        </div>
         
         {/* Right half - Payload viewer */}
         <div className="w-1/2 overflow-auto bg-gray-50 dark:bg-gray-800">
           {selectedEvent ? (
             <div className="p-4 h-full flex flex-col">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Event Payload
-              </h3>
-              <pre className="bg-white dark:bg-gray-900 p-4 rounded-md text-xs overflow-auto font-mono text-gray-800 dark:text-gray-200 flex-1">
-                {JSON.stringify(selectedEvent.payload, null, 2)}
-              </pre>
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Event Payload
+                </h3>
+                {/* Mode Selector */}
+                <div className="flex space-x-1">
+                  {['tree', 'code', 'form', 'view', 'text'].map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setJsonEditorMode(m as any)}
+                      className={`text-xs px-2 py-0.5 rounded ${
+                        jsonEditorMode === m
+                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 rounded-md overflow-hidden">
+                <JSONEditorComponent 
+                  data={selectedEvent.payload}
+                  mode={jsonEditorMode}
+                  height="100%"
+                  onChange={handleJsonChange}
+                />
+              </div>
             </div>
           ) : (
             <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
               <p>Select an event to view its payload</p>
-          </div>
-        )}
+            </div>
+          )}
         </div>
       </div>
       
