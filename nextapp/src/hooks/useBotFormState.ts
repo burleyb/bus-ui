@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { z } from 'zod';
 import { useToast } from '@/components/ui/toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { API } from '@/context/ApiContext';
+import { API } from '@/lib/api';
 import { BotData } from '@/types/bot';
 
 // Define the form schema
@@ -61,14 +61,18 @@ export type BotFormSubmitData = {
   name: string;
   description: string | null;
   tags: string | null;
-  time?: string;
-  eventStreamQueue?: string;
+  time?: string | null;
+  triggers?: {
+    event_source_id: string;
+  }[] | null;
   health: {
     source_lag: number | null;
     write_lag: number | null;
     error_limit: number | null;
     consecutive_errors: number | null;
   };
+  // Preserve other keys from the original data
+  [key: string]: any;
 };
 
 /**
@@ -87,77 +91,93 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
   // Reset form when bot data changes
   useEffect(() => {
     if (botData) {
+      console.log("[DEBUG] Bot data changed in useBotFormState, resetting form. isDirty:", isDirty);
       setValues(getInitialValues(botData));
       setErrors({});
       setIsDirty(false);
     }
   }, [botData]);
 
-  // Save bot mutation
-  const saveBotMutation = useMutation({
-    mutationFn: (data: BotFormSubmitData) => API.saveCron(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['botDetails', botData?.id] });
+  // Save mutations
+  const saveExecutionSettingsMutation = useMutation({
+    mutationFn: (data: any) => API.saveNodeSettings(data.id, data),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['cron', botData?.id] });
       addToast({
-        title: 'Success',
-        message: 'Bot updated successfully',
+        title: "Bot execution settings saved",
+        description: "Bot execution settings have been saved successfully",
         type: 'success',
       });
-      setIsDirty(false);
     },
-    onError: (error) => {
-      console.error('Error saving bot:', error);
+    onError: (error: Error) => {
       addToast({
-        title: 'Error',
-        message: 'Failed to update bot. Please try again.',
+        title: "Error saving bot execution settings",
+        description: error.message || "An error occurred while saving the bot execution settings",
         type: 'error',
       });
-    },
+    }
   });
 
-  // Archive/unarchive mutations
-  const archiveBotMutation = useMutation({
-    mutationFn: (id: string) => API.saveCron({ id, archived: true, paused: true }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['botDetails', botData?.id] });
+  const saveMetadataMutation = useMutation({
+    mutationFn: (data: any) => API.saveNodeSettings(data.id, data),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['cron', botData?.id] });
       addToast({
-        title: 'Success',
-        message: 'Bot archived successfully',
+        title: "Bot metadata saved",
+        description: "Bot metadata has been saved successfully",
         type: 'success',
       });
     },
-    onError: (error) => {
-      console.error('Error archiving bot:', error);
+    onError: (error: Error) => {
       addToast({
-        title: 'Error',
-        message: 'Failed to archive bot. Please try again.',
+        title: "Error saving bot metadata",
+        description: error.message || "An error occurred while saving the bot metadata",
         type: 'error',
       });
-    },
+    }
   });
 
-  const unarchiveBotMutation = useMutation({
-    mutationFn: (id: string) => API.saveCron({ id, archived: false }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['botDetails', botData?.id] });
+  const archiveMutation = useMutation({
+    mutationFn: (data: any) => API.saveNodeSettings(data.id, { archived: true, paused: true }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['cron', botData?.id] });
       addToast({
-        title: 'Success',
-        message: 'Bot unarchived successfully',
+        title: "Bot archived",
+        description: "Bot has been archived successfully",
         type: 'success',
       });
     },
-    onError: (error) => {
-      console.error('Error unarchiving bot:', error);
+    onError: (error: Error) => {
       addToast({
-        title: 'Error',
-        message: 'Failed to unarchive bot. Please try again.',
+        title: "Error archiving bot",
+        description: error.message || "An error occurred while archiving the bot",
         type: 'error',
       });
+    }
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: (data: any) => API.saveNodeSettings(data.id, { archived: false }),
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ['cron', botData?.id] });
+      addToast({
+        title: "Bot unarchived",
+        description: "Bot has been unarchived successfully",
+        type: 'success',
+      });
     },
+    onError: (error: Error) => {
+      addToast({
+        title: "Error unarchiving bot",
+        description: error.message || "An error occurred while unarchiving the bot",
+        type: 'error',
+      });
+    }
   });
 
   // Form value setter
   const setValue = <K extends keyof BotFormValues>(key: K, value: BotFormValues[K]) => {
+    console.log(`[DEBUG] Setting form value ${String(key)}:`, value);
     setValues(prev => ({ ...prev, [key]: value }));
     setIsDirty(true);
     
@@ -211,13 +231,25 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
     }
   };
 
+  // Convert minutes to milliseconds
+  const minutesToMs = (minutes?: number): number | null => {
+    if (minutes === undefined) return null;
+    return minutes * 60 * 1000;
+  };
+
+  // Convert percentage to decimal
+  const percentToDecimal = (percent?: number): number | null => {
+    if (percent === undefined) return null;
+    return percent / 100;
+  };
+
   // Form submission
   const handleSubmit = async () => {
     if (!botData?.id) {
       console.error('Bot ID is required for saving');
       addToast({
         title: 'Error',
-        message: 'Bot ID is required for saving',
+        description: 'Bot ID is required for saving',
         type: 'error',
       });
       return;
@@ -226,34 +258,59 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
     if (!validate()) {
       addToast({
         title: 'Validation Error',
-        message: 'Please fix the errors in the form',
+        description: 'Please fix the errors in the form',
         type: 'error',
       });
       return;
     }
 
-    // Prepare form data for submission
+    // Create a copy of the original bot data to preserve any fields we don't change
     const formData: BotFormSubmitData = {
+      ...botData,
       id: botData.id,
       name: values.name,
       description: values.description || null,
       tags: values.tags || null,
       health: {
-        source_lag: values.overrides.sourceLagEnabled ? values.overrides.sourceLag || null : null,
-        write_lag: values.overrides.writeLagEnabled ? values.overrides.writeLag || null : null,
-        error_limit: values.overrides.errorLimitEnabled ? values.overrides.errorLimit || null : null,
+        source_lag: values.overrides.sourceLagEnabled ? minutesToMs(values.overrides.sourceLag) : null,
+        write_lag: values.overrides.writeLagEnabled ? minutesToMs(values.overrides.writeLag) : null,
+        error_limit: values.overrides.errorLimitEnabled ? percentToDecimal(values.overrides.errorLimit) : null,
         consecutive_errors: values.overrides.consecutiveErrorsEnabled ? values.overrides.consecutiveErrors || null : null,
       },
     };
 
-    // Add trigger-specific fields
+    // Handle trigger type
     if (values.triggerType === 'scheduled') {
-      formData.time = values.cronSchedule;
+      formData.time = values.cronSchedule || null;
+      formData.triggers = null;
     } else if (values.triggerType === 'event-stream') {
-      formData.eventStreamQueue = values.eventStreamQueue;
+      formData.time = null;
+      formData.triggers = values.eventStreamQueue ? [{ event_source_id: values.eventStreamQueue }] : null;
+    } else {
+      // Not scheduled - both should be null
+      formData.time = null;
+      formData.triggers = null;
     }
 
-    await saveBotMutation.mutateAsync(formData);
+    // Filter out unchanged data to reduce payload size
+    // This is important to avoid sending stale data
+    const cleanedData = Object.entries(formData).reduce((acc, [key, value]) => {
+      if (
+        key === 'id' || 
+        key === 'name' || 
+        key === 'description' || 
+        key === 'tags' || 
+        key === 'time' || 
+        key === 'triggers' || 
+        key === 'health' || 
+        key === 'lambda'
+      ) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {} as Record<string, any>);
+
+    await saveExecutionSettingsMutation.mutateAsync(cleanedData as BotFormSubmitData);
   };
 
   // Reset form to initial values
@@ -269,12 +326,12 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
       console.error('Bot ID is required for archiving');
       addToast({
         title: 'Error',
-        message: 'Bot ID is required for archiving',
+        description: 'Bot ID is required for archiving',
         type: 'error',
       });
       return;
     }
-    await archiveBotMutation.mutateAsync(botData.id);
+    await archiveMutation.mutateAsync(botData);
   };
 
   // Unarchive bot function
@@ -283,19 +340,19 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
       console.error('Bot ID is required for unarchiving');
       addToast({
         title: 'Error',
-        message: 'Bot ID is required for unarchiving',
+        description: 'Bot ID is required for unarchiving',
         type: 'error',
       });
       return;
     }
-    await unarchiveBotMutation.mutateAsync(botData.id);
+    await unarchiveMutation.mutateAsync(botData);
   };
 
   return {
     values,
     errors,
     isDirty,
-    isSubmitting: saveBotMutation.isPending || archiveBotMutation.isPending || unarchiveBotMutation.isPending,
+    isSubmitting: saveExecutionSettingsMutation.isPending || archiveMutation.isPending || unarchiveMutation.isPending,
     setValue,
     setNestedValue,
     validate,
@@ -330,8 +387,12 @@ function getInitialValues(botData: BotData | null): BotFormValues {
   }
 
   // Determine trigger type
-  const isScheduled = !!botData.time;
-  const triggerType = isScheduled ? 'scheduled' : 'event-stream';
+  let triggerType: 'scheduled' | 'event-stream' = 'scheduled';
+  if (botData.triggers && botData.triggers.length > 0 && botData.triggers[0].event_source_id) {
+    triggerType = 'event-stream';
+  } else if (botData.time) {
+    triggerType = 'scheduled';
+  }
 
   // Parse the health overrides
   const health = botData.health || {
@@ -339,6 +400,18 @@ function getInitialValues(botData: BotData | null): BotFormValues {
     write_lag: null,
     error_limit: null,
     consecutive_errors: null,
+  };
+
+  // Convert milliseconds to minutes for display
+  const msToMinutes = (ms: number | null): number | undefined => {
+    if (ms === null) return undefined;
+    return Math.round(ms / (60 * 1000));
+  };
+
+  // Convert decimal to percentage for display
+  const decimalToPercent = (decimal: number | null): number | undefined => {
+    if (decimal === null) return undefined;
+    return decimal * 100;
   };
 
   return {
@@ -350,11 +423,11 @@ function getInitialValues(botData: BotData | null): BotFormValues {
     eventStreamQueue: botData.triggers?.[0]?.event_source_id || '',
     overrides: {
       sourceLagEnabled: health.source_lag !== null,
-      sourceLag: health.source_lag !== null ? health.source_lag : undefined,
+      sourceLag: msToMinutes(health.source_lag),
       writeLagEnabled: health.write_lag !== null,
-      writeLag: health.write_lag !== null ? health.write_lag : undefined,
+      writeLag: msToMinutes(health.write_lag),
       errorLimitEnabled: health.error_limit !== null,
-      errorLimit: health.error_limit !== null ? health.error_limit : undefined,
+      errorLimit: decimalToPercent(health.error_limit),
       consecutiveErrorsEnabled: health.consecutive_errors !== null,
       consecutiveErrors: health.consecutive_errors !== null ? health.consecutive_errors : undefined,
     },

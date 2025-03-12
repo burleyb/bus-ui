@@ -671,6 +671,8 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
                     {nodeType === 'bot' && (
                       <BotSettingsTab 
                         nodeData={nodeData as unknown as BotData} 
+                        onTabChangeRequest={(callback) => setTabChangeCallback(callback)}
+                        onCloseRequest={(callback) => setCloseCallback(callback)}
                       />
                     )}
                     {nodeType === 'queue' && <QueueSettingsTab nodeData={nodeData} />}
