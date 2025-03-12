@@ -11,7 +11,11 @@ import {
   Target,
   ChevronRightCircle
 } from 'lucide-react';
-import { useSearchQueueEvents } from '@/context/ApiContext';
+import { 
+  useSearchQueueEvents,
+  useEventReplay,
+  useEventResubmit
+} from '@/context/ApiContext';
 import { 
   formatDateToEid, 
   getEidForTimeRange, 
@@ -58,6 +62,7 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
   botOptions
 }) => {
   const [selectedBotId, setSelectedBotId] = useState<string>('');
+  const replayMutation = useEventReplay();
   
   // Select first bot when options load or change
   useEffect(() => {
@@ -74,20 +79,12 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
     try {
       console.log(`Replaying event ${eventId} from queue ${queueId} to bot ${selectedBotId}`);
       
-      // Use existing checkpoint API
-      const response = await awsNativeFetch(`/api/checkpoint/${selectedBotId}/${queueId}/${eventId}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+      // Use the mutation hook from ApiContext
+      await replayMutation.mutateAsync({
+        botId: selectedBotId,
+        queueId: queueId,
+        eventId: eventId
       });
-      
-      if (!response.ok) {
-        throw new Error(`Error setting checkpoint: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('Checkpoint set successfully:', data);
       
       alert(`Event will be replayed to ${selectedBotId}`);
       onClose();
@@ -189,6 +186,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
   const [isValid, setIsValid] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [editorMode, setEditorMode] = useState<'tree' | 'code' | 'view'>('code');
+  const resubmitMutation = useEventResubmit();
 
   // Initialize payload when dialog opens
   useEffect(() => {
@@ -238,21 +236,8 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
       
       console.log('Resubmitting with data:', data);
       
-      // Use the existing cron/save endpoint to resubmit
-      const response = await awsNativeFetch('/api/cron/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(data)
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Error resubmitting event: ${response.status}`);
-      }
-      
-      const responseData = await response.json();
-      console.log('Event resubmitted successfully:', responseData);
+      // Use the mutation hook from ApiContext
+      await resubmitMutation.mutateAsync(data);
       
       alert(`Event has been resubmitted to queue ${queueId}`);
       onClose();
@@ -957,7 +942,10 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
         {response.resumptionToken && (
           <button
             onClick={() => {
-              // Implement load more logic here
+              if (response.resumptionToken) {
+                setIsLoadingMore(true);
+                console.log(`Loading more events with token: ${response.resumptionToken}`);
+              }
             }}
             className="ml-auto flex items-center px-3 py-1.5 text-xs font-medium 
                      rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100

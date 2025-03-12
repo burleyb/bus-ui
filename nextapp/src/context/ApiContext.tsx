@@ -472,6 +472,40 @@ const API = {
       throw error;
     }
   },
+
+  // Queue Events related functions
+  replayEvent: async (botId: string, queueId: string, eventId: string) => {
+    const url = `/api/checkpoint/${botId}/${queueId}/${eventId}`;
+    
+    const response = await awsNativeFetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error setting checkpoint: ${response.status}`);
+    }
+    
+    return await response.json();
+  },
+  
+  resubmitEvent: async (data: { botId: string, queue: string, payload: any }) => {
+    const response = await awsNativeFetch('/api/cron/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Error resubmitting event: ${response.status}`);
+    }
+    
+    return await response.json();
+  },
 };
 
 // Create provider
@@ -1689,6 +1723,37 @@ export function useBotForceRun() {
       });
       
       console.log(`Bot ${variables.id} force run initiated`);
+    }
+  });
+}
+
+// Hook for replaying events
+export function useEventReplay() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: { botId: string; queueId: string; eventId: string }) => 
+      API.replayEvent(data.botId, data.queueId, data.eventId),
+    onSuccess: (data, variables) => {
+      // Invalidate the bot details query to refresh the data
+      queryClient.invalidateQueries({
+        queryKey: ['bot-details', variables.botId]
+      });
+      
+      console.log(`Event ${variables.eventId} from queue ${variables.queueId} replayed to bot ${variables.botId}`);
+      return data;
+    }
+  });
+}
+
+// Hook for resubmitting events
+export function useEventResubmit() {
+  return useMutation({
+    mutationFn: (data: { botId: string; queue: string; payload: any }) => 
+      API.resubmitEvent(data),
+    onSuccess: (data, variables) => {
+      console.log(`Event resubmitted to queue ${variables.queue}`);
+      return data;
     }
   });
 }
