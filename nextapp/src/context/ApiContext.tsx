@@ -288,6 +288,89 @@ const API = {
   getNodeConnections: async (nodeId: string) => {
     return fetchAndParse(`/api/connections/${nodeId}`);
   },
+
+  // Queue Settings related
+  saveQueueSettings: async (queueId: string, settings: any) => {
+    if (!queueId) {
+      console.error('No queueId provided for saveQueueSettings');
+      throw new Error('No queue ID provided');
+    }
+
+    const url = '/api/eventsettings/save';
+    
+    // Format payload according to the eventsettings API requirement
+    const payload = {
+      id: queueId,
+      name: settings.name || queueId.split(':').pop() || queueId,
+      min_kinesis_number: settings.min_kinesis_number || settings.minCheckpointNumber || 'z/',
+      other: {
+        tags: settings.tags || settings.other?.tags || ''
+      },
+      archived: settings.archived || undefined
+    };
+
+    // Handle tags - could be directly in settings or in settings.other
+    if (settings.tags !== undefined && settings.tags !== '') {
+      // If we're using the new structure, add tags directly to the root
+      payload.other.tags = settings.tags;
+    } else if (settings.other?.tags !== undefined) {
+      // If using the old structure, get tags from other
+      payload.other.tags = settings.other.tags;
+    } else {
+      // Default to empty string
+      payload.other.tags = '';
+    }
+
+    // Add archived field directly if it exists
+    if (settings.archived !== undefined) {
+      payload.archived = settings.archived;
+    }
+
+    console.log(`[DEBUG] saveQueueSettings payload:`, payload);
+
+    try {
+      console.log(`Saving queue settings for ${queueId}:`, payload);
+      
+      const response = await awsNativeFetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        // Try to get the detailed error message
+        let errorText;
+        try {
+          // Try to parse as JSON first
+          const errorJson = await response.json();
+          errorText = errorJson.message || errorJson.error || JSON.stringify(errorJson);
+        } catch (e) {
+          // If not JSON, get as text
+          errorText = await response.text();
+        }
+        
+        console.error(`Failed to save queue settings for ${queueId}: ${response.status} ${response.statusText}`, errorText);
+        throw new Error(errorText || `Failed to save queue settings: ${response.statusText}`);
+      }
+
+      // Try to get the successful response body if available
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        // If no JSON response, just create a success object
+        data = { success: true };
+      }
+
+      console.log('Queue settings saved successfully for', queueId);
+      return { ok: true, data };
+    } catch (error) {
+      console.error('Error saving queue settings:', error);
+      throw error;
+    }
+  },
 };
 
 // Create provider
@@ -1203,7 +1286,7 @@ export function useQueueDetails(queueId: string) {
             max_eid: data.max_eid,
             v: data.v,
             timestamp: data.timestamp,
-            tags: data.tags || '',
+            tags: data.tags || data.other?.tags || '',
             // Keep any other fields that might be present
             ...data
           };
@@ -1220,7 +1303,11 @@ export function useQueueDetails(queueId: string) {
           const basicInfo = state.nodes[queueId];
           if (basicInfo && Object.keys(basicInfo).length > 0) {
             console.log('Using basic queue info from state');
-            return { ...basicInfo, _fromFallback: true, _jsonParseError: true };
+            return {
+              ...basicInfo,
+              _fromFallback: true,
+              _jsonParseError: true
+            };
           }
           
           // Create minimal data if nothing else is available
@@ -1720,5 +1807,23 @@ export function useEventDetails(queueId: string, eventId: string) {
     queryKey: ['eventDetails', queueId, eventId],
     queryFn: () => API.getEventDetails(queueId, eventId),
     enabled: !!queueId && !!eventId
+  });
+}
+
+// Hook for saving queue settings
+export function useSaveQueueSettings() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (data: { queueId: string; settings: any }) => 
+      API.saveQueueSettings(data.queueId, data.settings),
+    onSuccess: (_, variables) => {
+      // Invalidate the queue details query to refresh the data
+      queryClient.invalidateQueries({
+        queryKey: ['queue-details', variables.queueId]
+      });
+      
+      console.log(`Queue ${variables.queueId} settings updated`);
+    }
   });
 }

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { useToast } from '@/components/ui/toast';
 import { useRouter } from 'next/navigation';
 import { useMutation } from '@tanstack/react-query';
-import { saveQueueSettings } from '@/utils/api';
+import { useSaveQueueSettings } from '@/context/ApiContext';
 import { NodeData } from '@/types/node';
 
 // Define the schema for queue form validation
@@ -104,6 +104,9 @@ export function useQueueFormState(nodeData: NodeData | null) {
   const [isDirty, setIsDirty] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Get the saveQueueSettings mutation from ApiContext
+  const saveQueueSettingsMutation = useSaveQueueSettings();
+
   // Reset form if queue data changes and form is not dirty
   useEffect(() => {
     // Only run this effect if queueData exists
@@ -171,30 +174,6 @@ export function useQueueFormState(nodeData: NodeData | null) {
     setIsDirty(true);
   }, []);
 
-  // Use react-query for mutation
-  const { mutateAsync: saveQueueSettingsMutation } = useMutation({
-    mutationFn: async (data: { queueId: string; settings: any }) => {
-      return saveQueueSettings(data.queueId, data.settings);
-    },
-    onSuccess: () => {
-      addToast({
-        title: 'Success',
-        description: 'Queue settings saved successfully',
-        type: 'success',
-      });
-      setIsDirty(false);
-      // Refresh page data
-      router.refresh();
-    },
-    onError: (error: any) => {
-      addToast({
-        title: 'Error',
-        description: error?.message || 'Failed to save queue settings',
-        type: 'error',
-      });
-    },
-  });
-
   // Submit the form
   const handleSubmit = async () => {
     console.log('[DEBUG] Submitting form with values:', values);
@@ -223,15 +202,31 @@ export function useQueueFormState(nodeData: NodeData | null) {
 
       console.log('[DEBUG] Saving queue settings:', settings);
       
-      // Call the API
-      await saveQueueSettingsMutation({
+      // Call the API through the context mutation
+      await saveQueueSettingsMutation.mutateAsync({
         queueId: queueData.id,
         settings,
       });
 
+      // Add success toast
+      addToast({
+        title: 'Success',
+        description: 'Queue settings saved successfully',
+        type: 'success',
+      });
+      setIsDirty(false);
+      // Refresh page data
+      router.refresh();
+
       console.log('[DEBUG] Queue settings saved successfully');
     } catch (error) {
       console.error('Error saving queue settings:', error);
+      // Add error toast
+      addToast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save queue settings',
+        type: 'error',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -251,12 +246,26 @@ export function useQueueFormState(nodeData: NodeData | null) {
 
     setIsSubmitting(true);
     try {
-      await saveQueueSettingsMutation({
+      await saveQueueSettingsMutation.mutateAsync({
         queueId: queueData.id,
         settings: { archived: true }
       });
+
+      // Add success toast
+      addToast({
+        title: 'Success',
+        description: 'Queue archived successfully',
+        type: 'success',
+      });
+      router.refresh();
     } catch (error) {
       console.error('Error archiving queue:', error);
+      // Add error toast
+      addToast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to archive queue',
+        type: 'error',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -268,12 +277,26 @@ export function useQueueFormState(nodeData: NodeData | null) {
 
     setIsSubmitting(true);
     try {
-      await saveQueueSettingsMutation({
+      await saveQueueSettingsMutation.mutateAsync({
         queueId: queueData.id,
         settings: { archived: false }
       });
+
+      // Add success toast
+      addToast({
+        title: 'Success',
+        description: 'Queue unarchived successfully',
+        type: 'success',
+      });
+      router.refresh();
     } catch (error) {
       console.error('Error unarchiving queue:', error);
+      // Add error toast
+      addToast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to unarchive queue',
+        type: 'error',
+      });
     } finally {
       setIsSubmitting(false);
     }
