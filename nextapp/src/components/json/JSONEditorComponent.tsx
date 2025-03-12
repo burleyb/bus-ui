@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import JSONEditor from 'jsoneditor';
 import 'jsoneditor/dist/jsoneditor.css';
 
@@ -14,13 +14,29 @@ interface JSONEditorComponentProps {
   className?: string;
   onError?: (error: Error) => void;
   allowedModes?: Array<'tree' | 'view' | 'form' | 'code' | 'text' | 'preview'>;
+  showMainMenu?: boolean;
+  showStatusBar?: boolean;
+}
+
+export interface JSONEditorHandle {
+  expandAll: () => void;
+  collapseAll: () => void;
+  compact: () => void;
+  focus: () => void;
+  get: () => any;
+  getMode: () => string;
+  set: (json: any) => void;
+  update: (json: any) => void;
+  setMode: (mode: string) => void;
+  destroy: () => void;
+  search: (text: string) => void;
 }
 
 /**
  * A React wrapper for the JSONEditor library
  * Provides a powerful interface for viewing and editing JSON data
  */
-const JSONEditorComponent: React.FC<JSONEditorComponentProps> = ({
+const JSONEditorComponent = forwardRef<JSONEditorHandle, JSONEditorComponentProps>(({
   data,
   onChange,
   mode = 'tree',
@@ -29,14 +45,88 @@ const JSONEditorComponent: React.FC<JSONEditorComponentProps> = ({
   width = '100%',
   className = '',
   onError,
-  allowedModes = ['tree', 'view', 'form', 'code', 'text']
-}) => {
+  allowedModes = ['tree', 'view', 'form', 'code', 'text'],
+  showMainMenu = true,
+  showStatusBar = true
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<JSONEditor | null>(null);
   const [prevReadOnly, setPrevReadOnly] = useState(readOnly);
   const [prevMode, setPrevMode] = useState(mode);
   const [initializing, setInitializing] = useState(true);
   const [dataString, setDataString] = useState<string>('');
+  
+  // Expose JSONEditor methods via the ref
+  useImperativeHandle(ref, () => ({
+    expandAll: () => editorRef.current?.expandAll(),
+    collapseAll: () => editorRef.current?.collapseAll(),
+    compact: () => editorRef.current?.compact(),
+    focus: () => editorRef.current?.focus(),
+    get: () => editorRef.current?.get(),
+    getMode: () => editorRef.current?.getMode(),
+    set: (json: any) => editorRef.current?.set(json),
+    update: (json: any) => editorRef.current?.update(json),
+    setMode: (mode: string) => editorRef.current?.setMode(mode),
+    destroy: () => editorRef.current?.destroy(),
+    search: (text: string) => {
+      // JSONEditor has different search implementations depending on the mode
+      if (!editorRef.current) return;
+      
+      try {
+        // The editor might be in different modes, and search works differently in each mode
+        const currentMode = editorRef.current.getMode();
+        
+        if (currentMode === 'code' || currentMode === 'text') {
+          // For code and text modes, search is implemented in the Ace editor
+          // @ts-ignore: Accessing internal _aceEditor property
+          const aceEditor = editorRef.current?._aceEditor;
+          if (aceEditor && text) {
+            aceEditor.find(text, {
+              backwards: false,
+              wrap: true,
+              caseSensitive: false,
+              wholeWord: false,
+              regExp: false
+            });
+          }
+        } else if (currentMode === 'tree' || currentMode === 'form' || currentMode === 'view') {
+          // For tree, form, and view modes, we need to find the searchBox element and set the value
+          // Then simulate an input event to trigger the search
+          // This is hacky but necessary because JSONEditor doesn't expose a direct search API
+          const container = containerRef.current;
+          if (container) {
+            const searchBox = container.querySelector('.jsoneditor-search input');
+            if (searchBox) {
+              // Set the value
+              (searchBox as HTMLInputElement).value = text;
+              
+              // Trigger the input event
+              const event = new Event('input', { bubbles: true });
+              searchBox.dispatchEvent(event);
+            } else {
+              // If search box isn't visible, try to show it first
+              // @ts-ignore: _onSearch might not be exposed in all versions
+              if (typeof editorRef.current._onSearch === 'function') {
+                // @ts-ignore
+                editorRef.current._onSearch();
+                // Try again after a short delay
+                setTimeout(() => {
+                  const searchBox = container.querySelector('.jsoneditor-search input');
+                  if (searchBox) {
+                    (searchBox as HTMLInputElement).value = text;
+                    const event = new Event('input', { bubbles: true });
+                    searchBox.dispatchEvent(event);
+                  }
+                }, 50);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error during search:', error);
+      }
+    }
+  }), [editorRef.current]);
   
   // Compare data objects to check if they're equal
   const isDataEqual = useCallback((a: any, b: any) => {
@@ -99,9 +189,9 @@ const JSONEditorComponent: React.FC<JSONEditorComponentProps> = ({
               onError(error);
             }
           },
-          statusBar: true,
+          statusBar: showStatusBar,
           navigationBar: true,
-          mainMenuBar: true,
+          mainMenuBar: showMainMenu,
           readOnly
         };
         
@@ -212,9 +302,9 @@ const JSONEditorComponent: React.FC<JSONEditorComponentProps> = ({
               onError(error);
             }
           },
-          statusBar: true,
+          statusBar: showStatusBar,
           navigationBar: true,
-          mainMenuBar: true,
+          mainMenuBar: showMainMenu,
           readOnly
         };
         
@@ -246,6 +336,6 @@ const JSONEditorComponent: React.FC<JSONEditorComponentProps> = ({
       style={{ height, width }}
     />
   );
-};
+});
 
 export default JSONEditorComponent; 

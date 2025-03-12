@@ -19,3 +19,111 @@ body {
   background: var(--background);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Custom JSONEditor styles */
+.custom-json-editor .jsoneditor {
+  border: 1px solid #eaeaea;
+  border-radius: 0.375rem;
+  overflow: hidden;
+}
+
+.custom-json-editor .jsoneditor-menu {
+  display: none; /* Hide the main menu completely */
+}
+
+.custom-json-editor .jsoneditor-navigation-bar {
+  background-color: #f9fafb;
+  border-bottom: 1px solid #eaeaea;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #4b5563;
+}
+
+/* Dark mode support */
+.dark .custom-json-editor .jsoneditor {
+  border-color: #2d3748;
+}
+
+.dark .custom-json-editor .jsoneditor-navigation-bar {
+  background-color: #1f2937;
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+.dark .custom-json-editor .jsoneditor-statusbar {
+  background-color: #111827;
+  border-color: #374151;
+  color: #9ca3af;
+}
+
+/* General JSON editor improvements */
+.custom-json-editor .jsoneditor-tree {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+.dark .custom-json-editor .jsoneditor-tree {
+  background-color: #111827;
+  color: #f3f4f6;
+}
+
+.custom-json-editor .jsoneditor-tree button {
+  color: #4b5563;
+}
+
+.dark .custom-json-editor .jsoneditor-tree button {
+  color: #d1d5db;
+}
+
+/* Overwrite status bar styles */
+.custom-json-editor .jsoneditor-statusbar {
+  border-top: 1px solid #eaeaea;
+  background-color: #f9fafb;
+  font-size: 11px;
+  padding: 4px 8px;
+}
+
+/* JSON content styling */
+.custom-json-editor .jsoneditor-values {
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.custom-json-editor .jsoneditor-readonly {
+  opacity: 0.8;
+}
+
+/* Action button styles */
+.custom-json-editor-buttons {
+  display: flex;
+  gap: 4px;
+  border-right: 1px solid #eaeaea;
+  padding-right: 8px;
+  margin-right: 8px;
+}
+
+.dark .custom-json-editor-buttons {
+  border-color: #374151;
+}
+
+.custom-json-editor-button {
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  background-color: #f3f4f6;
+  color: #4b5563;
+  transition: background-color 0.2s;
+}
+
+.custom-json-editor-button:hover {
+  background-color: #e5e7eb;
+}
+
+.dark .custom-json-editor-button {
+  background-color: #1f2937;
+  color: #d1d5db;
+}
+
+.dark .custom-json-editor-button:hover {
+  background-color: #374151;
+}

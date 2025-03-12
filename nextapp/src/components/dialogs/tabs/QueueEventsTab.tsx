@@ -23,7 +23,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { awsNativeFetch } from '@/lib/authUtils';
-import JSONEditorComponent from '@/components/json/JSONEditorComponent';
+import JSONEditorComponent, { JSONEditorHandle } from '@/components/json/JSONEditorComponent';
 
 interface QueueEventsTabProps {
   nodeData: any;
@@ -188,7 +188,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
   const payloadDataRef = useRef<any>(null);
   const [isValid, setIsValid] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
-  const [editorMode, setEditorMode] = useState<'tree' | 'code' | 'form' | 'text'>('code');
+  const [editorMode, setEditorMode] = useState<'tree' | 'code' | 'view'>('code');
 
   // Initialize payload when dialog opens
   useEffect(() => {
@@ -285,7 +285,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
               </label>
               {/* Editor Mode Selector */}
               <div className="flex space-x-1">
-                {['code', 'tree', 'form', 'text'].map((m) => (
+                {['code', 'view', 'text'].map((m) => (
                   <button
                     key={m}
                     onClick={() => setEditorMode(m as any)}
@@ -357,6 +357,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [eventCount, setEventCount] = useState(0);
   const [lastQueryFailed, setLastQueryFailed] = useState(false);
   
@@ -365,7 +366,12 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   const [showResubmitDialog, setShowResubmitDialog] = useState(false);
   const [dialogEventId, setDialogEventId] = useState<string>('');
   const [botOptions, setBotOptions] = useState<Array<{id: string, name: string}>>([]);
-  const [jsonEditorMode, setJsonEditorMode] = useState<'tree' | 'view' | 'form' | 'code' | 'text'>('tree');
+  const [jsonEditorMode, setJsonEditorMode] = useState<'tree' | 'code' | 'view'>('code');
+  const editorRef = useRef<JSONEditorHandle>(null);
+  
+  // Refs for event list and keyboard navigation
+  const eventsContainerRef = useRef<HTMLDivElement>(null);
+  const eventRowsRef = useRef<{ [id: string]: HTMLTableRowElement }>({});
   
   // Calculate the EID based on selected time range or custom date
   const eid = useMemo(() => {
@@ -446,62 +452,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     setLastQueryFailed(response.results && Array.isArray(response.results) 
       ? response.results.length === 0 
       : true);
-    
-    // Auto-select first event when events load and none is currently selected
-    if (events.length > 0 && !selectedEventId && !isSearching) {
-      setSelectedEventId(events[0].eventId);
-    }
-  }, [events, selectedEventId, isSearching]);
-  
-  // Handle keyboard navigation with arrow keys
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Only proceed if we have events and something is selected
-      if (events.length === 0 || !selectedEventId) return;
-      
-      // Find current index
-      const currentIndex = events.findIndex(
-        (event: any) => event.eventId === selectedEventId || event.eid === selectedEventId
-      );
-      
-      if (currentIndex === -1) return;
-      
-      // Handle arrow keys
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        // Move to next event if not at the end
-        if (currentIndex < events.length - 1) {
-          setSelectedEventId(events[currentIndex + 1].eventId);
-          
-          // Find and scroll to the newly selected row if needed
-          const rows = document.querySelectorAll('tr[data-event-id]');
-          if (rows[currentIndex + 1]) {
-            (rows[currentIndex + 1] as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-          }
-        }
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        // Move to previous event if not at the beginning
-        if (currentIndex > 0) {
-          setSelectedEventId(events[currentIndex - 1].eventId);
-          
-          // Find and scroll to the newly selected row if needed
-          const rows = document.querySelectorAll('tr[data-event-id]');
-          if (rows[currentIndex - 1]) {
-            (rows[currentIndex - 1] as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-          }
-        }
-      }
-    };
-    
-    // Add event listener
-    window.addEventListener('keydown', handleKeyDown);
-    
-    // Clean up
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [events, selectedEventId]);
+  }, [events.length, response.results]);
   
   // Memoize the selected event for more efficient rendering
   const selectedEvent = useMemo(() => {
@@ -516,9 +467,49 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   }, []);
   
   // Select an event to view details
-  const handleSelectEvent = (eventId: string) => {
-    setSelectedEventId(eventId === selectedEventId ? null : eventId);
-  };
+  const handleSelectEvent = useCallback((eventId: string) => {
+    setSelectedEventId(prevId => eventId === prevId ? null : eventId);
+    
+    // Focus the selected row and scroll it into view
+    setTimeout(() => {
+      const row = eventRowsRef.current[eventId];
+      if (row) {
+        row.focus();
+        row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }, 0);
+  }, []);
+  
+  // Keyboard navigation handler
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!events.length || !selectedEventId) return;
+    
+    const currentIndex = events.findIndex((event: any) => 
+      event.eventId === selectedEventId || event.eid === selectedEventId
+    );
+    
+    if (currentIndex === -1) return;
+    
+    let newIndex;
+    
+    // Handle arrow key navigation
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      newIndex = Math.min(currentIndex + 1, events.length - 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      newIndex = Math.max(currentIndex - 1, 0);
+    } else {
+      return;
+    }
+    
+    // If index changed, select the new event
+    if (newIndex !== currentIndex) {
+      const newEvent = events[newIndex];
+      const newEventId = newEvent.eventId || newEvent.eid;
+      handleSelectEvent(newEventId);
+    }
+  }, [events, selectedEventId, handleSelectEvent]);
   
   const refreshEvents = () => {
     setIsSearching(true);
@@ -607,6 +598,37 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
       second: '2-digit'
     });
   };
+
+  // Ensure first event is selected when events load
+  useEffect(() => {
+    // Auto-select first event when events load as long as we're not actively searching
+    if (events.length > 0 && !selectedEventId && !isSearching) {
+      const firstEventId = events[0].eventId || events[0].eid;
+      setSelectedEventId(firstEventId);
+      
+      // Focus and scroll to the first row after a brief delay to ensure rendering is complete
+      setTimeout(() => {
+        const firstRow = eventRowsRef.current[firstEventId];
+        if (firstRow) {
+          firstRow.focus();
+          firstRow.scrollIntoView({ behavior: 'auto', block: 'nearest' });
+        }
+      }, 100);
+    }
+  }, [events, selectedEventId, isSearching]);
+
+  // Add tabIndex to document to enable keyboard navigation when component mounts
+  useEffect(() => {
+    // Make the events container focusable on mount
+    if (eventsContainerRef.current) {
+      eventsContainerRef.current.tabIndex = 0;
+    }
+    
+    // Return cleanup function
+    return () => {
+      eventRowsRef.current = {};
+    };
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -702,7 +724,12 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
       {/* Split view layout */}
       <div className="flex h-[calc(100vh-300px)] min-h-[500px] border border-gray-200 dark:border-gray-700 rounded-md overflow-hidden">
         {/* Left half - Events table */}
-        <div className="w-1/2 overflow-auto border-r border-gray-200 dark:border-gray-700">
+        <div 
+          className="w-1/2 overflow-auto border-r border-gray-200 dark:border-gray-700"
+          ref={eventsContainerRef}
+          onKeyDown={handleKeyDown}
+          tabIndex={0}
+        >
           {isLoading || isSearching ? (
             <div className="flex items-center justify-center h-full">
               <RefreshCw size={24} className="animate-spin text-gray-400 dark:text-gray-600" />
@@ -742,9 +769,15 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                       key={eventId} 
                       data-event-id={eventId}
                       onClick={() => handleSelectEvent(eventId)}
+                      ref={(el) => {
+                        if (el) eventRowsRef.current[eventId] = el;
+                      }}
                       className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${
                         selectedEventId === eventId ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                       }`}
+                      tabIndex={0}
+                      role="button"
+                      aria-selected={selectedEventId === eventId}
                     >
                       <td className="px-4 py-2 whitespace-nowrap text-sm font-mono text-gray-800 dark:text-gray-200 overflow-hidden text-ellipsis">
                         {eventId}
@@ -796,21 +829,102 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                 <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   Event Payload
                 </h3>
-                {/* Mode Selector */}
-                <div className="flex space-x-1">
-                  {['tree', 'code', 'form', 'view', 'text'].map((m) => (
+                {/* Mode Selector and Actions Row */}
+                <div className="flex items-center space-x-3">
+                  {/* Custom action buttons that would normally be in the main menu */}
+                  <div className="custom-json-editor-buttons">
+                    {/* Add search field */}
+                    <div className="relative mr-1">
+                      <input
+                        type="text"
+                        placeholder="Search JSON..."
+                        className="text-xs px-2 py-0.5 border border-gray-200 dark:border-gray-700 rounded w-24
+                                  bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200
+                                  focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        onChange={(e) => {
+                          if (editorRef.current) {
+                            try {
+                              // Using the enhanced search method from our JSONEditorHandle
+                              editorRef.current.search(e.target.value);
+                            } catch (err) {
+                              console.error('Error searching JSON:', err);
+                              // No need to show an error to the user, just log it
+                            }
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          // Make pressing Enter also trigger search
+                          if (e.key === 'Enter' && editorRef.current) {
+                            try {
+                              editorRef.current.search((e.target as HTMLInputElement).value);
+                            } catch (err) {
+                              console.error('Error searching JSON:', err);
+                            }
+                          }
+                        }}
+                      />
+                    </div>
                     <button
-                      key={m}
-                      onClick={() => setJsonEditorMode(m as any)}
-                      className={`text-xs px-2 py-0.5 rounded ${
-                        jsonEditorMode === m
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                          : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
-                      }`}
+                      onClick={() => {
+                        try {
+                          navigator.clipboard.writeText(JSON.stringify(selectedEvent.payload, null, 2));
+                        } catch (e) {
+                          console.error('Error copying to clipboard:', e);
+                        }
+                      }}
+                      className="custom-json-editor-button"
+                      title="Copy to clipboard"
                     >
-                      {m.charAt(0).toUpperCase() + m.slice(1)}
+                      Copy
                     </button>
-                  ))}
+                    <button
+                      onClick={() => {
+                        try {
+                          if (editorRef.current) {
+                            editorRef.current.expandAll();
+                          }
+                        } catch (err) {
+                          console.error('Error expanding JSON:', err);
+                        }
+                      }}
+                      className="custom-json-editor-button"
+                      title="Expand all fields"
+                    >
+                      Expand
+                    </button>
+                    <button
+                      onClick={() => {
+                        try {
+                          if (editorRef.current) {
+                            editorRef.current.collapseAll();
+                          }
+                        } catch (err) {
+                          console.error('Error collapsing JSON:', err);
+                        }
+                      }}
+                      className="custom-json-editor-button"
+                      title="Collapse all fields"
+                    >
+                      Collapse
+                    </button>
+                  </div>
+                  
+                  {/* View mode toggles */}
+                  <div className="flex space-x-1">
+                    {['tree', 'code', 'view'].map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setJsonEditorMode(m as any)}
+                        className={`text-xs px-2 py-0.5 rounded ${
+                          jsonEditorMode === m
+                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                            : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {m.charAt(0).toUpperCase() + m.slice(1)}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
               <div className="flex-1 rounded-md overflow-hidden">
@@ -820,6 +934,9 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                   height="100%"
                   onChange={handleJsonChange}
                   key={`json-editor-${selectedEventId}`}
+                  showMainMenu={false}
+                  className="custom-json-editor"
+                  ref={editorRef}
                 />
               </div>
             </div>
