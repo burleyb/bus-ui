@@ -38,7 +38,7 @@ const formSchema = z.object({
   description: z.string().max(500, 'Description must be at most 500 characters').optional(),
   tags: z.string().max(200, 'Tags must be at most 200 characters').optional(),
   triggerType: z.enum(['scheduled', 'event-stream', 'not-scheduled']),
-  cronSchedule: z.string().regex(/^(\*|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|\*\/([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|1[0-9]|2[0-9]|3[0-1])|\*\/([1-9]|1[0-9]|2[0-9]|3[0-1])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|([0-6])|\*\/([0-6]))$/, 'Invalid cron expression').optional(),
+  cronSchedule: z.string().optional(),
   eventStreamQueue: z.string().refine(value => !value || value.startsWith('queue:'), 'Queue ID must start with "queue:"').optional(),
   overrides: z.object({
     sourceLagEnabled: z.boolean(),
@@ -51,16 +51,44 @@ const formSchema = z.object({
     consecutiveErrors: z.number().int().positive('Consecutive errors must be a positive integer').optional(),
   }),
 }).refine(
-  data => data.triggerType !== 'scheduled' || data.cronSchedule,
+  data => {
+    // Only require cronSchedule if triggerType is 'scheduled'
+    if (data.triggerType === 'scheduled') {
+      return !!data.cronSchedule;
+    }
+    // Always pass for other trigger types
+    return true;
+  },
   {
     message: 'Cron schedule is required for scheduled bots',
     path: ['cronSchedule'],
   }
 ).refine(
-  data => data.triggerType !== 'event-stream' || data.eventStreamQueue,
+  data => {
+    // Only require eventStreamQueue if triggerType is 'event-stream'
+    if (data.triggerType === 'event-stream') {
+      return !!data.eventStreamQueue;
+    }
+    // Always pass for other trigger types
+    return true;
+  },
   {
     message: 'Queue is required for event-stream bots',
     path: ['eventStreamQueue'],
+  }
+).refine(
+  data => {
+    // Only validate the cron schedule format if the triggerType is 'scheduled'
+    if (data.triggerType === 'scheduled' && data.cronSchedule) {
+      const cronRegex = /^(\*|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|\*\/([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|1[0-9]|2[0-9]|3[0-1])|\*\/([1-9]|1[0-9]|2[0-9]|3[0-1])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|([0-6])|\*\/([0-6]))$/;
+      return cronRegex.test(data.cronSchedule);
+    }
+    // Always pass for other trigger types
+    return true;
+  },
+  {
+    message: 'Invalid cron expression',
+    path: ['cronSchedule'],
   }
 );
 
@@ -112,10 +140,29 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
   }, [errors]);
 
   // Transform triggerType if needed
-  const adaptedTriggerType = !values.triggerType || 
+  // If values.triggerType is 'not-scheduled' OR we explicitly determine this bot should not be scheduled,
+  // then we use 'not-scheduled' as the adapted value
+  const shouldBeNotScheduled = !nodeData?.time || nodeData.time === '';
+  const adaptedTriggerType = values.triggerType === 'not-scheduled' || 
+    (!values.triggerType && shouldBeNotScheduled) ||
     (values.triggerType !== 'scheduled' && values.triggerType !== 'event-stream')
     ? 'not-scheduled'
     : values.triggerType;
+    
+  console.log("[DEBUG] Adapting triggerType:", { 
+    originalTriggerType: values.triggerType,
+    adaptedTriggerType,
+    shouldBeNotScheduled,
+    hasEmptyTime: !nodeData?.time || nodeData.time === '',
+    time: nodeData?.time,
+    rawBotData: {
+      id: nodeData?.id,
+      time: nodeData?.time,
+      triggerType: values.triggerType,
+      hasTime: !!nodeData?.time && nodeData?.time !== '',
+      hasEventStream: !!nodeData?.triggers?.[0]?.event_source_id
+    }
+  });
 
   // Setup React Hook Form with our custom schema and adapted values
   const { control, formState: { errors: formErrors }, watch, handleSubmit: hookFormSubmit, reset, setValue: rhfSetValue } = useForm<FormValues>({
@@ -132,6 +179,13 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
     mode: 'onChange'
   });
 
+  // Force triggerType to match adaptedTriggerType on initial render
+  useEffect(() => {
+    // Set the triggerType directly once on mount to ensure consistency
+    rhfSetValue('triggerType', adaptedTriggerType);
+    console.log('[DEBUG] Forced triggerType to match adaptedTriggerType on initial render:', adaptedTriggerType);
+  }, [rhfSetValue, adaptedTriggerType]);
+
   // Log React Hook Form errors
   useEffect(() => {
     console.log("[DEBUG] React Hook Form errors:", formErrors);
@@ -142,6 +196,10 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
     // Only reset the form if it's not dirty (user hasn't made changes)
     // This prevents data loss during editing when refetches happen
     if (!isDirty) {
+      console.log('[DEBUG] Resetting form with triggerType:', adaptedTriggerType, 
+        'values.triggerType:', values.triggerType, 
+        'values:', values);
+        
       reset({
         ...values,
         triggerType: adaptedTriggerType,
@@ -151,15 +209,44 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
         cronSchedule: values.cronSchedule || '',
         eventStreamQueue: values.eventStreamQueue || ''
       });
+      
+      // Also directly set triggerType via rhfSetValue to ensure it's definitely updated
+      rhfSetValue('triggerType', adaptedTriggerType);
     }
-  }, [values, reset, adaptedTriggerType, isDirty]);
+  }, [values, reset, adaptedTriggerType, isDirty, rhfSetValue]);
 
   // Watch for form changes
   const triggerType = watch('triggerType');
+  
+  console.log('[DEBUG] Current watched triggerType value:', triggerType, 
+    'adaptedTriggerType:', adaptedTriggerType, 
+    'values.triggerType:', values.triggerType);
+
+  // Effect to clear fields when triggerType changes
+  useEffect(() => {
+    console.log("[DEBUG] triggerType effect triggered with value:", triggerType, 
+      "adaptedTriggerType:", adaptedTriggerType, 
+      "values.triggerType:", values.triggerType);
+    
+    if (triggerType === 'not-scheduled') {
+      // Clear both fields for not-scheduled
+      rhfSetValue('cronSchedule', '', { shouldDirty: true });
+      rhfSetValue('eventStreamQueue', '', { shouldDirty: true });
+      console.log("[DEBUG] Trigger type changed to not-scheduled: cleared both fields");
+    } else if (triggerType === 'scheduled') {
+      // Clear eventStreamQueue for scheduled
+      rhfSetValue('eventStreamQueue', '', { shouldDirty: true });
+      console.log("[DEBUG] Trigger type changed to scheduled: cleared eventStreamQueue");
+    } else if (triggerType === 'event-stream') {
+      // Clear cronSchedule for event-stream
+      rhfSetValue('cronSchedule', '', { shouldDirty: true });
+      console.log("[DEBUG] Trigger type changed to event-stream: cleared cronSchedule");
+    }
+  }, [triggerType, rhfSetValue, adaptedTriggerType, values.triggerType]);
 
   // Handle form submission
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
-    console.log("[DEBUG] Form submitted with data:", data);
+    console.log("[DEBUG] Form submitted with data:", JSON.stringify(data, null, 2));
     try {
       // Update values in the hook
       Object.keys(data).forEach((key) => {
@@ -171,13 +258,26 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
             );
           });
         } else {
-          // Handle not-scheduled by setting appropriate values
-          if (key === 'triggerType' && data.triggerType === 'not-scheduled') {
-            // For not-scheduled, we need to set a valid triggerType but null the related values
-            // This way we maintain type safety but achieve the desired API effect
-            setValue('triggerType', 'scheduled');
-            setValue('cronSchedule', '');
-            setValue('eventStreamQueue', '');
+          // Handle not-scheduled case
+          if (key === 'triggerType') {
+            setValue('triggerType', data.triggerType);
+            
+            // For 'not-scheduled', clear both cronSchedule and eventStreamQueue
+            if (data.triggerType === 'not-scheduled') {
+              setValue('cronSchedule', '');
+              setValue('eventStreamQueue', '');
+              console.log("[DEBUG] Handling not-scheduled: cleared cronSchedule and eventStreamQueue");
+            } 
+            // For scheduled, clear eventStreamQueue
+            else if (data.triggerType === 'scheduled') {
+              setValue('eventStreamQueue', '');
+              console.log("[DEBUG] Handling scheduled: cleared eventStreamQueue");
+            } 
+            // For event-stream, clear cronSchedule
+            else if (data.triggerType === 'event-stream') {
+              setValue('cronSchedule', '');
+              console.log("[DEBUG] Handling event-stream: cleared cronSchedule");
+            }
           } else {
             setValue(key as keyof BotFormValues, data[key as keyof BotFormValues]);
           }
@@ -185,6 +285,7 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
       });
 
       // Call the hook's submit handler
+      console.log("[DEBUG] Final values being submitted:", JSON.stringify(values, null, 2));
       await handleSubmit();
     } catch (error) {
       console.error("[DEBUG] Error during form submission:", error);
@@ -324,6 +425,29 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
   return (
     <div>
       <form onSubmit={hookFormSubmit(onSubmit)}>
+        {/* Display all validation errors regardless of field visibility */}
+        {(Object.keys(formErrors).length > 0 || Object.keys(errors).length > 0) && (
+          <Card className="mb-6 border-red-300">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-medium text-red-500">Validation Errors</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="text-sm text-red-500 list-disc pl-5 space-y-1">
+                {Object.entries(formErrors).map(([field, error]) => (
+                  <li key={field}>
+                    <strong>{field}:</strong> {error?.message?.toString() || 'Invalid value'}
+                  </li>
+                ))}
+                {Object.entries(errors).map(([field, message]) => (
+                  <li key={field}>
+                    <strong>{field}:</strong> {message}
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Left Column */}
           <div className="space-y-6">
@@ -342,6 +466,7 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                       <Select
                         value={field.value}
                         onValueChange={(value) => {
+                          console.log('[DEBUG] Select onValueChange with value:', value);
                           field.onChange(value);
                           // Set the form state directly
                           setValue('triggerType', value as any);

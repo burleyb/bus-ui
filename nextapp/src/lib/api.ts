@@ -114,7 +114,7 @@ export const API = {
       ...settings
     };
     
-    console.log(`[API] Saving node settings:`, payload);
+    console.log(`[API] Saving node settings:`, JSON.stringify(payload, null, 2));
     
     try {
       const response = await awsNativeFetch(url, {
@@ -131,6 +131,7 @@ export const API = {
       }
       
       const data = await response.json();
+      console.log(`[API] Node settings saved successfully:`, JSON.stringify(data, null, 2));
       return data;
     } catch (error) {
       console.error('[API] Error saving node settings:', error);

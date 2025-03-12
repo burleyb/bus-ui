@@ -11,7 +11,7 @@ export const botFormSchema = z.object({
   description: z.string().max(500, 'Description must be at most 500 characters').optional(),
   tags: z.string().max(200, 'Tags must be at most 200 characters').optional(),
   triggerType: z.enum(['scheduled', 'event-stream', 'not-scheduled']),
-  cronSchedule: z.string().regex(/^(\*|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|\*\/([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|1[0-9]|2[0-9]|3[0-1])|\*\/([1-9]|1[0-9]|2[0-9]|3[0-1])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|([0-6])|\*\/([0-6]))$/, 'Invalid cron expression').optional(),
+  cronSchedule: z.string().optional(),
   eventStreamQueue: z.string().refine(value => !value || value.startsWith('queue:'), 'Queue ID must start with "queue:"').optional(),
   overrides: z.object({
     sourceLagEnabled: z.boolean(),
@@ -24,16 +24,44 @@ export const botFormSchema = z.object({
     consecutiveErrors: z.number().int().positive('Consecutive errors must be a positive integer').optional(),
   }),
 }).refine(
-  data => data.triggerType !== 'scheduled' || data.cronSchedule,
+  data => {
+    // Only require cronSchedule if triggerType is 'scheduled'
+    if (data.triggerType === 'scheduled') {
+      return !!data.cronSchedule;
+    }
+    // Always pass for other trigger types
+    return true;
+  },
   {
     message: 'Cron schedule is required for scheduled bots',
     path: ['cronSchedule'],
   }
 ).refine(
-  data => data.triggerType !== 'event-stream' || data.eventStreamQueue,
+  data => {
+    // Only require eventStreamQueue if triggerType is 'event-stream'
+    if (data.triggerType === 'event-stream') {
+      return !!data.eventStreamQueue;
+    }
+    // Always pass for other trigger types
+    return true;
+  },
   {
     message: 'Queue is required for event-stream bots',
     path: ['eventStreamQueue'],
+  }
+).refine(
+  data => {
+    // Only validate the cron schedule format if the triggerType is 'scheduled'
+    if (data.triggerType === 'scheduled' && data.cronSchedule) {
+      const cronRegex = /^(\*|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|\*\/([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|1[0-9]|2[0-9]|3[0-1])|\*\/([1-9]|1[0-9]|2[0-9]|3[0-1])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|([0-6])|\*\/([0-6]))$/;
+      return cronRegex.test(data.cronSchedule);
+    }
+    // Always pass for other trigger types
+    return true;
+  },
+  {
+    message: 'Invalid cron expression',
+    path: ['cronSchedule'],
   }
 );
 
@@ -229,6 +257,8 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
       return;
     }
 
+    console.log('[DEBUG] About to validate form values before submission:', JSON.stringify(values, null, 2));
+    
     if (!validate()) {
       const errorKeys = Object.keys(errors);
       const errorMessage = errorKeys.length > 0 
@@ -261,10 +291,20 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
     // Add trigger-specific fields
     if (values.triggerType === 'scheduled') {
       formData.time = values.cronSchedule;
+      // Explicitly set eventStreamQueue to undefined to clear it
+      formData.eventStreamQueue = undefined;
     } else if (values.triggerType === 'event-stream') {
       formData.eventStreamQueue = values.eventStreamQueue;
+      // Explicitly set time to undefined to clear it
+      formData.time = undefined;
+    } else if (values.triggerType === 'not-scheduled') {
+      // For not-scheduled, explicitly set both to empty/undefined to clear them
+      formData.time = ''; // Using empty string instead of null to match TypeScript requirements
+      formData.eventStreamQueue = undefined;
+      console.log('[DEBUG] Handling not-scheduled in submission: set time to empty string and cleared eventStreamQueue');
     }
 
+    console.log('[DEBUG] Final form data being sent to API:', JSON.stringify(formData, null, 2));
     await saveBotMutation.mutateAsync(formData);
   };
 
@@ -325,7 +365,8 @@ function getInitialValues(botData: BotData | null): BotFormValues {
       name: '',
       description: '',
       tags: '',
-      triggerType: 'scheduled',
+      // Default to not-scheduled for new bots
+      triggerType: 'not-scheduled',
       cronSchedule: '',
       eventStreamQueue: '',
       overrides: {
@@ -341,8 +382,15 @@ function getInitialValues(botData: BotData | null): BotFormValues {
     };
   }
 
+  console.log('[DEBUG] Raw botData for scheduling:', { 
+    id: botData.id,
+    time: botData.time,
+    triggers: botData.triggers,
+    eventSource: botData.triggers?.[0]?.event_source_id
+  });
+
   // Determine trigger type
-  const isScheduled = !!botData.time;
+  const isScheduled = !!botData.time && botData.time !== '';
   const hasEventStream = !!botData.triggers?.[0]?.event_source_id;
   
   let triggerType: BotFormValues['triggerType'];
@@ -364,7 +412,8 @@ function getInitialValues(botData: BotData | null): BotFormValues {
     consecutive_errors: null,
   };
 
-  return {
+  // Prepare the form values to return
+  const formValues = {
     name: botData.name || '',
     description: botData.description || '',
     tags: botData.tags || '',
@@ -382,4 +431,10 @@ function getInitialValues(botData: BotData | null): BotFormValues {
       consecutiveErrors: health.consecutive_errors !== null ? health.consecutive_errors : undefined,
     },
   };
+
+  console.log('[DEBUG] Returning form values with cronSchedule:', formValues.cronSchedule, 
+    'from botData.time:', botData.time, 
+    'and triggerType:', formValues.triggerType);
+    
+  return formValues;
 } 
