@@ -22,19 +22,8 @@ export function Switch({
     }
   };
 
-  const handleClick = (event: React.MouseEvent) => {
-    if (disabled) return;
-    // Explicitly call onCheckedChange to ensure the toggle state changes
-    if (onCheckedChange) {
-      onCheckedChange(!checked);
-    }
-  };
-
   return (
-    <label 
-      className={`relative inline-flex items-center cursor-pointer ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}
-      onClick={handleClick}
-    >
+    <label className={`relative inline-flex items-center cursor-pointer ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>
       <input
         type="checkbox"
         checked={checked}
@@ -44,14 +33,25 @@ export function Switch({
         {...props}
       />
       <div 
-        className={`relative w-11 h-6 bg-gray-200 rounded-full peer dark:bg-gray-700 
-                   peer-checked:after:translate-x-full peer-checked:after:border-white 
-                   after:content-[''] after:absolute after:top-[2px] after:left-[2px] 
-                   after:bg-white after:border-gray-300 after:border after:rounded-full 
-                   after:h-5 after:w-5 after:transition-all dark:border-gray-600 
-                   ${checked ? 'bg-blue-600 dark:bg-blue-500' : ''}`}
-        style={{ zIndex: 1 }}
-      ></div>
+        className={`
+          relative w-11 h-6 rounded-full peer transition-colors duration-200 ease-in-out
+          ${checked 
+            ? 'bg-blue-500 dark:bg-blue-400' 
+            : 'bg-gray-200 dark:bg-gray-700'
+          }
+        `}
+      >
+        <span 
+          className={`
+            absolute top-[2px] left-[2px] bg-white border border-gray-300 dark:border-gray-600 rounded-full h-5 w-5 
+            transition-transform duration-200 ease-in-out
+            ${checked 
+              ? 'transform translate-x-5 border-white' 
+              : ''
+            }
+          `}
+        />
+      </div>
     </label>
   );
 } 

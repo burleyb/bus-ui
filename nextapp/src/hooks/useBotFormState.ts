@@ -10,9 +10,9 @@ export const botFormSchema = z.object({
   name: z.string().min(1, 'Name is required').max(100, 'Name must be at most 100 characters').refine(value => !!value.trim(), 'Name cannot be empty'),
   description: z.string().max(500, 'Description must be at most 500 characters').optional(),
   tags: z.string().max(200, 'Tags must be at most 200 characters').optional(),
-  triggerType: z.enum(['scheduled', 'event-stream']),
-  cronSchedule: z.string().regex(/^(\*|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|\*\/([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|1[0-9]|2[0-9]|3[0-1])|\*\/([1-9]|1[0-9]|2[0-9]|3[0-1])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|([0-6])|\*\/([0-6]))$/, 'Invalid cron expression'),
-  eventStreamQueue: z.string().refine(value => value.startsWith('queue:'), 'Queue ID must start with "queue:"').optional(),
+  triggerType: z.enum(['scheduled', 'event-stream', 'not-scheduled']),
+  cronSchedule: z.string().regex(/^(\*|([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])|\*\/([0-9]|1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9])) (\*|([0-9]|1[0-9]|2[0-3])|\*\/([0-9]|1[0-9]|2[0-3])) (\*|([1-9]|1[0-9]|2[0-9]|3[0-1])|\*\/([1-9]|1[0-9]|2[0-9]|3[0-1])) (\*|([1-9]|1[0-2])|\*\/([1-9]|1[0-2])) (\*|([0-6])|\*\/([0-6]))$/, 'Invalid cron expression').optional(),
+  eventStreamQueue: z.string().refine(value => !value || value.startsWith('queue:'), 'Queue ID must start with "queue:"').optional(),
   overrides: z.object({
     sourceLagEnabled: z.boolean(),
     sourceLag: z.number().int().positive('Source lag must be a positive integer').optional(),
@@ -61,18 +61,14 @@ export type BotFormSubmitData = {
   name: string;
   description: string | null;
   tags: string | null;
-  time?: string | null;
-  triggers?: {
-    event_source_id: string;
-  }[] | null;
+  time?: string;
+  eventStreamQueue?: string;
   health: {
     source_lag: number | null;
     write_lag: number | null;
     error_limit: number | null;
     consecutive_errors: number | null;
   };
-  // Preserve other keys from the original data
-  [key: string]: any;
 };
 
 /**
@@ -91,95 +87,80 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
   // Reset form when bot data changes
   useEffect(() => {
     if (botData) {
-      console.log("[DEBUG] Bot data changed in useBotFormState, resetting form. isDirty:", isDirty);
       setValues(getInitialValues(botData));
       setErrors({});
       setIsDirty(false);
     }
   }, [botData]);
 
-  // Save mutations
-  const saveExecutionSettingsMutation = useMutation({
-    mutationFn: (data: any) => API.saveNodeSettings(data.id, data),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['cron', botData?.id] });
+  // Save bot mutation
+  const saveBotMutation = useMutation({
+    mutationFn: (data: BotFormSubmitData) => API.saveNodeSettings(data.id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['botDetails', botData?.id] });
       addToast({
-        title: "Bot execution settings saved",
-        description: "Bot execution settings have been saved successfully",
+        title: 'Success',
+        description: 'Bot updated successfully',
         type: 'success',
       });
+      setIsDirty(false);
     },
-    onError: (error: Error) => {
+    onError: (error) => {
+      console.error('Error saving bot:', error);
       addToast({
-        title: "Error saving bot execution settings",
-        description: error.message || "An error occurred while saving the bot execution settings",
+        title: 'Error',
+        description: 'Failed to update bot. Please try again.',
         type: 'error',
       });
-    }
+    },
   });
 
-  const saveMetadataMutation = useMutation({
-    mutationFn: (data: any) => API.saveNodeSettings(data.id, data),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['cron', botData?.id] });
+  // Archive/unarchive mutations
+  const archiveBotMutation = useMutation({
+    mutationFn: (id: string) => API.saveNodeSettings(id, { archived: true, paused: true }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['botDetails', botData?.id] });
       addToast({
-        title: "Bot metadata saved",
-        description: "Bot metadata has been saved successfully",
+        title: 'Success',
+        description: 'Bot archived successfully',
         type: 'success',
       });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
+      console.error('Error archiving bot:', error);
       addToast({
-        title: "Error saving bot metadata",
-        description: error.message || "An error occurred while saving the bot metadata",
+        title: 'Error',
+        description: 'Failed to archive bot. Please try again.',
         type: 'error',
       });
-    }
+    },
   });
 
-  const archiveMutation = useMutation({
-    mutationFn: (data: any) => API.saveNodeSettings(data.id, { archived: true, paused: true }),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['cron', botData?.id] });
+  const unarchiveBotMutation = useMutation({
+    mutationFn: (id: string) => API.saveNodeSettings(id, { archived: false }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['botDetails', botData?.id] });
       addToast({
-        title: "Bot archived",
-        description: "Bot has been archived successfully",
+        title: 'Success',
+        description: 'Bot unarchived successfully',
         type: 'success',
       });
     },
-    onError: (error: Error) => {
+    onError: (error) => {
+      console.error('Error unarchiving bot:', error);
       addToast({
-        title: "Error archiving bot",
-        description: error.message || "An error occurred while archiving the bot",
+        title: 'Error',
+        description: 'Failed to unarchive bot. Please try again.',
         type: 'error',
-      });
-    }
-  });
-
-  const unarchiveMutation = useMutation({
-    mutationFn: (data: any) => API.saveNodeSettings(data.id, { archived: false }),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['cron', botData?.id] });
-      addToast({
-        title: "Bot unarchived",
-        description: "Bot has been unarchived successfully",
-        type: 'success',
       });
     },
-    onError: (error: Error) => {
-      addToast({
-        title: "Error unarchiving bot",
-        description: error.message || "An error occurred while unarchiving the bot",
-        type: 'error',
-      });
-    }
   });
 
   // Form value setter
   const setValue = <K extends keyof BotFormValues>(key: K, value: BotFormValues[K]) => {
-    console.log(`[DEBUG] Setting form value ${String(key)}:`, value);
     setValues(prev => ({ ...prev, [key]: value }));
     setIsDirty(true);
+    console.log(`[DEBUG] setValue called for ${String(key)}, setting isDirty to true`);
     
     // Clear error for this field if it exists
     if (errors[key]) {
@@ -216,31 +197,24 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
   // Form validation
   const validate = (): boolean => {
     try {
+      console.log('[DEBUG] Validating form values:', JSON.stringify(values, null, 2));
       botFormSchema.parse(values);
       setErrors({});
+      console.log('[DEBUG] Validation successful');
       return true;
     } catch (error) {
+      console.log('[DEBUG] Validation failed:', error);
       if (error instanceof z.ZodError) {
         const formattedErrors: Record<string, string> = {};
         error.errors.forEach(err => {
+          console.log(`[DEBUG] Validation error: path=${err.path.join('.')}, message=${err.message}`);
           formattedErrors[err.path.join('.')] = err.message;
         });
         setErrors(formattedErrors);
+        console.log('[DEBUG] Formatted errors:', formattedErrors);
       }
       return false;
     }
-  };
-
-  // Convert minutes to milliseconds
-  const minutesToMs = (minutes?: number): number | null => {
-    if (minutes === undefined) return null;
-    return minutes * 60 * 1000;
-  };
-
-  // Convert percentage to decimal
-  const percentToDecimal = (percent?: number): number | null => {
-    if (percent === undefined) return null;
-    return percent / 100;
   };
 
   // Form submission
@@ -256,61 +230,42 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
     }
 
     if (!validate()) {
+      const errorKeys = Object.keys(errors);
+      const errorMessage = errorKeys.length > 0 
+        ? `Validation errors: ${errorKeys.map(k => `${k}: ${errors[k]}`).join(', ')}`
+        : 'Please fix the errors in the form';
+      
+      console.log('[DEBUG] Validation failed with errors:', errors);
       addToast({
         title: 'Validation Error',
-        description: 'Please fix the errors in the form',
+        description: errorMessage,
         type: 'error',
       });
       return;
     }
 
-    // Create a copy of the original bot data to preserve any fields we don't change
+    // Prepare form data for submission
     const formData: BotFormSubmitData = {
-      ...botData,
       id: botData.id,
       name: values.name,
       description: values.description || null,
       tags: values.tags || null,
       health: {
-        source_lag: values.overrides.sourceLagEnabled ? minutesToMs(values.overrides.sourceLag) : null,
-        write_lag: values.overrides.writeLagEnabled ? minutesToMs(values.overrides.writeLag) : null,
-        error_limit: values.overrides.errorLimitEnabled ? percentToDecimal(values.overrides.errorLimit) : null,
+        source_lag: values.overrides.sourceLagEnabled ? values.overrides.sourceLag || null : null,
+        write_lag: values.overrides.writeLagEnabled ? values.overrides.writeLag || null : null,
+        error_limit: values.overrides.errorLimitEnabled ? values.overrides.errorLimit || null : null,
         consecutive_errors: values.overrides.consecutiveErrorsEnabled ? values.overrides.consecutiveErrors || null : null,
       },
     };
 
-    // Handle trigger type
+    // Add trigger-specific fields
     if (values.triggerType === 'scheduled') {
-      formData.time = values.cronSchedule || null;
-      formData.triggers = null;
+      formData.time = values.cronSchedule;
     } else if (values.triggerType === 'event-stream') {
-      formData.time = null;
-      formData.triggers = values.eventStreamQueue ? [{ event_source_id: values.eventStreamQueue }] : null;
-    } else {
-      // Not scheduled - both should be null
-      formData.time = null;
-      formData.triggers = null;
+      formData.eventStreamQueue = values.eventStreamQueue;
     }
 
-    // Filter out unchanged data to reduce payload size
-    // This is important to avoid sending stale data
-    const cleanedData = Object.entries(formData).reduce((acc, [key, value]) => {
-      if (
-        key === 'id' || 
-        key === 'name' || 
-        key === 'description' || 
-        key === 'tags' || 
-        key === 'time' || 
-        key === 'triggers' || 
-        key === 'health' || 
-        key === 'lambda'
-      ) {
-        acc[key] = value;
-      }
-      return acc;
-    }, {} as Record<string, any>);
-
-    await saveExecutionSettingsMutation.mutateAsync(cleanedData as BotFormSubmitData);
+    await saveBotMutation.mutateAsync(formData);
   };
 
   // Reset form to initial values
@@ -331,7 +286,7 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
       });
       return;
     }
-    await archiveMutation.mutateAsync(botData);
+    await archiveBotMutation.mutateAsync(botData.id);
   };
 
   // Unarchive bot function
@@ -345,14 +300,14 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
       });
       return;
     }
-    await unarchiveMutation.mutateAsync(botData);
+    await unarchiveBotMutation.mutateAsync(botData.id);
   };
 
   return {
     values,
     errors,
     isDirty,
-    isSubmitting: saveExecutionSettingsMutation.isPending || archiveMutation.isPending || unarchiveMutation.isPending,
+    isSubmitting: saveBotMutation.isPending || archiveBotMutation.isPending || unarchiveBotMutation.isPending,
     setValue,
     setNestedValue,
     validate,
@@ -387,12 +342,19 @@ function getInitialValues(botData: BotData | null): BotFormValues {
   }
 
   // Determine trigger type
-  let triggerType: 'scheduled' | 'event-stream' = 'scheduled';
-  if (botData.triggers && botData.triggers.length > 0 && botData.triggers[0].event_source_id) {
-    triggerType = 'event-stream';
-  } else if (botData.time) {
+  const isScheduled = !!botData.time;
+  const hasEventStream = !!botData.triggers?.[0]?.event_source_id;
+  
+  let triggerType: BotFormValues['triggerType'];
+  if (isScheduled) {
     triggerType = 'scheduled';
+  } else if (hasEventStream) {
+    triggerType = 'event-stream';
+  } else {
+    triggerType = 'not-scheduled';
   }
+
+  console.log('[DEBUG] Determined triggerType:', triggerType, 'isScheduled:', isScheduled, 'hasEventStream:', hasEventStream);
 
   // Parse the health overrides
   const health = botData.health || {
@@ -400,18 +362,6 @@ function getInitialValues(botData: BotData | null): BotFormValues {
     write_lag: null,
     error_limit: null,
     consecutive_errors: null,
-  };
-
-  // Convert milliseconds to minutes for display
-  const msToMinutes = (ms: number | null): number | undefined => {
-    if (ms === null) return undefined;
-    return Math.round(ms / (60 * 1000));
-  };
-
-  // Convert decimal to percentage for display
-  const decimalToPercent = (decimal: number | null): number | undefined => {
-    if (decimal === null) return undefined;
-    return decimal * 100;
   };
 
   return {
@@ -423,11 +373,11 @@ function getInitialValues(botData: BotData | null): BotFormValues {
     eventStreamQueue: botData.triggers?.[0]?.event_source_id || '',
     overrides: {
       sourceLagEnabled: health.source_lag !== null,
-      sourceLag: msToMinutes(health.source_lag),
+      sourceLag: health.source_lag !== null ? health.source_lag : undefined,
       writeLagEnabled: health.write_lag !== null,
-      writeLag: msToMinutes(health.write_lag),
+      writeLag: health.write_lag !== null ? health.write_lag : undefined,
       errorLimitEnabled: health.error_limit !== null,
-      errorLimit: decimalToPercent(health.error_limit),
+      errorLimit: health.error_limit !== null ? health.error_limit : undefined,
       consecutiveErrorsEnabled: health.consecutive_errors !== null,
       consecutiveErrors: health.consecutive_errors !== null ? health.consecutive_errors : undefined,
     },

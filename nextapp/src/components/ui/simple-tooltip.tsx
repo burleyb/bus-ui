@@ -1,43 +1,38 @@
 "use client";
 
-import React, { useState, ReactNode } from 'react';
-import { cn } from '@/lib/utils';
+import React from 'react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-interface TooltipProps {
-  content: ReactNode;
-  children: ReactNode;
+interface TooltipSimpleProps {
+  text: string;
+  children: React.ReactNode;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
   className?: string;
-  contentClassName?: string;
 }
 
-const TooltipSimple = ({
-  content,
+export function TooltipSimple({
+  text,
   children,
-  className,
-  contentClassName,
-}: TooltipProps) => {
-  const [isVisible, setIsVisible] = useState(false);
-
+  side = "top",
+  align = "center",
+  className = "",
+}: TooltipSimpleProps) {
   return (
-    <div 
-      className={cn("relative inline-block", className)}
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-      onFocus={() => setIsVisible(true)}
-      onBlur={() => setIsVisible(false)}
-    >
-      {children}
-      {isVisible && (
-        <div className={cn(
-          "absolute z-50 p-2 text-sm bg-black text-white rounded shadow-lg",
-          "mt-1 transform -translate-x-1/2 left-1/2",
-          contentClassName
-        )}>
-          {content}
-        </div>
-      )}
-    </div>
+    <TooltipProvider>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <span className={className}>{children}</span>
+        </TooltipTrigger>
+        <TooltipContent side={side} align={align}>
+          <p>{text}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
-};
-
-export { TooltipSimple }; 
+} 

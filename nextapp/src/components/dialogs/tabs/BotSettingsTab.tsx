@@ -18,6 +18,13 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { TooltipSimple } from '@/components/ui/simple-tooltip';
 import { cn } from '@/lib/utils';
 import { TagInput } from '@/components/ui/tag-input';
+import { 
+  SimpleDialog,
+  SimpleDialogContent, 
+  SimpleDialogHeader, 
+  SimpleDialogTitle, 
+  SimpleDialogFooter 
+} from '@/components/ui/simple-dialog';
 
 interface BotSettingsTabProps {
   nodeData: BotData;
@@ -63,10 +70,15 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
   // Dialog state for navigation confirmation
   const [showNavConfirmDialog, setShowNavConfirmDialog] = useState(false);
   const [navigationCallback, setNavigationCallback] = useState<(() => void) | null>(null);
-  const [isResetOverridesDialogOpen, setIsResetOverridesDialogOpen] = useState(false);
   const [isArchiveDialogOpen, setIsArchiveDialogOpen] = useState(false);
   
   console.log("[DEBUG] BotSettingsTab rendering with nodeData:", nodeData?.id);
+  
+  // IMPORTANT: For the cron schedule preset buttons, we use React Hook Form's setValue with
+  // shouldDirty: true to ensure the form is properly marked as dirty when these quick-select
+  // buttons are used. This enables the Save button and properly tracks changes.
+  // Previously, we were using reset() which resets the form to its initial state,
+  // losing the dirty status.
   
   // Use the bot form state hook
   const {
@@ -78,7 +90,8 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
     handleSubmit,
     resetForm,
     archiveBot,
-    unarchiveBot
+    unarchiveBot,
+    errors
   } = useBotFormState(nodeData);
 
   console.log("[DEBUG] Form state: isDirty =", isDirty, "isSubmitting =", isSubmitting);
@@ -93,6 +106,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
     console.log("[DEBUG] Form isDirty changed:", isDirty);
   }, [isDirty]);
 
+  // Add debug logs for errors from both useBotFormState and React Hook Form
+  useEffect(() => {
+    console.log("[DEBUG] BotFormState errors:", errors);
+  }, [errors]);
+
   // Transform triggerType if needed
   const adaptedTriggerType = !values.triggerType || 
     (values.triggerType !== 'scheduled' && values.triggerType !== 'event-stream')
@@ -100,7 +118,7 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
     : values.triggerType;
 
   // Setup React Hook Form with our custom schema and adapted values
-  const { control, formState: { errors: formErrors }, watch, handleSubmit: hookFormSubmit, reset } = useForm<FormValues>({
+  const { control, formState: { errors: formErrors }, watch, handleSubmit: hookFormSubmit, reset, setValue: rhfSetValue } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       ...values,
@@ -113,6 +131,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
     },
     mode: 'onChange'
   });
+
+  // Log React Hook Form errors
+  useEffect(() => {
+    console.log("[DEBUG] React Hook Form errors:", formErrors);
+  }, [formErrors]);
 
   // Update form when values change
   useEffect(() => {
@@ -136,31 +159,36 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
 
   // Handle form submission
   const onSubmit: SubmitHandler<FormValues> = async (data) => {
-    // Update values in the hook
-    Object.keys(data).forEach((key) => {
-      if (key === 'overrides') {
-        Object.keys(data.overrides).forEach((nestedKey) => {
-          setNestedValue(
-            nestedKey as keyof BotFormValues['overrides'],
-            data.overrides[nestedKey as keyof BotFormValues['overrides']]
-          );
-        });
-      } else {
-        // Handle not-scheduled by setting appropriate values
-        if (key === 'triggerType' && data.triggerType === 'not-scheduled') {
-          // For not-scheduled, we need to set a valid triggerType but null the related values
-          // This way we maintain type safety but achieve the desired API effect
-          setValue('triggerType', 'scheduled');
-          setValue('cronSchedule', '');
-          setValue('eventStreamQueue', '');
+    console.log("[DEBUG] Form submitted with data:", data);
+    try {
+      // Update values in the hook
+      Object.keys(data).forEach((key) => {
+        if (key === 'overrides') {
+          Object.keys(data.overrides).forEach((nestedKey) => {
+            setNestedValue(
+              nestedKey as keyof BotFormValues['overrides'],
+              data.overrides[nestedKey as keyof BotFormValues['overrides']]
+            );
+          });
         } else {
-          setValue(key as keyof BotFormValues, data[key as keyof BotFormValues]);
+          // Handle not-scheduled by setting appropriate values
+          if (key === 'triggerType' && data.triggerType === 'not-scheduled') {
+            // For not-scheduled, we need to set a valid triggerType but null the related values
+            // This way we maintain type safety but achieve the desired API effect
+            setValue('triggerType', 'scheduled');
+            setValue('cronSchedule', '');
+            setValue('eventStreamQueue', '');
+          } else {
+            setValue(key as keyof BotFormValues, data[key as keyof BotFormValues]);
+          }
         }
-      }
-    });
+      });
 
-    // Call the hook's submit handler
-    await handleSubmit();
+      // Call the hook's submit handler
+      await handleSubmit();
+    } catch (error) {
+      console.error("[DEBUG] Error during form submission:", error);
+    }
   };
 
   // Handle discard changes
@@ -179,8 +207,21 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
     setIsArchiveDialogOpen(false);
   };
 
-  // Handle reset overrides
+  // Handle reset overrides - directly reset values without confirmation
   const handleResetOverrides = () => {
+    // Update all overrides to be disabled and clear their values
+    rhfSetValue('overrides.sourceLagEnabled', false, { shouldDirty: true });
+    rhfSetValue('overrides.writeLagEnabled', false, { shouldDirty: true });
+    rhfSetValue('overrides.errorLimitEnabled', false, { shouldDirty: true });
+    rhfSetValue('overrides.consecutiveErrorsEnabled', false, { shouldDirty: true });
+    
+    // Clear values
+    rhfSetValue('overrides.sourceLag', undefined, { shouldDirty: true });
+    rhfSetValue('overrides.writeLag', undefined, { shouldDirty: true });
+    rhfSetValue('overrides.errorLimit', undefined, { shouldDirty: true });
+    rhfSetValue('overrides.consecutiveErrors', undefined, { shouldDirty: true });
+    
+    // Also update our custom form state
     setValue('overrides', {
       sourceLagEnabled: false,
       sourceLag: undefined,
@@ -191,7 +232,8 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
       consecutiveErrorsEnabled: false,
       consecutiveErrors: undefined
     });
-    setIsResetOverridesDialogOpen(false);
+    
+    console.log("[DEBUG] Reset all overrides");
   };
 
   // Handle navigation confirmation
@@ -301,6 +343,8 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                         value={field.value}
                         onValueChange={(value) => {
                           field.onChange(value);
+                          // Set the form state directly
+                          setValue('triggerType', value as any);
                           // Reset related fields
                           if (value === 'scheduled') {
                             setValue('eventStreamQueue', '');
@@ -343,6 +387,10 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                             className={cn(
                               formErrors?.eventStreamQueue && "border-red-500"
                             )}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              setValue('eventStreamQueue', e.target.value);
+                            }}
                           />
                           {/* A more advanced queue search would be implemented here */}
                         </div>
@@ -372,6 +420,10 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                             className={cn(
                               formErrors?.cronSchedule ? "border-red-500" : ""
                             )}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              setValue('cronSchedule', e.target.value);
+                            }}
                           />
                         )}
                       />
@@ -390,10 +442,15 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                             variant="outline" 
                             size="sm"
                             onClick={() => {
-                              reset({
-                                ...watch(),
-                                cronSchedule: "*/15 * * * *"
+                              const newValue = "*/15 * * * *";
+                              // Update form values and mark as dirty using React Hook Form's setValue
+                              rhfSetValue('cronSchedule', newValue, { 
+                                shouldDirty: true,
+                                shouldValidate: true 
                               });
+                              // Also update our custom form state
+                              setValue('cronSchedule', newValue);
+                              console.log("[DEBUG] Set cronSchedule to:", newValue);
                             }}
                           >
                             Every 15 minutes
@@ -403,10 +460,15 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                             variant="outline" 
                             size="sm"
                             onClick={() => {
-                              reset({
-                                ...watch(),
-                                cronSchedule: "0 * * * *"
+                              const newValue = "0 * * * *";
+                              // Update form values and mark as dirty using React Hook Form's setValue
+                              rhfSetValue('cronSchedule', newValue, { 
+                                shouldDirty: true,
+                                shouldValidate: true 
                               });
+                              // Also update our custom form state
+                              setValue('cronSchedule', newValue);
+                              console.log("[DEBUG] Set cronSchedule to:", newValue);
                             }}
                           >
                             Hourly
@@ -416,10 +478,15 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                             variant="outline" 
                             size="sm"
                             onClick={() => {
-                              reset({
-                                ...watch(),
-                                cronSchedule: "0 0 * * *"
+                              const newValue = "0 0 * * *";
+                              // Update form values and mark as dirty using React Hook Form's setValue
+                              rhfSetValue('cronSchedule', newValue, { 
+                                shouldDirty: true,
+                                shouldValidate: true 
                               });
+                              // Also update our custom form state
+                              setValue('cronSchedule', newValue);
+                              console.log("[DEBUG] Set cronSchedule to:", newValue);
                             }}
                           >
                             Daily at midnight
@@ -429,10 +496,15 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                             variant="outline" 
                             size="sm"
                             onClick={() => {
-                              reset({
-                                ...watch(),
-                                cronSchedule: "0 0 * * 1"
+                              const newValue = "0 0 * * 1";
+                              // Update form values and mark as dirty using React Hook Form's setValue
+                              rhfSetValue('cronSchedule', newValue, { 
+                                shouldDirty: true,
+                                shouldValidate: true 
                               });
+                              // Also update our custom form state
+                              setValue('cronSchedule', newValue);
+                              console.log("[DEBUG] Set cronSchedule to:", newValue);
                             }}
                           >
                             Weekly (Monday)
@@ -458,7 +530,7 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                   type="button"
                   variant="outline"
                   size="sm"
-                  onClick={() => setIsResetOverridesDialogOpen(true)}
+                  onClick={handleResetOverrides}
                 >
                   Reset Overrides
                 </Button>
@@ -469,7 +541,7 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                   <div className="flex items-center justify-between">
                     <Label htmlFor="sourceLag" className="flex items-center">
                       <span>Source Lag (Minutes)</span>
-                      <TooltipSimple content="Maximum allowed lag time for source queues">
+                      <TooltipSimple text="Maximum allowed lag time for source queues">
                         <AlertCircle className="h-4 w-4 ml-1 text-gray-400" />
                       </TooltipSimple>
                     </Label>
@@ -479,7 +551,12 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                       render={({ field }) => (
                         <Switch
                           checked={field.value}
-                          onCheckedChange={field.onChange}
+                          onCheckedChange={(checked) => {
+                            field.onChange(checked);
+                            setNestedValue('sourceLagEnabled', checked);
+                            // Force update React Hook Form's internal state
+                            console.log("[DEBUG] Toggled sourceLagEnabled to:", checked);
+                          }}
                         />
                       )}
                     />
@@ -493,7 +570,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                         min={1}
                         {...field}
                         value={field.value || ''}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || undefined)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || undefined;
+                          field.onChange(value);
+                          setNestedValue('sourceLag', value);
+                        }}
                         disabled={!watch('overrides.sourceLagEnabled')}
                         placeholder="Enter minutes"
                       />
@@ -509,7 +590,7 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                   <div className="flex items-center justify-between">
                     <Label htmlFor="writeLag" className="flex items-center">
                       <span>Write Lag (Minutes)</span>
-                      <TooltipSimple content="Maximum allowed lag time for destination queues">
+                      <TooltipSimple text="Maximum allowed lag time for destination queues">
                         <AlertCircle className="h-4 w-4 ml-1 text-gray-400" />
                       </TooltipSimple>
                     </Label>
@@ -519,7 +600,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                       render={({ field }) => (
                         <Switch
                           checked={field.value}
-                          onCheckedChange={field.onChange}
+                          onCheckedChange={(checked) => {
+                            field.onChange(checked);
+                            setNestedValue('writeLagEnabled', checked);
+                            console.log("[DEBUG] Toggled writeLagEnabled to:", checked);
+                          }}
                         />
                       )}
                     />
@@ -533,7 +618,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                         min={1}
                         {...field}
                         value={field.value || ''}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || undefined)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || undefined;
+                          field.onChange(value);
+                          setNestedValue('writeLag', value);
+                        }}
                         disabled={!watch('overrides.writeLagEnabled')}
                         placeholder="Enter minutes"
                       />
@@ -548,8 +637,8 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="errorLimit" className="flex items-center">
-                      <span>Errors Per Executions (%)</span>
-                      <TooltipSimple content="Maximum percentage of errors allowed">
+                      <span>Error Limit (%)</span>
+                      <TooltipSimple text="Maximum allowed error percentage before pausing the bot">
                         <AlertCircle className="h-4 w-4 ml-1 text-gray-400" />
                       </TooltipSimple>
                     </Label>
@@ -559,7 +648,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                       render={({ field }) => (
                         <Switch
                           checked={field.value}
-                          onCheckedChange={field.onChange}
+                          onCheckedChange={(checked) => {
+                            field.onChange(checked);
+                            setNestedValue('errorLimitEnabled', checked);
+                            console.log("[DEBUG] Toggled errorLimitEnabled to:", checked);
+                          }}
                         />
                       )}
                     />
@@ -574,7 +667,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                         max={100}
                         {...field}
                         value={field.value || ''}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || undefined)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || undefined;
+                          field.onChange(value);
+                          setNestedValue('errorLimit', value);
+                        }}
                         disabled={!watch('overrides.errorLimitEnabled')}
                         placeholder="Enter percentage"
                       />
@@ -589,8 +686,8 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="consecutiveErrors" className="flex items-center">
-                      <span>Consecutive Errors Allowed</span>
-                      <TooltipSimple content="Maximum number of consecutive errors before alerting">
+                      <span>Consecutive Errors</span>
+                      <TooltipSimple text="Maximum allowed consecutive errors before pausing the bot">
                         <AlertCircle className="h-4 w-4 ml-1 text-gray-400" />
                       </TooltipSimple>
                     </Label>
@@ -600,7 +697,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                       render={({ field }) => (
                         <Switch
                           checked={field.value}
-                          onCheckedChange={field.onChange}
+                          onCheckedChange={(checked) => {
+                            field.onChange(checked);
+                            setNestedValue('consecutiveErrorsEnabled', checked);
+                            console.log("[DEBUG] Toggled consecutiveErrorsEnabled to:", checked);
+                          }}
                         />
                       )}
                     />
@@ -614,7 +715,11 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                         min={1}
                         {...field}
                         value={field.value || ''}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || undefined)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || undefined;
+                          field.onChange(value);
+                          setNestedValue('consecutiveErrors', value);
+                        }}
                         disabled={!watch('overrides.consecutiveErrorsEnabled')}
                         placeholder="Enter number"
                       />
@@ -649,6 +754,10 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                         className={cn(
                           formErrors?.name && "border-red-500"
                         )}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setValue('name', e.target.value);
+                        }}
                       />
                     )}
                   />
@@ -671,6 +780,10 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                         className={cn(
                           formErrors?.tags && "border-red-500"
                         )}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setValue('tags', e.target.value);
+                        }}
                       />
                     )}
                   />
@@ -693,6 +806,10 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                         className={cn(
                           formErrors?.description && "border-red-500"
                         )}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setValue('description', e.target.value);
+                        }}
                       />
                     )}
                   />
@@ -807,38 +924,20 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
         </DialogContent>
       </Dialog>
 
-      {/* Reset Overrides Confirmation Dialog */}
-      <Dialog open={isResetOverridesDialogOpen} onOpenChange={setIsResetOverridesDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Reset Overrides</DialogTitle>
-          </DialogHeader>
-          <p>Are you sure you want to reset all override values? This action cannot be undone.</p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsResetOverridesDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={handleResetOverrides}>
-              Reset Overrides
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Archive/Unarchive Confirmation Dialog */}
-      <Dialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
+      <SimpleDialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
+        <SimpleDialogContent>
+          <SimpleDialogHeader>
+            <SimpleDialogTitle>
               {nodeData.archived ? 'Unarchive Bot' : 'Archive Bot'}
-            </DialogTitle>
-          </DialogHeader>
-          <p>
+            </SimpleDialogTitle>
+          </SimpleDialogHeader>
+          <p className="my-4">
             {nodeData.archived 
               ? 'Are you sure you want to unarchive this bot? It will become available for use again.'
               : 'Are you sure you want to archive this bot? It will be stopped and not available for use.'}
           </p>
-          <DialogFooter>
+          <SimpleDialogFooter>
             <Button variant="outline" onClick={() => setIsArchiveDialogOpen(false)}>
               Cancel
             </Button>
@@ -848,9 +947,9 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
             >
               {nodeData.archived ? 'Unarchive' : 'Archive'}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SimpleDialogFooter>
+        </SimpleDialogContent>
+      </SimpleDialog>
     </div>
   );
 }

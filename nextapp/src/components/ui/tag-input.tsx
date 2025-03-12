@@ -1,114 +1,131 @@
 "use client";
 
-import React, { useState, useRef, KeyboardEvent } from 'react';
-import { X } from 'lucide-react';
-import { Badge } from './badge';
-import { Input } from './input';
-import { cn } from '@/lib/utils';
+import * as React from "react";
+import { X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 
-export interface TagInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface TagInputProps
+  extends React.InputHTMLAttributes<HTMLInputElement> {
   value: string;
-  onChange: (value: string) => void;
+  onChange?: (value: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder?: string;
-  disabled?: boolean;
   className?: string;
-  badgeClassName?: string;
-  inputClassName?: string;
 }
 
-export function TagInput({
-  value,
-  onChange,
-  placeholder = 'Add tags...',
-  disabled = false,
-  className,
-  badgeClassName,
-  inputClassName,
-  ...props
-}: TagInputProps) {
-  const [inputValue, setInputValue] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
+export const TagInput = React.forwardRef<HTMLInputElement, TagInputProps>(
+  ({ value, onChange, placeholder, className, ...props }, ref) => {
+    const [tags, setTags] = React.useState<string[]>([]);
+    const [inputValue, setInputValue] = React.useState<string>("");
 
-  // Convert the comma-separated string to an array of tags
-  const tags = value ? value.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+    // Parse initial tags from comma-separated string
+    React.useEffect(() => {
+      if (value) {
+        const tagArray = value.split(",").filter(tag => tag.trim() !== "");
+        setTags(tagArray);
+      }
+    }, [value]);
 
-  // Add a new tag
-  const addTag = (tag: string) => {
-    const trimmedTag = tag.trim();
-    if (!trimmedTag) return;
-    
-    // Don't add duplicates
-    if (tags.includes(trimmedTag)) return;
-    
-    const newTags = [...tags, trimmedTag];
-    onChange(newTags.join(', '));
-    setInputValue('');
-  };
+    // Handle input change
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      setInputValue(e.target.value);
+    };
 
-  // Remove a tag
-  const removeTag = (tagToRemove: string) => {
-    const newTags = tags.filter(tag => tag !== tagToRemove);
-    onChange(newTags.join(', '));
-  };
+    // Add tag when Enter is pressed or comma is typed
+    const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" || e.key === ",") {
+        e.preventDefault();
+        addTag();
+      }
+    };
 
-  // Handle key presses
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' || e.key === ',') {
-      e.preventDefault();
-      addTag(inputValue);
-    } else if (e.key === 'Tab' && inputValue) {
-      // Add tag on Tab key if there's input
-      e.preventDefault();
-      addTag(inputValue);
-    } else if (e.key === 'Backspace' && !inputValue && tags.length > 0) {
-      // Remove the last tag when backspace is pressed and input is empty
-      removeTag(tags[tags.length - 1]);
-    }
-  };
-
-  return (
-    <div
-      className={cn(
-        "flex flex-wrap gap-2 border border-input rounded-md px-3 py-2 focus-within:ring-1 focus-within:ring-ring",
-        disabled && "opacity-50 cursor-not-allowed",
-        className
-      )}
-      onClick={() => inputRef.current?.focus()}
-    >
-      {tags.map((tag, index) => (
-        <Badge 
-          key={`${tag}-${index}`}
-          variant="secondary"
-          className={cn("flex items-center gap-1", badgeClassName)}
-        >
-          {tag}
-          {!disabled && (
-            <X
-              className="h-3 w-3 cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation();
-                removeTag(tag);
-              }}
-            />
-          )}
-        </Badge>
-      ))}
-      <Input
-        ref={inputRef}
-        type="text"
-        value={inputValue}
-        onChange={(e) => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={() => {
-          if (inputValue) {
-            addTag(inputValue);
+    // Add tag from input
+    const addTag = () => {
+      if (inputValue.trim() !== "") {
+        // Handle comma-separated input
+        const newTags = inputValue
+          .split(",")
+          .map(tag => tag.trim())
+          .filter(tag => tag !== "");
+        
+        if (newTags.length > 0) {
+          const updatedTags = [...tags, ...newTags];
+          setTags(updatedTags);
+          
+          // Create a synthetic event to pass back to the form controller
+          if (onChange) {
+            const syntheticEvent = {
+              target: {
+                name: props.name,
+                value: updatedTags.join(","),
+              },
+            } as React.ChangeEvent<HTMLInputElement>;
+            
+            onChange(syntheticEvent);
           }
-        }}
-        className={cn("border-0 p-0 shadow-none focus-visible:ring-0 flex-grow min-w-[120px]", inputClassName)}
-        placeholder={tags.length === 0 ? placeholder : ''}
-        disabled={disabled}
-        {...props}
-      />
-    </div>
-  );
-} 
+          
+          setInputValue("");
+        }
+      }
+    };
+
+    // Remove tag
+    const removeTag = (indexToRemove: number) => {
+      const updatedTags = tags.filter((_, index) => index !== indexToRemove);
+      setTags(updatedTags);
+      
+      // Create a synthetic event to pass back to the form controller
+      if (onChange) {
+        const syntheticEvent = {
+          target: {
+            name: props.name,
+            value: updatedTags.join(","),
+          },
+        } as React.ChangeEvent<HTMLInputElement>;
+        
+        onChange(syntheticEvent);
+      }
+    };
+
+    // Handle blur to add any pending tag
+    const handleBlur = () => {
+      addTag();
+    };
+
+    return (
+      <div
+        className={cn(
+          "flex flex-wrap gap-2 p-1 rounded-md border border-input bg-background",
+          className
+        )}
+      >
+        {tags.map((tag, index) => (
+          <Badge key={`${tag}-${index}`} variant="secondary" className="max-w-[200px]">
+            <span className="truncate">{tag}</span>
+            <button
+              type="button"
+              className="ml-1 rounded-full outline-none focus:ring-2 focus:ring-offset-2"
+              onClick={() => removeTag(index)}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </Badge>
+        ))}
+        <Input
+          ref={ref}
+          type="text"
+          placeholder={placeholder}
+          value={inputValue}
+          onChange={handleInputChange}
+          onKeyDown={handleKeyDown}
+          onBlur={handleBlur}
+          className="border-0 p-0 shadow-none focus-visible:ring-0 flex-1 min-w-[120px]"
+          {...props}
+        />
+      </div>
+    );
+  }
+);
+
+TagInput.displayName = "TagInput"; 

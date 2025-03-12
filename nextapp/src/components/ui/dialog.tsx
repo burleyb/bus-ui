@@ -18,8 +18,20 @@ export const Dialog: React.FC<DialogProps> = ({
   onOpenChange, 
   children 
 }) => {
-  // Only render children if dialog is open
-  if (!open) return null;
+  // Create a ref to track mounted state
+  const mounted = React.useRef(false);
+  
+  // Use useEffect to set mounted ref
+  React.useEffect(() => {
+    mounted.current = true;
+    
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  
+  // Always render the component structure, but hide it when not open
+  // This avoids the conditional rendering that breaks React hooks
   
   // Listen for escape key to close dialog
   React.useEffect(() => {
@@ -29,13 +41,22 @@ export const Dialog: React.FC<DialogProps> = ({
       }
     };
     
-    document.addEventListener('keydown', handleEscapeKey);
+    if (open) {
+      document.addEventListener('keydown', handleEscapeKey);
+    }
+    
     return () => {
       document.removeEventListener('keydown', handleEscapeKey);
     };
-  }, [onOpenChange]);
+  }, [onOpenChange, open]);
   
-  return <>{children}</>;
+  // Render children wrapped in a context provider even when closed
+  // But make sure the UI elements are hidden
+  return (
+    <div className={open ? '' : 'hidden'}>
+      {children}
+    </div>
+  );
 };
 
 // Trigger is just a button that opens the dialog
