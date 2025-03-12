@@ -48,7 +48,8 @@ interface NodeTab {
   id: string;
   label: string;
   type: string;
-  relation: 'self' | 'child' | 'parent';
+  relation: 'self' | 'read' | 'write';
+  relatedNodeType?: string;
 }
 
 export function WorkflowGraphChartDrawer({
@@ -93,11 +94,20 @@ export function WorkflowGraphChartDrawer({
           const childNode = state.nodes[childId];
           if (childNode && !nodeTabs.some(tab => tab.id === childId) && 
               childNode.status !== 'archived' && !childNode.archived) {
+            
+            // Determine relationship type: bot->queue/system = write
+            let relation: 'read' | 'write' = 'write';
+            if ((selectedNodeData.type === 'queue' || selectedNodeData.type === 'system') && 
+                childNode.type === 'bot') {
+              relation = 'read';
+            }
+            
             nodeTabs.push({
               id: childId,
               label: childNode.label || childId,
               type: childNode.type || 'bot',
-              relation: 'child'
+              relation: relation,
+              relatedNodeType: childNode.type
             });
           }
         });
@@ -109,11 +119,20 @@ export function WorkflowGraphChartDrawer({
           const parentNode = state.nodes[parentId];
           if (parentNode && !nodeTabs.some(tab => tab.id === parentId) &&
               parentNode.status !== 'archived' && !parentNode.archived) {
+            
+            // Determine relationship type: queue/system->bot = read
+            let relation: 'read' | 'write' = 'read';
+            if (selectedNodeData.type === 'bot' && 
+                (parentNode.type === 'queue' || parentNode.type === 'system')) {
+              relation = 'write';
+            }
+            
             nodeTabs.push({
               id: parentId,
               label: parentNode.label || parentId,
               type: parentNode.type || 'bot',
-              relation: 'parent'
+              relation: relation,
+              relatedNodeType: parentNode.type
             });
           }
         });
@@ -166,7 +185,7 @@ export function WorkflowGraphChartDrawer({
   
   return (
     <div className={`fixed top-0 right-0 h-full bg-white dark:bg-gray-800 shadow-lg z-10 transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
-         style={{ width: '500px' }}>
+         style={{ width: '800px' }}>
       {/* Header */}
       <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold">Node Charts</h2>
@@ -192,11 +211,10 @@ export function WorkflowGraphChartDrawer({
                     <span className="truncate max-w-[120px] text-xs">{tab.label}</span>
                     <Badge variant={
                       tab.relation === 'self' ? 'default' :
-                      tab.relation === 'child' ? 'secondary' :
+                      tab.relation === 'write' ? 'secondary' :
                       'outline'
                     } className="mt-1 text-[10px] py-0 px-1">
-                      {tab.relation === 'self' ? 'selected' :
-                       tab.relation === 'child' ? 'child' : 'parent'}
+                      {tab.relation === 'self' ? 'selected' : tab.relation}
                     </Badge>
                   </div>
                 </TabsTrigger>
