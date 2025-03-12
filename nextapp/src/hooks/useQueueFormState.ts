@@ -242,7 +242,10 @@ export function useQueueFormState(nodeData: NodeData | null) {
 
   // Archive queue
   const archiveQueue = async () => {
-    if (!queueData) return;
+    if (!queueData) {
+      console.error('Cannot archive queue: No queue data available');
+      return Promise.reject(new Error('No queue data available'));
+    }
 
     setIsSubmitting(true);
     try {
@@ -257,7 +260,14 @@ export function useQueueFormState(nodeData: NodeData | null) {
         description: 'Queue archived successfully',
         type: 'success',
       });
+      
+      // Update local state to match the updated state
+      setIsDirty(false);
+      
+      // Refresh page data
       router.refresh();
+      
+      return Promise.resolve();
     } catch (error) {
       console.error('Error archiving queue:', error);
       // Add error toast
@@ -266,6 +276,7 @@ export function useQueueFormState(nodeData: NodeData | null) {
         description: error instanceof Error ? error.message : 'Failed to archive queue',
         type: 'error',
       });
+      return Promise.reject(error);
     } finally {
       setIsSubmitting(false);
     }
@@ -273,7 +284,10 @@ export function useQueueFormState(nodeData: NodeData | null) {
 
   // Unarchive queue
   const unarchiveQueue = async () => {
-    if (!queueData) return;
+    if (!queueData) {
+      console.error('Cannot unarchive queue: No queue data available');
+      return Promise.reject(new Error('No queue data available'));
+    }
 
     setIsSubmitting(true);
     try {
@@ -288,7 +302,14 @@ export function useQueueFormState(nodeData: NodeData | null) {
         description: 'Queue unarchived successfully',
         type: 'success',
       });
+      
+      // Update local state to match the updated state
+      setIsDirty(false);
+      
+      // Refresh page data
       router.refresh();
+      
+      return Promise.resolve();
     } catch (error) {
       console.error('Error unarchiving queue:', error);
       // Add error toast
@@ -297,6 +318,7 @@ export function useQueueFormState(nodeData: NodeData | null) {
         description: error instanceof Error ? error.message : 'Failed to unarchive queue',
         type: 'error',
       });
+      return Promise.reject(error);
     } finally {
       setIsSubmitting(false);
     }

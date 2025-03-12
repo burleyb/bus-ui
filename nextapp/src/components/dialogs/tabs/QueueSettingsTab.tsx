@@ -135,12 +135,20 @@ export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onClose
 
   // Archive/unarchive handler
   const handleArchiveConfirm = async () => {
-    if (nodeData?.archived) {
-      await unarchiveQueue();
-    } else {
-      await archiveQueue();
+    try {
+      // Close the dialog before starting the async operation
+      setIsArchiveDialogOpen(false);
+      
+      // Then perform the async operation
+      if (nodeData?.archived) {
+        await unarchiveQueue();
+      } else {
+        await archiveQueue();
+      }
+    } catch (error) {
+      console.error('Error during archive/unarchive operation:', error);
+      // If an error occurs, we've already closed the dialog
     }
-    setIsArchiveDialogOpen(false);
   };
 
   // Show error state if we have a load error

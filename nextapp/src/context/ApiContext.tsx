@@ -299,14 +299,21 @@ const API = {
     const url = '/api/eventsettings/save';
     
     // Format payload according to the eventsettings API requirement
-    const payload = {
+    const payload: {
+      id: string;
+      name: string;
+      min_kinesis_number: string;
+      other: {
+        tags: string;
+      };
+      archived?: boolean;
+    } = {
       id: queueId,
       name: settings.name || queueId.split(':').pop() || queueId,
       min_kinesis_number: settings.min_kinesis_number || settings.minCheckpointNumber || 'z/',
       other: {
         tags: settings.tags || settings.other?.tags || ''
-      },
-      archived: settings.archived || undefined
+      }
     };
 
     // Handle tags - could be directly in settings or in settings.other
@@ -324,6 +331,9 @@ const API = {
     // Add archived field directly if it exists
     if (settings.archived !== undefined) {
       payload.archived = settings.archived;
+      
+      // For archive/unarchive operations, we need to ensure this is properly serialized as a boolean
+      console.log(`Archive operation detected: Setting archived = ${settings.archived}`);
     }
 
     console.log(`[DEBUG] saveQueueSettings payload:`, payload);
@@ -1815,8 +1825,14 @@ export function useSaveQueueSettings() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: (data: { queueId: string; settings: any }) => 
-      API.saveQueueSettings(data.queueId, data.settings),
+    mutationFn: async (data: { queueId: string; settings: any }) => {
+      try {
+        return await API.saveQueueSettings(data.queueId, data.settings);
+      } catch (error) {
+        console.error(`Error in saveQueueSettings mutation:`, error);
+        throw error; // Re-throw to let the component handle it
+      }
+    },
     onSuccess: (_, variables) => {
       // Invalidate the queue details query to refresh the data
       queryClient.invalidateQueries({
@@ -1824,6 +1840,10 @@ export function useSaveQueueSettings() {
       });
       
       console.log(`Queue ${variables.queueId} settings updated`);
+    },
+    onError: (error) => {
+      console.error('Error in saveQueueSettings mutation:', error);
+      // Error will be handled by the component
     }
   });
 }
