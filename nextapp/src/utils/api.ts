@@ -36,8 +36,19 @@ export async function saveQueueSettings(queueId: string, settings: any) {
     return { ok: false, error: 'No queue ID provided' };
   }
 
-  const url = '/api/queue/save';
-  const payload = { queueId, ...settings };
+  const url = '/api/eventsettings/save';
+  
+  // Format payload according to the eventsettings API requirement
+  const payload = {
+    id: queueId,
+    name: settings.name || queueId.split(':').pop() || queueId,
+    min_kinesis_number: settings.min_kinesis_number || settings.minCheckpointNumber || '',
+    other: {
+      tags: settings.tags || ''
+    },
+    // Include any other fields directly in the root
+    ...(settings.archived !== undefined ? { archived: settings.archived } : {})
+  };
 
   try {
     console.log(`Saving queue settings for ${queueId}:`, payload);

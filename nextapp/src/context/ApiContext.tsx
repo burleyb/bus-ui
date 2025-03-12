@@ -1149,8 +1149,8 @@ export function useQueueDetails(queueId: string) {
     queryFn: async () => {
       try {
         console.log(`Fetching queue details for: ${queueId}`);
-        // Use the correct API endpoint format
-        const response = await awsNativeFetch(`/api/cron/${queueId}`);
+        // Use the new API endpoint for event settings
+        const response = await awsNativeFetch(`/api/eventsettings/${encodeURIComponent(queueId)}`);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch queue details: ${response.statusText}`);
@@ -1193,7 +1193,22 @@ export function useQueueDetails(queueId: string) {
           // Attempt to parse the JSON manually
           const data = JSON.parse(responseText);
           console.log(`Successfully fetched queue details for: ${queueId}`, data);
-          return data;
+          
+          // Transform the data structure to match what the app expects
+          const transformedData = {
+            id: data.event || queueId,
+            name: data.name || queueId.split(':').pop() || queueId,
+            type: 'queue',
+            status: 'active',
+            max_eid: data.max_eid,
+            v: data.v,
+            timestamp: data.timestamp,
+            tags: data.tags || '',
+            // Keep any other fields that might be present
+            ...data
+          };
+          
+          return transformedData;
         } catch (jsonError: unknown) {
           console.error(`JSON parsing error in queue details for ${queueId}:`, jsonError);
           console.error(`Raw response text: "${responseText.substring(0, 500)}${responseText.length > 500 ? '...' : ''}"`);

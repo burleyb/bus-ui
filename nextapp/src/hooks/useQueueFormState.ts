@@ -35,7 +35,7 @@ const getQueueData = (nodeData: NodeData | null): QueueData | null => {
       return {
         id: nodeData.id || '',
         name: nodeData.name || '',
-        tags: nodeData.tags || '',
+        tags: nodeData.other?.tags || nodeData.tags || '',
         min_kinesis_number: nodeData.min_kinesis_number || null
       };
     }
@@ -65,7 +65,7 @@ const getInitialValues = (queueData: QueueData | null): QueueFormValues => {
 
   return {
     name: queueData.name || '',
-    tags: queueData.tags || '',
+    tags: queueData.other?.tags || queueData.tags || '',
     minCheckpointNumber: queueData.min_kinesis_number || '',
   };
 };
@@ -111,7 +111,7 @@ export function useQueueFormState(nodeData: NodeData | null) {
     const isDataUnchanged = prevQueueData && 
       prevQueueData.id === queueData.id &&
       prevQueueData.name === queueData.name &&
-      prevQueueData.tags === queueData.tags &&
+      prevQueueData.tags === queueData.other?.tags &&
       prevQueueData.min_kinesis_number === queueData.min_kinesis_number;
     
     if (isDataUnchanged) {
@@ -196,11 +196,14 @@ export function useQueueFormState(nodeData: NodeData | null) {
     setIsSubmitting(true);
 
     try {
-      // Map form values to the API schema
+      // Map form values to the API schema - now we're using the eventsettings/save endpoint
+      // which requires a different format
       const settings = {
         name: values.name,
-        tags: values.tags || '',
-        min_kinesis_number: values.minCheckpointNumber || null,
+        other: {
+          tags: values.tags || ''
+        },
+        minCheckpointNumber: values.minCheckpointNumber || ''
       };
 
       console.log('[DEBUG] Saving queue settings:', settings);
