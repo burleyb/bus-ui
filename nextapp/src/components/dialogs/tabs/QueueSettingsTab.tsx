@@ -1,19 +1,167 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
+import { useForm, Controller, SubmitHandler } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
+import { useQueueFormState, queueFormSchema, QueueFormValues } from '@/hooks/useQueueFormState';
+import { NodeData } from '@/types/node';
+import { Archive, Undo2 } from 'lucide-react';
+import {
+  SimpleDialog,
+  SimpleDialogContent,
+  SimpleDialogHeader,
+  SimpleDialogTitle,
+  SimpleDialogFooter
+} from '@/components/ui/simple-dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { TagInput } from '@/components/ui/tag-input';
+import { cn } from '@/lib/utils';
 
 interface QueueSettingsTabProps {
-  nodeData: any;
+  nodeData: NodeData | null;
+  onTabChangeRequest?: (callback: (canProceed: boolean) => boolean) => void;
+  onCloseRequest?: (callback: (canProceed: boolean) => boolean) => void;
 }
 
-export default function QueueSettingsTab({ nodeData }: QueueSettingsTabProps) {
+export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onCloseRequest }: QueueSettingsTabProps) {
+  const [loadError, setLoadError] = useState<string | null>(null);
+  
+  // Check if we're using fallback data
+  const jsonParseError = nodeData && ('_jsonParseError' in nodeData);
+  
+  // Use a try-catch to handle any errors in useQueueFormState
+  let formState;
+  try {
+    formState = useQueueFormState(nodeData);
+  } catch (error) {
+    console.error("Error initializing queue form state:", error);
+    setLoadError(error instanceof Error ? error.message : "Failed to load queue settings");
+    formState = {
+      values: { name: "", tags: "", minCheckpointNumber: "" },
+      errors: null,
+      isDirty: false,
+      isSubmitting: false,
+      setValue: () => {},
+      handleSubmit: async () => {},
+      resetForm: () => {},
+      archiveQueue: async () => {},
+      unarchiveQueue: async () => {}
+    };
+  }
+  
+  const {
+    values,
+    errors: formErrors,
+    isDirty,
+    isSubmitting,
+    setValue,
+    handleSubmit,
+    resetForm,
+    archiveQueue,
+    unarchiveQueue
+  } = formState;
+
+  // For navigation confirmation
+  const [showNavConfirmDialog, setShowNavConfirmDialog] = useState(false);
+  const [navigationCallback, setNavigationCallback] = useState<(() => void) | null>(null);
+  
+  // For archive/unarchive confirmation
+  const [isArchiveDialogOpen, setIsArchiveDialogOpen] = useState(false);
+
+  // Keep the initial values in a ref to prevent unnecessary re-renderings
+  const initialValuesRef = React.useRef(values);
+
+  // Use react-hook-form for additional validation
+  const { control, handleSubmit: hookFormSubmit, formState: { errors: rhfErrors }, reset } = useForm<QueueFormValues>({
+    resolver: zodResolver(queueFormSchema),
+    defaultValues: initialValuesRef.current,
+    mode: 'onBlur'
+  });
+
+  // Update the form when values change significantly
+  React.useEffect(() => {
+    initialValuesRef.current = values;
+    reset(values);
+  }, [values, reset]);
+
+  // Memoize the callbacks to prevent them from changing on every render
+  const handleTabChangeCallback = React.useCallback((canProceed: boolean) => {
+    if (isDirty && canProceed) {
+      setShowNavConfirmDialog(true);
+      return false;
+    }
+    return true;
+  }, [isDirty, setShowNavConfirmDialog]);
+
+  const handleCloseCallback = React.useCallback((canProceed: boolean) => {
+    if (isDirty && canProceed) {
+      setShowNavConfirmDialog(true);
+      return false;
+    }
+    return true;
+  }, [isDirty, setShowNavConfirmDialog]);
+
+  // Register callbacks for navigation with unsaved changes
+  React.useEffect(() => {
+    if (onTabChangeRequest) {
+      onTabChangeRequest(handleTabChangeCallback);
+    }
+
+    if (onCloseRequest) {
+      onCloseRequest(handleCloseCallback);
+    }
+    
+    // Important: only register these callbacks when the component mounts or when the dependencies change
+    return () => {
+      // No cleanup needed as the parent component will handle replacing callbacks
+    };
+  }, [onTabChangeRequest, onCloseRequest, handleTabChangeCallback, handleCloseCallback]);
+
+  // Form submission handler
+  const onSubmit: SubmitHandler<QueueFormValues> = async (data) => {
+    console.log('[DEBUG] Form submitted with data:', data);
+    await handleSubmit();
+  };
+
+  // Discard changes
+  const handleDiscard = () => {
+    resetForm();
+    setShowNavConfirmDialog(false);
+  };
+
+  // Archive/unarchive handler
+  const handleArchiveConfirm = async () => {
+    if (nodeData?.archived) {
+      await unarchiveQueue();
+    } else {
+      await archiveQueue();
+    }
+    setIsArchiveDialogOpen(false);
+  };
+
+  // Show error state if we have a load error
+  if (loadError) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center">
+        <div className="text-red-500 mb-4 text-center">
+          <p className="text-xl font-semibold">Error Loading Queue Settings</p>
+          <p className="mt-2">{loadError}</p>
+        </div>
+        <Button 
+          onClick={() => window.location.reload()} 
+          variant="outline"
+          className="mt-4"
+        >
+          Reload Page
+        </Button>
+      </div>
+    );
+  }
+
   if (!nodeData) {
     return (
       <div className="flex justify-center items-center min-h-[400px]">
@@ -23,174 +171,195 @@ export default function QueueSettingsTab({ nodeData }: QueueSettingsTabProps) {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Queue Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Queue Status</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="queue-active">Queue Active</Label>
-            <Switch
-              id="queue-active"
-              checked={nodeData.status === 'ACTIVE'}
-              onCheckedChange={() => {
-                // TODO: Implement queue status toggle
-                console.log('Toggle queue status');
-              }}
-            />
-          </div>
-        </CardContent>
-      </Card>
+    <div className="p-1">
 
-      {/* Queue Configuration */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Queue Configuration</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="queue-name">Queue Name</Label>
-            <Input
-              id="queue-name"
-              value={nodeData.name || ''}
-              onChange={(e) => {
-                // TODO: Implement name change
-                console.log('Change queue name:', e.target.value);
-              }}
-            />
-          </div>
+      <form onSubmit={hookFormSubmit(onSubmit)}>
+        <div className="space-y-6">
+          {/* Queue Info Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg font-medium">Queue Info</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Queue Name */}
+              <div className="space-y-2">
+                <Label htmlFor="name">Queue Name</Label>
+                <Controller
+                  name="name"
+                  control={control}
+                  render={({ field }) => (
+                    <Input
+                      {...field}
+                      id="name"
+                      placeholder="Enter queue name"
+                      className={formErrors?.name ? "border-red-500" : ""}
+                      value={field.value || ''}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        setValue('name', e.target.value);
+                      }}
+                    />
+                  )}
+                />
+                {formErrors?.name && (
+                  <p className="text-sm text-red-500">{formErrors.name}</p>
+                )}
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="queue-description">Description</Label>
-            <Textarea
-              id="queue-description"
-              value={nodeData.description || ''}
-              onChange={(e) => {
-                // TODO: Implement description change
-                console.log('Change queue description:', e.target.value);
-              }}
-            />
-          </div>
+              {/* Tags */}
+              <div className="space-y-2">
+                <Label htmlFor="tags">Tags</Label>
+                <Controller
+                  name="tags"
+                  control={control}
+                  render={({ field }) => (
+                    <TagInput
+                      {...field}
+                      id="tags"
+                      placeholder="Enter tags (comma-separated)"
+                      className={cn(
+                        formErrors?.tags && "border-red-500"
+                      )}
+                      value={field.value || ''}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        setValue('tags', e.target.value);
+                      }}
+                    />
+                  )}
+                />
+                {formErrors?.tags && (
+                  <p className="text-sm text-red-500">{formErrors.tags}</p>
+                )}
+              </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="queue-type">Queue Type</Label>
-            <Select
-              value={nodeData.queueType || 'standard'}
-              onValueChange={(value) => {
-                // TODO: Implement queue type change
-                console.log('Change queue type:', value);
-              }}
+              {/* Min Checkpoint Number */}
+              <div className="space-y-2">
+                <Label htmlFor="minCheckpointNumber">Min Checkpoint Number</Label>
+                <Controller
+                  name="minCheckpointNumber"
+                  control={control}
+                  render={({ field }) => (
+                    <Input
+                      {...field}
+                      id="minCheckpointNumber"
+                      placeholder="Enter minimum checkpoint number"
+                      className={formErrors?.minCheckpointNumber ? "border-red-500" : ""}
+                      value={field.value || ''}
+                      onChange={(e) => {
+                        field.onChange(e);
+                        setValue('minCheckpointNumber', e.target.value);
+                      }}
+                    />
+                  )}
+                />
+                {formErrors?.minCheckpointNumber && (
+                  <p className="text-sm text-red-500">{formErrors.minCheckpointNumber}</p>
+                )}
+                <p className="text-sm text-gray-500">
+                  This is the minimum checkpoint ID that will be available in this queue.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Bottom Action Buttons */}
+          <div className="flex justify-between mt-6">
+            {/* Archive/Unarchive button */}
+            <Button
+              type="button"
+              variant={nodeData.archived ? "outline" : "danger"}
+              onClick={() => setIsArchiveDialogOpen(true)}
+              className="flex items-center"
             >
-              <SelectTrigger id="queue-type">
-                <SelectValue placeholder="Select queue type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="standard">Standard Queue</SelectItem>
-                <SelectItem value="fifo">FIFO Queue</SelectItem>
-                <SelectItem value="priority">Priority Queue</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
+              {nodeData.archived ? (
+                <>
+                  <Undo2 className="mr-2 h-4 w-4" />
+                  Unarchive Queue
+                </>
+              ) : (
+                <>
+                  <Archive className="mr-2 h-4 w-4" />
+                  Archive Queue
+                </>
+              )}
+            </Button>
 
-      {/* Queue Properties */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Queue Properties</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="message-retention">Message Retention Period (hours)</Label>
-            <Input
-              id="message-retention"
-              type="number"
-              min="1"
-              max="336" // 14 days
-              value={nodeData.messageRetentionPeriod || 24}
-              onChange={(e) => {
-                // TODO: Implement retention period change
-                console.log('Change retention period:', e.target.value);
-              }}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="visibility-timeout">Visibility Timeout (seconds)</Label>
-            <Input
-              id="visibility-timeout"
-              type="number"
-              min="0"
-              max="43200" // 12 hours
-              value={nodeData.visibilityTimeout || 30}
-              onChange={(e) => {
-                // TODO: Implement visibility timeout change
-                console.log('Change visibility timeout:', e.target.value);
-              }}
-            />
-          </div>
-
-          {nodeData.queueType === 'fifo' && (
-            <div className="flex items-center justify-between">
-              <Label htmlFor="content-deduplication">Content-based Deduplication</Label>
-              <Switch
-                id="content-deduplication"
-                checked={nodeData.contentBasedDeduplication || false}
-                onCheckedChange={() => {
-                  // TODO: Implement deduplication toggle
-                  console.log('Toggle content-based deduplication');
-                }}
-              />
+            {/* Save/Discard buttons */}
+            <div className="space-x-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDiscard}
+                disabled={!isDirty}
+              >
+                Discard Changes
+              </Button>
+              <Button
+                type="submit"
+                disabled={!isDirty || isSubmitting}
+              >
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
+              </Button>
             </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Access Control */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Access Control</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label htmlFor="queue-public">Public Access</Label>
-            <Switch
-              id="queue-public"
-              checked={nodeData.isPublic || false}
-              onCheckedChange={() => {
-                // TODO: Implement public access toggle
-                console.log('Toggle public access');
-              }}
-            />
           </div>
+        </div>
+      </form>
 
-          <div className="flex items-center justify-between">
-            <Label htmlFor="encryption">Server-Side Encryption</Label>
-            <Switch
-              id="encryption"
-              checked={nodeData.encryption || false}
-              onCheckedChange={() => {
-                // TODO: Implement encryption toggle
-                console.log('Toggle encryption');
-              }}
-            />
-          </div>
-        </CardContent>
-      </Card>
+      {/* Navigation Confirmation Dialog */}
+      <Dialog open={showNavConfirmDialog} onOpenChange={setShowNavConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unsaved Changes</DialogTitle>
+          </DialogHeader>
+          <p>You have unsaved changes. What would you like to do?</p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNavConfirmDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="outline" onClick={handleDiscard}>
+              Discard Changes
+            </Button>
+            <Button onClick={async () => {
+              hookFormSubmit(onSubmit)();
+              setShowNavConfirmDialog(false);
+              if (navigationCallback) {
+                navigationCallback();
+                setNavigationCallback(null);
+              }
+            }}>
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Save Changes */}
-      <div className="flex justify-end">
-        <Button
-          onClick={() => {
-            // TODO: Implement save changes
-            console.log('Save queue settings');
-          }}
-        >
-          Save Changes
-        </Button>
-      </div>
+      {/* Archive/Unarchive Confirmation Dialog */}
+      <SimpleDialog open={isArchiveDialogOpen} onOpenChange={setIsArchiveDialogOpen}>
+        <SimpleDialogContent>
+          <SimpleDialogHeader>
+            <SimpleDialogTitle>
+              {nodeData.archived ? 'Unarchive Queue' : 'Archive Queue'}
+            </SimpleDialogTitle>
+          </SimpleDialogHeader>
+          <p className="my-4">
+            {nodeData.archived 
+              ? 'Are you sure you want to unarchive this queue? It will become available for use again.'
+              : 'Are you sure you want to archive this queue? It will not be available for use.'}
+          </p>
+          <SimpleDialogFooter>
+            <Button variant="outline" onClick={() => setIsArchiveDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant={nodeData.archived ? "primary" : "danger"} 
+              onClick={handleArchiveConfirm}
+            >
+              {nodeData.archived ? 'Unarchive' : 'Archive'}
+            </Button>
+          </SimpleDialogFooter>
+        </SimpleDialogContent>
+      </SimpleDialog>
     </div>
   );
 } 

@@ -1,0 +1,275 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { z } from 'zod';
+import { useToast } from '@/components/ui/toast';
+import { useRouter } from 'next/navigation';
+import { useMutation } from '@tanstack/react-query';
+import { saveQueueSettings } from '@/utils/api';
+import { NodeData } from '@/types/node';
+
+// Define the schema for queue form validation
+export const queueFormSchema = z.object({
+  name: z.string().trim().min(1, 'Queue name is required'),
+  tags: z.string().optional(),
+  minCheckpointNumber: z.string().optional()
+});
+
+// Define the form values type based on the schema
+export type QueueFormValues = z.infer<typeof queueFormSchema>;
+
+// Define additional queue data type that includes min_kinesis_number
+interface QueueData {
+  id: string;
+  name: string;
+  tags?: string;
+  min_kinesis_number: string | null;
+  [key: string]: any;
+}
+
+// Helper to get the queue data from node data
+const getQueueData = (nodeData: NodeData | null): QueueData | null => {
+  if (!nodeData) return null;
+
+  try {
+    // For queue nodes, the nodeData itself contains queue info
+    if (nodeData.type === 'queue') {
+      return {
+        id: nodeData.id || '',
+        name: nodeData.name || '',
+        tags: nodeData.tags || '',
+        min_kinesis_number: nodeData.min_kinesis_number || null
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error extracting queue data from nodeData:', error);
+    // Return a minimal valid object to prevent further errors
+    return nodeData.id ? {
+      id: nodeData.id,
+      name: nodeData.id.split(':').pop() || nodeData.id,
+      tags: '',
+      min_kinesis_number: null
+    } : null;
+  }
+};
+
+// Initialize form values from queue data
+const getInitialValues = (queueData: QueueData | null): QueueFormValues => {
+  if (!queueData) {
+    return {
+      name: '',
+      tags: '',
+      minCheckpointNumber: ''
+    };
+  }
+
+  return {
+    name: queueData.name || '',
+    tags: queueData.tags || '',
+    minCheckpointNumber: queueData.min_kinesis_number || '',
+  };
+};
+
+export function useQueueFormState(nodeData: NodeData | null) {
+  const queueData = getQueueData(nodeData);
+  const { addToast } = useToast();
+  const router = useRouter();
+  
+  // Track if this is the first render
+  const firstRenderRef = useRef(true);
+  
+  // Track the previous queue data to detect changes
+  const prevQueueDataRef = useRef<QueueData | null>(null);
+  
+  // Form state
+  const [values, setValues] = useState<QueueFormValues>(getInitialValues(queueData));
+  const [errors, setErrors] = useState<Record<string, string> | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Reset form if queue data changes and form is not dirty
+  useEffect(() => {
+    // Only run this effect if queueData exists
+    if (!queueData) return;
+    
+    const prevQueueData = prevQueueDataRef.current;
+    
+    // Skip the first render
+    if (firstRenderRef.current) {
+      firstRenderRef.current = false;
+      prevQueueDataRef.current = queueData;
+      return;
+    }
+
+    // Skip if form is dirty
+    if (isDirty) {
+      console.log('[DEBUG] Form is dirty, not updating values');
+      return;
+    }
+
+    // Skip if queue data is the same by doing a shallow comparison of relevant fields
+    const isDataUnchanged = prevQueueData && 
+      prevQueueData.id === queueData.id &&
+      prevQueueData.name === queueData.name &&
+      prevQueueData.tags === queueData.tags &&
+      prevQueueData.min_kinesis_number === queueData.min_kinesis_number;
+    
+    if (isDataUnchanged) {
+      console.log('[DEBUG] Queue data unchanged, not updating values');
+      return;
+    }
+
+    console.log('[DEBUG] Queue data changed, updating form values');
+    // Use a functional update to ensure we don't depend on the current values
+    setValues(getInitialValues(queueData));
+    setErrors(null);
+    setIsDirty(false);
+    prevQueueDataRef.current = queueData;
+  }, [queueData]); // Remove isDirty from dependencies to prevent loops
+
+  // Validation function
+  const validateForm = (): boolean => {
+    try {
+      queueFormSchema.parse(values);
+      setErrors(null);
+      return true;
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        const formattedErrors: Record<string, string> = {};
+        error.errors.forEach((err) => {
+          if (err.path.length > 0) {
+            formattedErrors[err.path[0]] = err.message;
+          }
+        });
+        setErrors(formattedErrors);
+      }
+      return false;
+    }
+  };
+
+  // Update form values - memoize this function to prevent recreation on every render
+  const setValue = useCallback((key: keyof QueueFormValues, value: string) => {
+    console.log(`[DEBUG] Setting ${key} to ${value}`);
+    setValues(prev => ({ ...prev, [key]: value }));
+    setIsDirty(true);
+  }, []);
+
+  // Use react-query for mutation
+  const { mutateAsync: saveQueueSettingsMutation } = useMutation({
+    mutationFn: async (data: { queueId: string; settings: any }) => {
+      return saveQueueSettings(data.queueId, data.settings);
+    },
+    onSuccess: () => {
+      addToast({
+        title: 'Success',
+        description: 'Queue settings saved successfully',
+        type: 'success',
+      });
+      setIsDirty(false);
+      // Refresh page data
+      router.refresh();
+    },
+    onError: (error: any) => {
+      addToast({
+        title: 'Error',
+        description: error?.message || 'Failed to save queue settings',
+        type: 'error',
+      });
+    },
+  });
+
+  // Submit the form
+  const handleSubmit = async () => {
+    console.log('[DEBUG] Submitting form with values:', values);
+    
+    if (!queueData) {
+      console.error('No queue data available');
+      return;
+    }
+
+    // Validate the form
+    if (!validateForm()) {
+      console.log('[DEBUG] Form validation failed');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      // Map form values to the API schema
+      const settings = {
+        name: values.name,
+        tags: values.tags || '',
+        min_kinesis_number: values.minCheckpointNumber || null,
+      };
+
+      console.log('[DEBUG] Saving queue settings:', settings);
+      
+      // Call the API
+      await saveQueueSettingsMutation({
+        queueId: queueData.id,
+        settings,
+      });
+
+      console.log('[DEBUG] Queue settings saved successfully');
+    } catch (error) {
+      console.error('Error saving queue settings:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Reset form values to initial state
+  const resetForm = () => {
+    console.log('[DEBUG] Resetting form');
+    setValues(getInitialValues(queueData));
+    setErrors(null);
+    setIsDirty(false);
+  };
+
+  // Archive queue
+  const archiveQueue = async () => {
+    if (!queueData) return;
+
+    setIsSubmitting(true);
+    try {
+      await saveQueueSettingsMutation({
+        queueId: queueData.id,
+        settings: { archived: true }
+      });
+    } catch (error) {
+      console.error('Error archiving queue:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Unarchive queue
+  const unarchiveQueue = async () => {
+    if (!queueData) return;
+
+    setIsSubmitting(true);
+    try {
+      await saveQueueSettingsMutation({
+        queueId: queueData.id,
+        settings: { archived: false }
+      });
+    } catch (error) {
+      console.error('Error unarchiving queue:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return {
+    values,
+    errors,
+    isDirty,
+    isSubmitting,
+    setValue,
+    handleSubmit,
+    resetForm,
+    archiveQueue,
+    unarchiveQueue
+  };
+} 

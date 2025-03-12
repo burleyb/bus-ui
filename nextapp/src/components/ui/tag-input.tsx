@@ -21,9 +21,12 @@ export const TagInput = React.forwardRef<HTMLInputElement, TagInputProps>(
 
     // Parse initial tags from comma-separated string
     React.useEffect(() => {
-      if (value) {
+      if (value && typeof value === 'string') {
         const tagArray = value.split(",").filter(tag => tag.trim() !== "");
         setTags(tagArray);
+      } else {
+        // Reset tags if value is not a valid string
+        setTags([]);
       }
     }, [value]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import NodeSettingsDialogHeader from './NodeSettingsDialogHeader';
 import { FullScreenModal } from '@/components/ui/fullscreen-modal';
@@ -537,6 +537,16 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
     }
   };
   
+  // Register callback for tab changes (used by sub-components that need to confirm navigation)
+  const handleTabChangeRequest = useCallback((callback: (canProceed: boolean) => boolean) => {
+    setTabChangeCallback(() => callback);
+  }, []);
+
+  // Register callback for dialog close (used by sub-components that need to confirm closing)
+  const handleCloseRequest = useCallback((callback: (canProceed: boolean) => boolean) => {
+    setCloseCallback(() => callback);
+  }, []);
+  
   // Show error toast if there's an API error
   useEffect(() => {
     if (hasError) {
@@ -675,7 +685,11 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
                         nodeData={nodeData as unknown as BotData} 
                       />
                     )}
-                    {nodeType === 'queue' && <QueueSettingsTab nodeData={nodeData} />}
+                    {nodeType === 'queue' && nodeData && <QueueSettingsTab 
+                      nodeData={nodeData}
+                      onTabChangeRequest={handleTabChangeRequest}
+                      onCloseRequest={handleCloseRequest}
+                    />}
                     {nodeType === 'system' && <SystemSettingsTab nodeData={nodeData} />}
                   </TabsContent>
                 </>
