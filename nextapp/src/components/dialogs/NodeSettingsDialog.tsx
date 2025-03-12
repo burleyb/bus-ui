@@ -564,9 +564,9 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
             childNodes: [] as string[]
           }} 
           onClose={handleClose}
-          timePeriod={timePeriod}
-          onTimePeriodChange={handleTimePeriodChange}
-          onCustomPeriodClick={() => setShowCustomPeriodDialog(true)}
+          timePeriod={activeTab !== 'settings' ? timePeriod : undefined}
+          onTimePeriodChange={activeTab !== 'settings' ? handleTimePeriodChange : undefined}
+          onCustomPeriodClick={activeTab !== 'settings' ? () => setShowCustomPeriodDialog(true) : undefined}
         />
         
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -602,33 +602,35 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
                   
                 </TabsList>
                 
-                {/* Time Period Selector - Right aligned */}
-                <div className="flex items-center space-x-1">
-                  <span className="text-sm text-gray-500 mr-2">Time Period:</span>
-                  {(['15m', '1hr', '6hr', '1d', '1w'] as TimePeriod[]).map((period) => (
+                {/* Time Period Selector - Right aligned, hidden when on settings tab */}
+                {activeTab !== 'settings' && (
+                  <div className="flex items-center space-x-1">
+                    <span className="text-sm text-gray-500 mr-2">Time Period:</span>
+                    {(['15m', '1hr', '6hr', '1d', '1w'] as TimePeriod[]).map((period) => (
+                      <button
+                        key={period}
+                        className={`px-3 py-1 text-xs rounded-md ${
+                          timePeriod === period 
+                            ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
+                        }`}
+                        onClick={() => handleTimePeriodChange(period)}
+                      >
+                        {period}
+                      </button>
+                    ))}
                     <button
-                      key={period}
                       className={`px-3 py-1 text-xs rounded-md ${
-                        timePeriod === period 
+                        timePeriod === 'custom' 
                           ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
                       }`}
-                      onClick={() => handleTimePeriodChange(period)}
+                      onClick={() => handleTimePeriodChange('custom')}
                     >
-                      {period}
+                      Custom
                     </button>
-                  ))}
-                  <button
-                    className={`px-3 py-1 text-xs rounded-md ${
-                      timePeriod === 'custom' 
-                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700'
-                    }`}
-                    onClick={() => handleTimePeriodChange('custom')}
-                  >
-                    Custom
-                  </button>
-                </div>
+                  </div>
+                )}
               </div>
             </div>
             

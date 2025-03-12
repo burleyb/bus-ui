@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { z } from 'zod';
 import { useToast } from '@/components/ui/toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -91,7 +91,7 @@ export type BotFormSubmitData = {
   tags: string | null;
   time?: string | null;
   eventStreamQueue?: string;
-  triggers?: string[];
+  triggers?: string[] | null;
   health: {
     source_lag: number | null;
     write_lag: number | null;
@@ -112,31 +112,50 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
   const [values, setValues] = useState<BotFormValues>(initialValues);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isDirty, setIsDirty] = useState(false);
-
+  
+  // Use a ref to store previous botData for comparison
+  const prevBotDataRef = useRef<BotData | null>(null);
+  
   // Reset form when bot data changes
   useEffect(() => {
-    if (botData) {
-      // Store previous values in a ref to avoid excess rerenders
-      const prevValues = values;
-      
-      // Only reset the form if meaningful data has changed
-      const hasStructuralChanges = !prevValues ||
-        prevValues.name !== (botData.name || '') ||
-        prevValues.description !== (botData.description || '') ||
-        prevValues.tags !== (botData.tags || '') ||
-        prevValues.cronSchedule !== (botData.time || '') ||
-        prevValues.eventStreamQueue !== (botData.triggers?.[0] || '');
-      
-      // Only update form if there are structural changes and the form isn't dirty
-      if (hasStructuralChanges && !isDirty) {
-        console.log('[DEBUG] Detected meaningful bot data changes, resetting form');
-        setValues(getInitialValues(botData));
-        setErrors({});
-      } else {
-        console.log('[DEBUG] Bot data update detected, but no structural changes or form is dirty - preserving form state');
-      }
+    // Skip if no bot data
+    if (!botData) return;
+    
+    // Skip if form is dirty - we don't want to reset a form the user is editing
+    if (isDirty) {
+      console.log('[DEBUG] Form is dirty, not resetting with updated bot data');
+      return;
     }
-  }, [botData, isDirty, values]);
+    
+    // Skip if botData hasn't actually changed
+    const prevBotData = prevBotDataRef.current;
+    const botDataChanged = JSON.stringify({
+      name: botData.name,
+      description: botData.description,
+      tags: botData.tags,
+      time: botData.time,
+      trigger: botData.triggers?.[0]
+    }) !== JSON.stringify({
+      name: prevBotData?.name,
+      description: prevBotData?.description,
+      tags: prevBotData?.tags,
+      time: prevBotData?.time,
+      trigger: prevBotData?.triggers?.[0]
+    });
+    
+    if (!botDataChanged) {
+      console.log('[DEBUG] Bot data unchanged, skipping form reset');
+      return;
+    }
+    
+    // If we get here, bot data has changed and form isn't dirty, so reset form
+    console.log('[DEBUG] Bot data changed and form is not dirty, updating form values');
+    setValues(getInitialValues(botData));
+    setErrors({});
+    
+    // Update ref for future comparisons
+    prevBotDataRef.current = botData;
+  }, [botData, isDirty]); // values intentionally removed from dependencies
 
   // Add console logging for tracking form state updates
   useEffect(() => {
@@ -151,15 +170,20 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
   // Save bot mutation
   const saveBotMutation = useMutation({
     mutationFn: (data: BotFormSubmitData) => API.saveNodeSettings(data.id, data),
-    onSuccess: () => {
-      // Only invalidate queries - don't immediately reset the form values
+    onSuccess: (response) => {
+      // Log detailed information about the saved data vs current form state
+      console.log('[DEBUG] Bot saved successfully. Response:', response);
+      console.log('[DEBUG] Current form values:', {
+        triggerType: values.triggerType,
+        eventStreamQueue: values.eventStreamQueue,
+        cronSchedule: values.cronSchedule
+      });
+      
+      // Invalidate queries to refresh the data
       queryClient.invalidateQueries({ queryKey: ['botDetails', botData?.id] });
       
       // Mark form as not dirty to prevent unnecessary resets
       setIsDirty(false);
-      
-      // Log success
-      console.log('[DEBUG] Bot saved successfully. Form marked as not dirty.');
       
       addToast({
         title: 'Success',
@@ -319,28 +343,31 @@ export function useBotFormState(botData: BotData | null): UseBotFormStateResult 
         write_lag: values.overrides.writeLagEnabled ? values.overrides.writeLag || null : null,
         error_limit: values.overrides.errorLimitEnabled ? values.overrides.errorLimit || null : null,
         consecutive_errors: values.overrides.consecutiveErrorsEnabled ? values.overrides.consecutiveErrors || null : null,
-      },
+      }
     };
 
-    // Add trigger-specific fields
+    // Log the current trigger type and values
+    console.log('[DEBUG] Form submission - current values:', {
+      triggerType: values.triggerType,
+      cronSchedule: values.cronSchedule || '(empty)',
+      eventStreamQueue: values.eventStreamQueue || '(empty)'
+    });
+
+    // Add trigger-specific fields based on triggerType
     if (values.triggerType === 'scheduled') {
       formData.time = values.cronSchedule;
-      // Clear triggers
-      formData.triggers = undefined
+      formData.triggers = null;// Clear triggers for scheduled bots
+      console.log('[DEBUG] Setting scheduled bot with time:', formData.time);
     } else if (values.triggerType === 'event-stream') {
-      // Instead of setting eventStreamQueue, set the triggers array
-      if (values.eventStreamQueue) {
-        formData.triggers = [values.eventStreamQueue];
-      } else {
-        formData.triggers = []; // Empty array if no queue selected
-      }
-      // Clear time
-      formData.time = undefined;
-    } else if (values.triggerType === 'not-scheduled') {
-      // For not-scheduled, explicitly set both to empty/undefined to clear them
-      formData.time = undefined; 
-      formData.triggers = undefined;
-      console.log('[DEBUG] Handling not-scheduled in submission: set time to null and cleared triggers');
+      formData.time = null; // Clear the time field
+      // Only set triggers if we have a queue selected
+      formData.triggers = values.eventStreamQueue ? [values.eventStreamQueue] : [];
+      console.log('[DEBUG] Setting event-stream bot with triggers:', formData.triggers);
+    } else {
+      // For not-scheduled, clear both time and triggers
+      formData.time = null;
+      formData.triggers = null;
+      console.log('[DEBUG] Setting not-scheduled bot (cleared time and triggers)');
     }
 
     console.log('[DEBUG] Final form data being sent to API:', JSON.stringify(formData, null, 2));
@@ -425,14 +452,14 @@ function getInitialValues(botData: BotData | null): BotFormValues {
     id: botData.id,
     time: botData.time,
     triggers: botData.triggers,
-    eventSource: botData.triggers?.[0],
-    hasTriggersArray: Array.isArray(botData.triggers),
-    triggersLength: botData.triggers?.length
+    eventSource: botData?.triggers?.[0],
+    hasTriggersArray: Array.isArray(botData?.triggers),
+    triggersLength: botData?.triggers?.length
   });
 
   // Determine trigger type
   const isScheduled = !!botData.time && botData.time !== '';
-  const hasEventStream = !!botData.triggers?.[0];
+  const hasEventStream = !!botData?.triggers?.[0];
     
   let triggerType: BotFormValues['triggerType'];
   if (isScheduled) {

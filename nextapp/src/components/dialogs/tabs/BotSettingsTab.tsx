@@ -392,7 +392,7 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
       time: nodeData?.time,
       triggerType: values.triggerType,
       hasTime: !!nodeData?.time && nodeData?.time !== '',
-      hasEventStream: !!nodeData?.triggers?.[0]?.event_source_id
+      hasEventStream: !!nodeData?.triggers?.[0]
     }
   });
 
