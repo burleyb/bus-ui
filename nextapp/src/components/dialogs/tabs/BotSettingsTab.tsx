@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { AlertCircle, Archive, Undo2 } from 'lucide-react';
+import { AlertCircle, Archive, Undo2, Search, X } from 'lucide-react';
 import { BotData } from '@/types/bot';
 import { useBotFormState, BotFormValues } from '@/hooks/useBotFormState';
 import { z } from 'zod';
@@ -18,6 +18,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { TooltipSimple } from '@/components/ui/simple-tooltip';
 import { cn } from '@/lib/utils';
 import { TagInput } from '@/components/ui/tag-input';
+import { useAppContext } from '@/context/AppContext';
+import NodeIcon from '@/components/node/NodeIcon';
 import { 
   SimpleDialog,
   SimpleDialogContent, 
@@ -93,6 +95,236 @@ const formSchema = z.object({
 );
 
 type FormValues = z.infer<typeof formSchema>;
+
+// QueueSearch component for event stream queue selection
+interface QueueSearchProps {
+  value: string | undefined;
+  onChange: (value: string) => void;
+  error?: string;
+}
+
+function QueueSearch({ value, onChange, error }: QueueSearchProps) {
+  const { state } = useAppContext();
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Function to strip the prefix (queue:) from an ID
+  const stripPrefix = (id: string): string => {
+    const parts = id.split(':');
+    return parts.length > 1 ? parts.slice(1).join(':') : id;
+  };
+
+  // Extract queues from app state and format them for the dropdown
+  const queueOptions = state.queues
+    ? state.queues
+      .filter(queue => !queue.archived) // Filter out archived queues
+      .map(queue => ({
+        value: queue.id,
+        label: stripPrefix(queue.id),
+        type: 'queue'
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+    : [];
+    
+  // Log queue options for debugging
+  useEffect(() => {
+    console.log("[DEBUG] Queue options loaded:", queueOptions.length, queueOptions.slice(0, 5));
+  }, [queueOptions.length]);
+
+  // Filter queue options based on search text
+  const filteredOptions = queueOptions
+    .filter(option => 
+      !searchText || 
+      option.label.toLowerCase().includes(searchText.toLowerCase()) || 
+      option.value.toLowerCase().includes(searchText.toLowerCase())
+    );
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Focus search input when dropdown opens
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 0);
+    }
+  }, [isOpen]);
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightedIndex(prevIndex => {
+        if (prevIndex >= filteredOptions.length - 1) {
+          return 0; // Loop back to start
+        }
+        return prevIndex + 1;
+      });
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightedIndex(prevIndex => {
+        if (prevIndex <= 0) {
+          return filteredOptions.length - 1; // Loop to end
+        }
+        return prevIndex - 1;
+      });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (highlightedIndex >= 0 && highlightedIndex < filteredOptions.length) {
+        const selectedOption = filteredOptions[highlightedIndex];
+        handleQueueChange(selectedOption.value);
+      } else if (highlightedIndex === -1 && filteredOptions.length === 1) {
+        // Auto-select if there's only one option
+        handleQueueChange(filteredOptions[0].value);
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setIsOpen(false);
+    }
+  };
+
+  // Handle queue selection
+  const handleQueueChange = (queueId: string) => {
+    onChange(queueId);
+    setIsOpen(false);
+    setSearchText('');
+    setHighlightedIndex(-1);
+  };
+
+  // Get the queue label to display
+  const selectedQueue = value ? queueOptions.find(option => option.value === value) : undefined;
+  const displayValue = selectedQueue ? selectedQueue.label : '';
+  
+  // Normalize value to ensure string
+  const normalizedValue = value || '';
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      {/* Dropdown Trigger Button */}
+      <div 
+        className={cn(
+          "flex items-center w-full rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white cursor-pointer",
+          error ? "border-red-500" : "border-gray-300"
+        )}
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        {normalizedValue ? (
+          <>
+            <NodeIcon node={{ id: normalizedValue, type: 'queue' }} size={20} className="mr-2" />
+            <span className="truncate flex-grow">{displayValue}</span>
+            {normalizedValue && (
+              <button
+                type="button"
+                className="p-1 rounded-full text-gray-400 hover:text-gray-500 focus:outline-none"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleQueueChange('');
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </>
+        ) : (
+          <span className="text-gray-500 dark:text-gray-400 flex items-center">
+            <Search size={16} className="mr-2" />
+            Search for a queue (e.g. queue:name)
+          </span>
+        )}
+      </div>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div 
+          className="absolute z-50 mt-1 w-full rounded-md bg-white shadow-lg dark:bg-gray-800 border border-gray-200 dark:border-gray-700 max-h-60 overflow-auto"
+          onKeyDown={handleKeyDown}
+        >
+          {/* Search Input */}
+          <div className="sticky top-0 z-10 bg-white dark:bg-gray-800 p-2 border-b border-gray-200 dark:border-gray-700">
+            <div className="relative">
+              <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-500 dark:text-gray-400" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                value={searchText}
+                onChange={(e) => {
+                  setSearchText(e.target.value);
+                  setHighlightedIndex(-1);
+                }}
+                placeholder="Search queues..."
+                className="w-full pl-8 pr-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+          
+          <div className="py-1">
+            {/* Clear option */}
+            <button
+              type="button"
+              className={`flex w-full items-center px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700 ${
+                highlightedIndex === -1 ? 'bg-gray-100 dark:bg-gray-700' : ''
+              }`}
+              onClick={() => handleQueueChange('')}
+              onMouseEnter={() => setHighlightedIndex(-1)}
+            >
+              <span className="ml-6">Clear selection</span>
+            </button>
+            
+            {/* No results message */}
+            {searchText && filteredOptions.length === 0 && (
+              <div className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 text-center italic">
+                No matching queues found
+              </div>
+            )}
+            
+            {/* Queue options */}
+            {filteredOptions.map((option, index) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`flex w-full items-center px-3 py-2 text-sm ${
+                  option.value === normalizedValue 
+                    ? 'bg-blue-100 text-blue-900 dark:bg-blue-900 dark:text-blue-100' 
+                    : highlightedIndex === index
+                      ? 'bg-gray-100 dark:bg-gray-700'
+                      : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                }`}
+                onClick={() => handleQueueChange(option.value)}
+                onMouseEnter={() => setHighlightedIndex(index)}
+              >
+                <NodeIcon node={{ id: option.value, type: 'queue' }} size={20} className="mr-2 flex-shrink-0" />
+                <span className="truncate">{option.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Error message */}
+      {error && (
+        <p className="text-sm text-red-500 mt-1">{error}</p>
+      )}
+    </div>
+  );
+}
 
 export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRequest }: BotSettingsTabProps) {
   // Dialog state for navigation confirmation
@@ -505,25 +737,16 @@ export default function BotSettingsTab({ nodeData, onTabChangeRequest, onCloseRe
                       name="eventStreamQueue"
                       control={control}
                       render={({ field }) => (
-                        <div>
-                          <Input
-                            {...field}
-                            placeholder="Search for a queue (e.g. queue:name)"
-                            className={cn(
-                              formErrors?.eventStreamQueue && "border-red-500"
-                            )}
-                            onChange={(e) => {
-                              field.onChange(e);
-                              setValue('eventStreamQueue', e.target.value);
-                            }}
-                          />
-                          {/* A more advanced queue search would be implemented here */}
-                        </div>
+                        <QueueSearch
+                          value={field.value || ''}
+                          onChange={(value) => {
+                            field.onChange(value);
+                            setValue('eventStreamQueue', value);
+                          }}
+                          error={formErrors?.eventStreamQueue?.message}
+                        />
                       )}
                     />
-                    {formErrors?.eventStreamQueue && (
-                      <p className="text-sm text-red-500">{formErrors.eventStreamQueue.message}</p>
-                    )}
                   </div>
                 )}
 
