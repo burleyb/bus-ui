@@ -381,6 +381,97 @@ const API = {
       throw error;
     }
   },
+
+  // System Settings related
+  saveSystemSettings: async (systemId: string, settings: any) => {
+    if (!systemId) {
+      console.error('No systemId provided for saveSystemSettings');
+      throw new Error('No system ID provided');
+    }
+
+    const url = '/api/system';
+    
+    // Format payload according to the eventsettings API requirement
+    const payload: {
+      id: string;
+      label: string;
+      name: string;
+      icon: string;
+      tags: string;
+      archived?: boolean;
+    } = {
+      id: systemId,
+      label: settings.label || systemId.split(':').pop() || systemId,
+      name: settings.name || settings.label || '',
+      icon: settings.icon || '',
+      tags: settings.tags || settings.other?.tags || ''
+    };
+
+    // Handle tags - could be directly in settings or in settings.other
+    if (settings.tags !== undefined && settings.tags !== '') {
+      // If we're using the new structure, add tags directly to the root
+      payload.tags = settings.tags;
+    } else if (settings.other?.tags !== undefined) {
+      // If using the old structure, get tags from other
+      payload.tags = settings.other.tags;
+    } else {
+      // Default to empty string
+      payload.tags = '';
+    }
+
+    // Add archived field directly if it exists
+    if (settings.archived !== undefined) {
+      payload.archived = settings.archived;
+      
+      // For archive/unarchive operations, we need to ensure this is properly serialized as a boolean
+      console.log(`Archive operation detected: Setting archived = ${settings.archived}`);
+    }
+
+    console.log(`[DEBUG] saveSystemSettings payload:`, payload);
+
+    try {
+      console.log(`Saving system settings for ${systemId}:`, payload);
+      
+      const response = await awsNativeFetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        // Try to get the detailed error message
+        let errorText;
+        try {
+          // Try to parse as JSON first
+          const errorJson = await response.json();
+          errorText = errorJson.message || errorJson.error || JSON.stringify(errorJson);
+        } catch (e) {
+          // If not JSON, get as text
+          errorText = await response.text();
+        }
+        
+        console.error(`Failed to save system settings for ${systemId}: ${response.status} ${response.statusText}`, errorText);
+        throw new Error(errorText || `Failed to save system settings: ${response.statusText}`);
+      }
+
+      // Try to get the successful response body if available
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        // If no JSON response, just create a success object
+        data = { success: true };
+      }
+
+      console.log('System settings saved successfully for', systemId);
+      return { ok: true, data };
+    } catch (error) {
+      console.error('Error saving system settings:', error);
+      throw error;
+    }
+  },
 };
 
 // Create provider
@@ -1367,7 +1458,7 @@ export function useSystemDetails(systemId: string) {
       try {
         console.log(`Fetching system details for: ${systemId}`);
         // Use the correct API endpoint format
-        const response = await awsNativeFetch(`/api/cron/${systemId}`);
+        const response = await awsNativeFetch(`/api/system/${systemId}`);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch system details: ${response.statusText}`);
@@ -1399,7 +1490,9 @@ export function useSystemDetails(systemId: string) {
         return {
           id: systemId,
           name: systemId.split(':').pop() || systemId,
+          label: systemId.split(':').pop() || systemId,
           type: 'system',
+          tags: '',
           status: 'unknown',
           _fromFallback: true
         };
@@ -1843,6 +1936,34 @@ export function useSaveQueueSettings() {
     },
     onError: (error) => {
       console.error('Error in saveQueueSettings mutation:', error);
+      // Error will be handled by the component
+    }
+  });
+}
+
+// Hook for saving system settings
+export function useSaveSystemSettings() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (data: { systemId: string; settings: any }) => {
+      try {
+        return await API.saveSystemSettings(data.systemId, data.settings);
+      } catch (error) {
+        console.error(`Error in saveSystemSettings mutation:`, error);
+        throw error; // Re-throw to let the component handle it
+      }
+    },
+    onSuccess: (_, variables) => {
+      // Invalidate the system details query to refresh the data
+      queryClient.invalidateQueries({
+        queryKey: ['system-details', variables.systemId]
+      });
+      
+      console.log(`System ${variables.systemId} settings updated`);
+    },
+    onError: (error) => {
+      console.error('Error in saveSystemSettings mutation:', error);
       // Error will be handled by the component
     }
   });
