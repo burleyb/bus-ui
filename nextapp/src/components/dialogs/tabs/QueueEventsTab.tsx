@@ -357,8 +357,6 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   const [searchInput, setSearchInput] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [isSearching, setIsSearching] = useState(false);
-  const [resumptionToken, setResumptionToken] = useState<string | null>(null);
-  const [cachedEvents, setCachedEvents] = useState<any[]>([]);
   const [eventCount, setEventCount] = useState(0);
   const [lastQueryFailed, setLastQueryFailed] = useState(false);
   
@@ -368,7 +366,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   const [dialogEventId, setDialogEventId] = useState<string>('');
   const [botOptions, setBotOptions] = useState<Array<{id: string, name: string}>>([]);
   const [jsonEditorMode, setJsonEditorMode] = useState<'tree' | 'view' | 'form' | 'code' | 'text'>('tree');
-
+  
   // Calculate the EID based on selected time range or custom date
   const eid = useMemo(() => {
     if (customDate) {
@@ -404,93 +402,22 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   // Extract queue ID from nodeData
   const queueId = nodeData.id;
   
-  // Get the current effective EID for querying (either from input or from resumptionToken)
-  const currentEid = resumptionToken || eid;
-  
   // Fetch events using the hook
   const { 
     data: response = { results: [], resumptionToken: null }, 
     isLoading,
     isError,
     refetch
-  } = useSearchQueueEvents(queueId, currentEid, searchText);
+  } = useSearchQueueEvents(queueId, eid, searchText);
   
-  // Process the response data and update our cached events
-  useEffect(() => {
-    // Skip if we're searching or don't have a valid response
-    if (isSearching || !response) return;
-    
-    // Use a local flag to prevent accidental double updates
-    let didSetTokenInThisEffect = false;
-    
-    // Check if we have results
-    if (response.results && Array.isArray(response.results)) {
-      // For logging purposes
-      console.log(`[QueueEventsTab] Received ${response.results.length} events from API`);
-      
-      // If this is the first batch or we're refreshing (no resumption token)
-      if (!resumptionToken) {
-        setCachedEvents(response.results);
-        
-        // Auto-select the first event if we have results
-        if (response.results.length > 0) {
-          const firstEvent = response.results[0];
-          const eventId = firstEvent.eventId || firstEvent.eid || firstEvent.id;
-          if (eventId) {
-            setSelectedEventId(eventId);
-          }
-        }
-      } else {
-        // Append to existing cached events if using resumption token
-        setCachedEvents(prev => [...prev, ...response.results]);
-      }
-      
-      // Update event count
-      setEventCount(response.results.length);
-      
-      // Mark that the query succeeded
-      setLastQueryFailed(false);
-    } else {
-      console.warn('[QueueEventsTab] No results array in response:', response);
-      
-      // Only clear events if this is a fresh query, not when appending
-      if (!resumptionToken) {
-        setCachedEvents([]);
-        setSelectedEventId(null);
-      }
-      
-      // Mark that the query failed
-      setLastQueryFailed(true);
-    }
-    
-    // Handle resumption token completely outside the React cycle
-    if (response.resumptionToken && !didSetTokenInThisEffect) {
-      didSetTokenInThisEffect = true;
-      // Use RAF instead of setTimeout to avoid React batching
-      window.requestAnimationFrame(() => {
-        setResumptionToken(response.resumptionToken);
-      });
-    }
-  }, [response, isSearching]); // Keep dependencies minimal
-  
-  // Get raw events array from response or our cached events
-  const rawEvents = useMemo(() => {
-    // Always use our cached events instead of directly using response.results
-    return cachedEvents;
-  }, [cachedEvents]);
-  
-  // Process the events to ensure they have consistent structure
+  // Process events to ensure they have consistent structure
   const events = useMemo(() => {
-    console.log('Raw events data:', rawEvents);
-
-    // Handle different possible response formats
-    if (!rawEvents || !Array.isArray(rawEvents)) {
-      console.warn('Events data is not an array:', rawEvents);
+    if (!response.results || !Array.isArray(response.results)) {
       return [];
     }
-
+    
     // Normalize event data to a consistent format
-    return rawEvents.map(event => {
+    return response.results.map((event: any) => {
       // Create a unique ID for the event
       const eventId = event.eventId || event.eid || event.id || (event.payload && event.payload.id) || Math.random().toString(36).substring(2, 9);
       
@@ -511,60 +438,27 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
         payload
       };
     });
-  }, [rawEvents]);
+  }, [response.results]);
+  
+  // Update event count and last query status based on events
+  useEffect(() => {
+    setEventCount(events.length);
+    setLastQueryFailed(response.results && Array.isArray(response.results) 
+      ? response.results.length === 0 
+      : true);
+  }, [events.length, response.results]);
   
   // Memoize the selected event for more efficient rendering
   const selectedEvent = useMemo(() => {
     if (!selectedEventId) return null;
-    return events.find(event => event.eventId === selectedEventId || event.eid === selectedEventId);
+    return events.find((event: any) => event.eventId === selectedEventId || event.eid === selectedEventId);
   }, [selectedEventId, events]);
 
   // Create a stable version of handleJsonChange that won't change on every render
   const handleJsonChange = useCallback((data: any) => {
-    // Skip processing if we don't have a selected event or data
-    if (!selectedEventId || !data) return;
-    
-    // Use a ref to track the last processed payload to prevent loops
-    const lastUpdateString = JSON.stringify(data);
-    
-    // Use functional state update to avoid closure issues
-    setCachedEvents(prevEvents => {
-      // Find the event to update
-      const eventIndex = prevEvents.findIndex(event => 
-        event.eventId === selectedEventId || event.eid === selectedEventId
-      );
-      
-      // If event not found, return unchanged state
-      if (eventIndex === -1) return prevEvents;
-      
-      // Get the current event
-      const currentEvent = prevEvents[eventIndex];
-      
-      // Compare serialized versions of current and new payloads
-      try {
-        const currentPayloadString = JSON.stringify(currentEvent.payload);
-        // If data hasn't changed, return unchanged state
-        if (currentPayloadString === lastUpdateString) return prevEvents;
-      } catch (e) {
-        console.error('Error comparing JSON data:', e);
-        return prevEvents;
-      }
-      
-      // Create a new array with the updated event
-      const newEvents = [...prevEvents];
-      newEvents[eventIndex] = {
-        ...currentEvent,
-        payload: data
-      };
-      
-      return newEvents;
-    });
-    
-    // Log update outside of state update
-    setTimeout(() => {
-      console.log('[QueueEventsTab] Updated event payload for event:', selectedEventId);
-    }, 0);
-  }, [selectedEventId]); // Only depend on selectedEventId
+    // This would need to be updated to work directly with the response rather than cached events
+    console.log('JSON editing is view-only until we implement direct API updates');
+  }, []);
   
   // Select an event to view details
   const handleSelectEvent = (eventId: string) => {
@@ -573,9 +467,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   
   const refreshEvents = () => {
     setIsSearching(true);
-    setResumptionToken(null); // Clear resumption token to start fresh
     setSelectedEventId(null); // Clear selection
-    setCachedEvents([]); // Clear cached events
     refetch().finally(() => {
       setIsSearching(false);
     });
@@ -585,14 +477,12 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     setSelectedTimeRange(range);
     setCustomDate(null);
     setShowDatePicker(false);
-    setResumptionToken(null); // Clear resumption token when changing time range
     setSelectedEventId(null); // Clear selection
   };
   
   const handleDateSelect = (date: Date | null) => {
     setCustomDate(date);
     setShowDatePicker(false);
-    setResumptionToken(null); // Clear resumption token when selecting a custom date
     setSelectedEventId(null); // Clear selection
   };
   
@@ -608,7 +498,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     console.log(`Replay event: ${eventId}`);
     
     // Find the event
-    const event = events.find(e => e.eventId === eventId || e.eid === eventId);
+    const event = events.find((e: any) => e.eventId === eventId || e.eid === eventId);
     if (!event) {
       console.error('Event not found:', eventId);
       return;
@@ -641,7 +531,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     console.log(`Resubmit event: ${eventId}`);
     
     // Find the event
-    const event = events.find(e => e.eventId === eventId || e.eid === eventId);
+    const event = events.find((e: any) => e.eventId === eventId || e.eid === eventId);
     if (!event) {
       console.error('Event not found:', eventId);
       return;
@@ -663,90 +553,12 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     });
   };
 
-  // Handle loading more events when the "load more" button is clicked
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  useEffect(() => {
-    // Skip effect if we're not actively loading or don't have a resumption token
-    if (!isLoadingMore || !resumptionToken) return;
-    
-    console.log('[QueueEventsTab] Loading more events with resumption token:', resumptionToken);
-    
-    // Immediately clear the loading flag to prevent multiple loads
-    setIsLoadingMore(false);
-    
-    // Create a local ref to this specific resumption token used for this request
-    const currentToken = resumptionToken;
-    
-    // Make the API call
-    refetch()
-      .then(() => {
-        console.log('[QueueEventsTab] Successfully loaded more events');
-      })
-      .catch(error => {
-        console.error('[QueueEventsTab] Error loading more events:', error);
-        // Only clear the token if it's still the one we were using
-        if (resumptionToken === currentToken) {
-          setResumptionToken(null);
-        }
-      });
-      
-    // This effect only runs when isLoadingMore becomes true
-  }, [isLoadingMore, resumptionToken, refetch]);
-
   return (
     <div className="space-y-4">
       <div className="flex flex-col space-y-2">
-        {/* Time range selector */}
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center">
-            <Clock size={16} className="text-gray-500 dark:text-gray-400 mr-1" />
-            <span className="text-sm text-gray-700 dark:text-gray-300">Time range:</span>
-          </div>
-          
-          {Object.keys(TIME_RANGES).map((range) => (
-            <button
-              key={range}
-              onClick={() => handleTimeRangeChange(range)}
-              className={`text-xs px-2 py-1 rounded-md ${
-                selectedTimeRange === range
-                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                  : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              {range}
-            </button>
-          ))}
-          
-          <button
-            onClick={() => setShowDatePicker(!showDatePicker)}
-            className={`flex items-center text-xs px-2 py-1 rounded-md ${
-              customDate
-                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
-            }`}
-          >
-            <Calendar size={12} className="mr-1" />
-            {customDate ? formatDateTime(customDate.toISOString()) : 'Custom'}
-          </button>
-          
-          {showDatePicker && (
-            <div className="absolute z-10 bg-white dark:bg-gray-800 shadow-lg rounded-md p-2 border border-gray-200 dark:border-gray-700 mt-8">
-              {/* @ts-ignore */}
-              <DatePicker
-                selected={customDate}
-                onChange={handleDateSelect}
-                showTimeSelect
-                dateFormat="yyyy-MM-dd HH:mm"
-                timeFormat="HH:mm"
-                timeIntervals={15}
-                inline
-              />
-            </div>
-          )}
-        </div>
-        
+        {/* Search and Time range selector in same row */}
         <div className="flex items-center space-x-2">
+          {/* Search input - now can grow to fill available space */}
           <div className="relative flex-grow">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search size={16} className="text-gray-400" />
@@ -761,10 +573,45 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                        focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          
+          {/* Time range selector - now right justified */}
+          <div className="flex flex-wrap items-center gap-1 ml-auto">
+            <div className="flex items-center">
+              <Clock size={16} className="text-gray-500 dark:text-gray-400 mr-1" />
+              <span className="text-sm text-gray-700 dark:text-gray-300">Time range:</span>
+            </div>
+            
+            {Object.keys(TIME_RANGES).map((range) => (
+              <button
+                key={range}
+                onClick={() => handleTimeRangeChange(range)}
+                className={`text-xs px-2 py-1 rounded-md ${
+                  selectedTimeRange === range
+                    ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                    : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                {range}
+              </button>
+            ))}
+            
+            <button
+              onClick={() => setShowDatePicker(!showDatePicker)}
+              className={`flex items-center text-xs px-2 py-1 rounded-md ${
+                customDate
+                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
+                  : 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <Calendar size={12} className="mr-1" />
+              {customDate ? formatDateTime(customDate.toISOString()) : 'Custom'}
+            </button>
+          </div>
+          
           <button
             onClick={refreshEvents}
             disabled={isLoading || isSearching}
-            className="ml-2 flex items-center px-3 py-2 text-sm font-medium 
+            className="flex items-center px-3 py-2 text-sm font-medium 
                      rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200
                      dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700
                      disabled:opacity-50 disabled:cursor-not-allowed"
@@ -773,12 +620,27 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
             Refresh
           </button>
         </div>
+        
+        {showDatePicker && (
+          <div className="absolute z-10 bg-white dark:bg-gray-800 shadow-lg rounded-md p-2 border border-gray-200 dark:border-gray-700 mt-8 right-32">
+            {/* @ts-ignore */}
+            <DatePicker
+              selected={customDate}
+              onChange={handleDateSelect}
+              showTimeSelect
+              dateFormat="yyyy-MM-dd HH:mm"
+              timeFormat="HH:mm"
+              timeIntervals={15}
+              inline
+            />
+          </div>
+        )}
       </div>
       
       {/* Debug information */}
       <div className="text-xs text-gray-500 dark:text-gray-400 italic">
-        <div>Searching queue: {queueId} | EID: {resumptionToken || eid.substring(0, 20)}...{searchText && ` | Search: "${searchText}"`}</div>
-        <div>Events found: {events.length}{resumptionToken && ' | More events available'}</div>
+        <div>Searching queue: {queueId} | EID: {eid.substring(0, 20)}...{searchText && ` | Search: "${searchText}"`}</div>
+        <div>Events found: {events.length}{response.resumptionToken && ' | More events available'}</div>
         {lastQueryFailed && <div className="text-amber-500">Last query returned no results. Try adjusting your search parameters.</div>}
       </div>
       
@@ -818,7 +680,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-                {events.map((event) => {
+                {events.map((event: any) => {
                   const eventId = event.eventId || event.eid;
                   return (
                     <tr 
@@ -919,14 +781,11 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
           Showing {events.length} events
         </span>
         
-        {resumptionToken && (
+        {response.resumptionToken && (
           <button
             onClick={() => {
-              if (resumptionToken) {
-                setIsLoadingMore(true);
-              }
+              // Implement load more logic here
             }}
-            disabled={isLoading || isSearching}
             className="ml-auto flex items-center px-3 py-1.5 text-xs font-medium 
                      rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100
                      dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/30
@@ -944,7 +803,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
         onClose={() => setShowReplayDialog(false)}
         queueId={queueId}
         eventId={dialogEventId}
-        event={events.find(e => e.eventId === dialogEventId || e.eid === dialogEventId)}
+        event={selectedEvent}
         botOptions={botOptions}
       />
       
@@ -954,7 +813,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
         onClose={() => setShowResubmitDialog(false)}
         queueId={queueId}
         eventId={dialogEventId}
-        event={events.find(e => e.eventId === dialogEventId || e.eid === dialogEventId)}
+        event={selectedEvent}
       />
     </div>
   );

@@ -177,7 +177,16 @@ export function WorkflowGraphChartDrawer({
   
   // Navigate to node settings dialog for queue events
   const openQueueEventsWithCheckpoint = (queueId: string, checkpoint: string) => {
-    openNodeSettingsDialog(queueId, 'events', { checkpoint });
+    // openNodeSettingsDialog expects just the node ID
+    // the 'events' tab and checkpoint will be handled by the DialogContext
+    // We need to make sure we're passing the proper queue ID format
+    if (!queueId.startsWith('queue:')) {
+      queueId = `queue:${queueId}`;
+    }
+    openNodeSettingsDialog(queueId);
+    
+    // Note: The DialogContext will need to be updated to handle the checkpoint parameter
+    // This requires a different approach outside of this component
   };
   
   // If drawer is not open, don't render anything
@@ -189,7 +198,7 @@ export function WorkflowGraphChartDrawer({
       {/* Header */}
       <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
         <h2 className="text-lg font-semibold">Node Charts</h2>
-        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+        <Button variant="ghost" onClick={onClose} aria-label="Close">
           <X className="h-5 w-5" />
         </Button>
       </div>
@@ -509,7 +518,7 @@ function NodeChartContent({
             <div className="flex items-center justify-between">
               <div className="text-sm">Current Checkpoint:</div>
               <Button 
-                variant="link" 
+                variant="outline" 
                 size="sm" 
                 className="p-0 h-auto"
                 onClick={() => onOpenQueueEvents(nodeId, checkpoint)}

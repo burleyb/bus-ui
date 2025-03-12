@@ -613,7 +613,7 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
                 </TabsList>
                 
                 {/* Time Period Selector - Right aligned, hidden when on settings tab */}
-                {activeTab !== 'settings' && (
+                {activeTab !== 'settings' && activeTab !== 'events' && (
                   <div className="flex items-center space-x-1">
                     <span className="text-sm text-gray-500 mr-2">Time Period:</span>
                     {(['15m', '1hr', '6hr', '1d', '1w'] as TimePeriod[]).map((period) => (
@@ -644,7 +644,7 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
               </div>
             </div>
             
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-hidden p-4">
               {isLoading ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="text-center">
@@ -654,32 +654,32 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
                 </div>
               ) : (
                 <>
-                  <TabsContent value="dashboard" className="mt-0 h-full overflow-y-auto">
+                  <TabsContent value="dashboard" className="mt-0 h-full overflow-y-hidden">
                     {nodeType === 'bot' && <BotDashboardTab nodeData={nodeData} timePeriod={timePeriod} />}
                     {nodeType === 'queue' && <QueueDashboardTab nodeData={nodeData} timePeriod={timePeriod} />}
                     {nodeType === 'system' && <SystemDashboardTab nodeData={nodeData} timePeriod={timePeriod} />}
                   </TabsContent>
                   
                   {nodeType === 'bot' && (
-                    <TabsContent value="code" className="mt-0 h-full overflow-y-auto">
+                    <TabsContent value="code" className="mt-0 h-full overflow-y-hidden">
                       <BotCodeTab nodeData={nodeData} />
                     </TabsContent>
                   )}
                   
                   {nodeType === 'bot' && (
-                    <TabsContent value="logs" className="mt-0 h-full overflow-y-auto">
+                    <TabsContent value="logs" className="mt-0 h-full overflow-y-hidden">
                       <BotLogsTab nodeData={nodeData} />
                     </TabsContent>
                   )}
                   
                   {(nodeType === 'queue' || nodeType === 'system') && (
-                    <TabsContent value="events" className="mt-0 h-full overflow-y-auto">
+                    <TabsContent value="events" className="mt-0 h-full overflow-y-hidden">
                       {nodeType === 'queue' && <QueueEventsTab nodeData={nodeData} />}
                       {nodeType === 'system' && <SystemEventsTab nodeData={nodeData} />}
                     </TabsContent>
                   )}
                   
-                  <TabsContent value="settings" className="mt-0 h-full overflow-y-auto">
+                  <TabsContent value="settings" className="mt-0 h-full overflow-y-hidden">
                     {nodeType === 'bot' && (
                       <BotSettingsTab 
                         nodeData={nodeData as unknown as BotData} 
