@@ -21,11 +21,13 @@ export const TagInput = React.forwardRef<HTMLInputElement, TagInputProps>(
 
     // Parse initial tags from comma-separated string
     React.useEffect(() => {
-      if (value && typeof value === 'string') {
-        const tagArray = value.split(",").filter(tag => tag.trim() !== "");
+      // Ensure value is a string before calling split
+      const safeValue = value ? (typeof value === 'string' ? value : String(value)) : '';
+      try {
+        const tagArray = safeValue.split(",").filter(tag => tag.trim() !== "");
         setTags(tagArray);
-      } else {
-        // Reset tags if value is not a valid string
+      } catch (error) {
+        console.error("Error parsing tags:", error);
         setTags([]);
       }
     }, [value]);

@@ -42,13 +42,29 @@ export async function saveQueueSettings(queueId: string, settings: any) {
   const payload = {
     id: queueId,
     name: settings.name || queueId.split(':').pop() || queueId,
-    min_kinesis_number: settings.min_kinesis_number || settings.minCheckpointNumber || '',
-    other: {
-      tags: settings.tags || ''
-    },
-    // Include any other fields directly in the root
-    ...(settings.archived !== undefined ? { archived: settings.archived } : {})
+    min_kinesis_number: settings.min_kinesis_number || settings.minCheckpointNumber || 'z/',
+    tags: settings.tags || settings.other?.tags || '',
+    archived: settings.archived || undefined
   };
+
+  // Handle tags - could be directly in settings or in settings.other
+  if (settings.tags !== undefined) {
+    // If we're using the new structure, add tags directly to the root
+    payload.tags = settings.tags;
+  } else if (settings.other?.tags !== undefined) {
+    // If using the old structure, get tags from other
+    payload.tags = settings.other.tags;
+  } else {
+    // Default to empty string
+    payload.tags = '';
+  }
+
+  // Add archived field directly if it exists
+  if (settings.archived !== undefined) {
+    payload.archived = settings.archived;
+  }
+
+  console.log(`[DEBUG] saveQueueSettings payload:`, payload);
 
   try {
     console.log(`Saving queue settings for ${queueId}:`, payload);

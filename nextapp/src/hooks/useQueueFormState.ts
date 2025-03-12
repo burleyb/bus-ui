@@ -32,10 +32,24 @@ const getQueueData = (nodeData: NodeData | null): QueueData | null => {
   try {
     // For queue nodes, the nodeData itself contains queue info
     if (nodeData.type === 'queue') {
+      console.log('[DEBUG] Queue data from API:', nodeData);
+      
+      // Safely extract tags, handling various possible locations and formats
+      let tags = '';
+      if (typeof nodeData.tags === 'string' && nodeData.tags !== '') {
+        tags = nodeData.tags;
+      } else if (nodeData.other?.tags && typeof nodeData.other.tags === 'string') {
+        tags = nodeData.other.tags;
+      } else if (nodeData.tags && Array.isArray(nodeData.tags)) {
+        tags = nodeData.tags.join(',');
+      } else if (nodeData.other?.tags && Array.isArray(nodeData.other.tags)) {
+        tags = nodeData.other.tags.join(',');
+      }
+      
       return {
         id: nodeData.id || '',
         name: nodeData.name || '',
-        tags: nodeData.other?.tags || nodeData.tags || '',
+        tags: tags,
         min_kinesis_number: nodeData.min_kinesis_number || null
       };
     }
@@ -63,9 +77,12 @@ const getInitialValues = (queueData: QueueData | null): QueueFormValues => {
     };
   }
 
+  // Log queue data to debug
+  console.log('[DEBUG] Initializing form with queue data:', queueData);
+
   return {
     name: queueData.name || '',
-    tags: queueData.other?.tags || queueData.tags || '',
+    tags: queueData.tags || '',
     minCheckpointNumber: queueData.min_kinesis_number || '',
   };
 };
@@ -111,7 +128,7 @@ export function useQueueFormState(nodeData: NodeData | null) {
     const isDataUnchanged = prevQueueData && 
       prevQueueData.id === queueData.id &&
       prevQueueData.name === queueData.name &&
-      prevQueueData.tags === queueData.other?.tags &&
+      prevQueueData.tags === queueData.tags &&
       prevQueueData.min_kinesis_number === queueData.min_kinesis_number;
     
     if (isDataUnchanged) {
@@ -125,7 +142,7 @@ export function useQueueFormState(nodeData: NodeData | null) {
     setErrors(null);
     setIsDirty(false);
     prevQueueDataRef.current = queueData;
-  }, [queueData]); // Remove isDirty from dependencies to prevent loops
+  }, [queueData]); // Only depend on queueData, not isDirty
 
   // Validation function
   const validateForm = (): boolean => {
@@ -200,10 +217,8 @@ export function useQueueFormState(nodeData: NodeData | null) {
       // which requires a different format
       const settings = {
         name: values.name,
-        other: {
-          tags: values.tags || ''
-        },
-        minCheckpointNumber: values.minCheckpointNumber || ''
+        tags: values.tags || '', // Pass tags directly, the API adapter will format it correctly
+        minCheckpointNumber: values.minCheckpointNumber || '' // Pass as minCheckpointNumber, API adapter will map to min_kinesis_number
       };
 
       console.log('[DEBUG] Saving queue settings:', settings);

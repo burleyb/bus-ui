@@ -187,19 +187,28 @@ export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onClose
                 <Controller
                   name="name"
                   control={control}
-                  render={({ field }) => (
-                    <Input
-                      {...field}
-                      id="name"
-                      placeholder="Enter queue name"
-                      className={formErrors?.name ? "border-red-500" : ""}
-                      value={field.value || ''}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        setValue('name', e.target.value);
-                      }}
-                    />
-                  )}
+                  render={({ field }) => {
+                    // Ensure field.value is always a string
+                    const safeValue = field.value ? 
+                      (typeof field.value === 'string' ? field.value : String(field.value)) : 
+                      '';
+                    
+                    return (
+                      <Input
+                        {...field}
+                        id="name"
+                        placeholder="Enter queue name"
+                        className={cn(
+                          formErrors?.name && "border-red-500"
+                        )}
+                        value={safeValue}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setValue('name', e.target.value);
+                        }}
+                      />
+                    );
+                  }}
                 />
                 {formErrors?.name && (
                   <p className="text-sm text-red-500">{formErrors.name}</p>
@@ -212,21 +221,28 @@ export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onClose
                 <Controller
                   name="tags"
                   control={control}
-                  render={({ field }) => (
-                    <TagInput
-                      {...field}
-                      id="tags"
-                      placeholder="Enter tags (comma-separated)"
-                      className={cn(
-                        formErrors?.tags && "border-red-500"
-                      )}
-                      value={field.value || ''}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        setValue('tags', e.target.value);
-                      }}
-                    />
-                  )}
+                  render={({ field }) => {
+                    // Ensure field.value is always a string
+                    const safeValue = field.value ? 
+                      (typeof field.value === 'string' ? field.value : String(field.value)) : 
+                      '';
+                    
+                    return (
+                      <TagInput
+                        {...field}
+                        id="tags"
+                        placeholder="Enter tags (comma-separated)"
+                        className={cn(
+                          formErrors?.tags && "border-red-500"
+                        )}
+                        value={safeValue}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setValue('tags', e.target.value);
+                        }}
+                      />
+                    );
+                  }}
                 />
                 {formErrors?.tags && (
                   <p className="text-sm text-red-500">{formErrors.tags}</p>
@@ -239,19 +255,26 @@ export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onClose
                 <Controller
                   name="minCheckpointNumber"
                   control={control}
-                  render={({ field }) => (
-                    <Input
-                      {...field}
-                      id="minCheckpointNumber"
-                      placeholder="Enter minimum checkpoint number"
-                      className={formErrors?.minCheckpointNumber ? "border-red-500" : ""}
-                      value={field.value || ''}
-                      onChange={(e) => {
-                        field.onChange(e);
-                        setValue('minCheckpointNumber', e.target.value);
-                      }}
-                    />
-                  )}
+                  render={({ field }) => {
+                    // Ensure field.value is always a string
+                    const safeValue = field.value ? 
+                      (typeof field.value === 'string' ? field.value : String(field.value)) : 
+                      '';
+                    
+                    return (
+                      <Input
+                        {...field}
+                        id="minCheckpointNumber"
+                        placeholder="Enter minimum checkpoint number"
+                        className={formErrors?.minCheckpointNumber ? "border-red-500" : ""}
+                        value={safeValue}
+                        onChange={(e) => {
+                          field.onChange(e);
+                          setValue('minCheckpointNumber', e.target.value);
+                        }}
+                      />
+                    );
+                  }}
                 />
                 {formErrors?.minCheckpointNumber && (
                   <p className="text-sm text-red-500">{formErrors.minCheckpointNumber}</p>
