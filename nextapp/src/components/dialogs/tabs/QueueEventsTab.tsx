@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   RefreshCw, 
   Search, 
@@ -117,23 +117,28 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
             <label htmlFor="bot-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               Target Bot
             </label>
-            <select
-              id="bot-select"
-              className="w-full rounded-md border border-gray-300 dark:border-gray-700 
-                      bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
-                      focus:ring-2 focus:ring-blue-500"
-              value={selectedBotId}
-              onChange={(e) => setSelectedBotId(e.target.value)}
-            >
-              {botOptions.length === 0 && (
-                <option value="">No bots available</option>
-              )}
-              {botOptions.map((bot) => (
-                <option key={bot.id} value={bot.id}>
-                  {bot.name}
-                </option>
-              ))}
-            </select>
+            {botOptions.length > 0 ? (
+              <select
+                id="bot-select"
+                className="w-full rounded-md border border-gray-300 dark:border-gray-700 
+                        bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
+                        focus:ring-2 focus:ring-blue-500"
+                value={selectedBotId}
+                onChange={(e) => setSelectedBotId(e.target.value)}
+              >
+                {botOptions.map((bot) => (
+                  <option key={bot.id} value={bot.id}>
+                    {bot.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="bg-amber-50 dark:bg-amber-900/20 p-3 rounded-md">
+                <p className="text-sm text-amber-800 dark:text-amber-300">
+                  No bots that read from this queue were found. Only bots that are connected to this queue can replay events from it.
+                </p>
+              </div>
+            )}
           </div>
           
           <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md">
@@ -156,7 +161,7 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
             <button
               type="button"
               onClick={handleReplay}
-              disabled={!selectedBotId}
+              disabled={!selectedBotId || botOptions.length === 0}
               className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm 
                       font-medium text-white bg-blue-600 hover:bg-blue-700 
                       focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
@@ -179,7 +184,8 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
   eventId,
   event
 }) => {
-  const [payloadData, setPayloadData] = useState<any>(null);
+  // Use useRef instead of useState to avoid re-rendering the editor unnecessarily
+  const payloadDataRef = useRef<any>(null);
   const [isValid, setIsValid] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [editorMode, setEditorMode] = useState<'tree' | 'code' | 'form' | 'text'>('code');
@@ -193,19 +199,19 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
           ...event.payload,
           original_eid: eventId
         };
-        setPayloadData(enhancedPayload);
+        payloadDataRef.current = enhancedPayload;
         setIsValid(true);
         setErrorMessage('');
       } catch (error) {
         console.error('Error formatting payload:', error);
-        setPayloadData(event.payload || {});
+        payloadDataRef.current = event.payload || {};
       }
     }
   }, [event, eventId]);
 
   // Handle payload change
   const handlePayloadChange = (data: any) => {
-    setPayloadData(data);
+    payloadDataRef.current = data;
     setIsValid(true);
     setErrorMessage('');
   };
@@ -217,7 +223,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
   };
 
   const handleResubmit = async () => {
-    if (!isValid || !payloadData) return;
+    if (!isValid || !payloadDataRef.current) return;
     
     try {
       // Extract botId from queueId
@@ -227,7 +233,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
       const data = {
         botId: botId,
         queue: queueId,
-        payload: payloadData
+        payload: payloadDataRef.current
       };
       
       console.log('Resubmitting with data:', data);
@@ -296,7 +302,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
             </div>
             <div className="flex-1 rounded-md overflow-hidden border border-gray-300 dark:border-gray-700">
               <JSONEditorComponent 
-                data={payloadData}
+                data={payloadDataRef.current}
                 mode={editorMode}
                 height="100%"
                 onChange={handlePayloadChange}
@@ -361,8 +367,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   const [showResubmitDialog, setShowResubmitDialog] = useState(false);
   const [dialogEventId, setDialogEventId] = useState<string>('');
   const [botOptions, setBotOptions] = useState<Array<{id: string, name: string}>>([]);
-  const [isLoadingBots, setIsLoadingBots] = useState(false);
-  const [jsonEditorMode, setJsonEditorMode] = useState<'tree' | 'code' | 'form' | 'view' | 'text'>('tree');
+  const [jsonEditorMode, setJsonEditorMode] = useState<'tree' | 'view' | 'form' | 'code' | 'text'>('tree');
 
   // Calculate the EID based on selected time range or custom date
   const eid = useMemo(() => {
@@ -412,54 +417,61 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   
   // Process the response data and update our cached events
   useEffect(() => {
-    // Only update if we have a valid response and not searching
-    if (response && !isSearching) {
-      // Check if we have results
-      if (response.results && Array.isArray(response.results)) {
-        // For logging purposes
-        console.log(`[QueueEventsTab] Received ${response.results.length} events from API`);
+    // Skip if we're searching or don't have a valid response
+    if (isSearching || !response) return;
+    
+    // Use a local flag to prevent accidental double updates
+    let didSetTokenInThisEffect = false;
+    
+    // Check if we have results
+    if (response.results && Array.isArray(response.results)) {
+      // For logging purposes
+      console.log(`[QueueEventsTab] Received ${response.results.length} events from API`);
+      
+      // If this is the first batch or we're refreshing (no resumption token)
+      if (!resumptionToken) {
+        setCachedEvents(response.results);
         
-        // If this is the first batch or we're refreshing (no resumption token)
-        if (!resumptionToken) {
-          setCachedEvents(response.results);
-          
-          // Auto-select the first event if we have results
-          if (response.results.length > 0) {
-            const firstEvent = response.results[0];
-            const eventId = firstEvent.eventId || firstEvent.eid || firstEvent.id;
-            if (eventId) {
-              setSelectedEventId(eventId);
-            }
+        // Auto-select the first event if we have results
+        if (response.results.length > 0) {
+          const firstEvent = response.results[0];
+          const eventId = firstEvent.eventId || firstEvent.eid || firstEvent.id;
+          if (eventId) {
+            setSelectedEventId(eventId);
           }
-        } else {
-          // Append to existing cached events if using resumption token
-          setCachedEvents(prev => [...prev, ...response.results]);
         }
-        
-        // Update event count
-        setEventCount(response.results.length);
-        
-        // Mark that the query succeeded
-        setLastQueryFailed(false);
       } else {
-        console.warn('[QueueEventsTab] No results array in response:', response);
-        
-        // Only clear events if this is a fresh query, not when appending
-        if (!resumptionToken) {
-          setCachedEvents([]);
-          setSelectedEventId(null);
-        }
-        
-        // Mark that the query failed
-        setLastQueryFailed(true);
+        // Append to existing cached events if using resumption token
+        setCachedEvents(prev => [...prev, ...response.results]);
       }
+      
+      // Update event count
+      setEventCount(response.results.length);
+      
+      // Mark that the query succeeded
+      setLastQueryFailed(false);
+    } else {
+      console.warn('[QueueEventsTab] No results array in response:', response);
+      
+      // Only clear events if this is a fresh query, not when appending
+      if (!resumptionToken) {
+        setCachedEvents([]);
+        setSelectedEventId(null);
+      }
+      
+      // Mark that the query failed
+      setLastQueryFailed(true);
     }
     
-    // Update resumption token when response changes
-    if (response && response.resumptionToken) {
-      setResumptionToken(response.resumptionToken);
+    // Handle resumption token completely outside the React cycle
+    if (response.resumptionToken && !didSetTokenInThisEffect) {
+      didSetTokenInThisEffect = true;
+      // Use RAF instead of setTimeout to avoid React batching
+      window.requestAnimationFrame(() => {
+        setResumptionToken(response.resumptionToken);
+      });
     }
-  }, [response, isSearching, resumptionToken]);
+  }, [response, isSearching]); // Keep dependencies minimal
   
   // Get raw events array from response or our cached events
   const rawEvents = useMemo(() => {
@@ -501,11 +513,58 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     });
   }, [rawEvents]);
   
-  // Get the currently selected event
+  // Memoize the selected event for more efficient rendering
   const selectedEvent = useMemo(() => {
     if (!selectedEventId) return null;
     return events.find(event => event.eventId === selectedEventId || event.eid === selectedEventId);
   }, [selectedEventId, events]);
+
+  // Create a stable version of handleJsonChange that won't change on every render
+  const handleJsonChange = useCallback((data: any) => {
+    // Skip processing if we don't have a selected event or data
+    if (!selectedEventId || !data) return;
+    
+    // Use a ref to track the last processed payload to prevent loops
+    const lastUpdateString = JSON.stringify(data);
+    
+    // Use functional state update to avoid closure issues
+    setCachedEvents(prevEvents => {
+      // Find the event to update
+      const eventIndex = prevEvents.findIndex(event => 
+        event.eventId === selectedEventId || event.eid === selectedEventId
+      );
+      
+      // If event not found, return unchanged state
+      if (eventIndex === -1) return prevEvents;
+      
+      // Get the current event
+      const currentEvent = prevEvents[eventIndex];
+      
+      // Compare serialized versions of current and new payloads
+      try {
+        const currentPayloadString = JSON.stringify(currentEvent.payload);
+        // If data hasn't changed, return unchanged state
+        if (currentPayloadString === lastUpdateString) return prevEvents;
+      } catch (e) {
+        console.error('Error comparing JSON data:', e);
+        return prevEvents;
+      }
+      
+      // Create a new array with the updated event
+      const newEvents = [...prevEvents];
+      newEvents[eventIndex] = {
+        ...currentEvent,
+        payload: data
+      };
+      
+      return newEvents;
+    });
+    
+    // Log update outside of state update
+    setTimeout(() => {
+      console.log('[QueueEventsTab] Updated event payload for event:', selectedEventId);
+    }, 0);
+  }, [selectedEventId]); // Only depend on selectedEventId
   
   // Select an event to view details
   const handleSelectEvent = (eventId: string) => {
@@ -537,57 +596,6 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     setSelectedEventId(null); // Clear selection
   };
   
-  const loadMoreEvents = () => {
-    if (resumptionToken) {
-      setIsSearching(true);
-      refetch().finally(() => {
-        setIsSearching(false);
-      });
-    }
-  };
-  
-  // Function to load bot options from the dashboard monitor API
-  const loadBotOptions = async (queueId: string) => {
-    setIsLoadingBots(true);
-    
-    try {
-      // Get current time
-      const timestamp = new Date().toISOString();
-      
-      // Construct URL with parameters
-      const url = `/api/dashboard/monitor?range=minute&count=15&timestamp=${encodeURIComponent(timestamp)}`;
-      console.log('Loading bot options from:', url);
-      
-      const response = await awsNativeFetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Error loading bot options: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      console.log('Dashboard monitor response:', data);
-      
-      // Extract bots that read from this queue
-      let bots: Array<{id: string, name: string}> = [];
-      
-      if (data && data.bots && data.bots.read) {
-        // Map bot IDs to the format we need
-        bots = Object.keys(data.bots.read).map(id => ({
-          id: id,
-          name: id
-        }));
-      }
-      
-      console.log('Extracted bot options:', bots);
-      setBotOptions(bots);
-    } catch (error) {
-      console.error('Error loading bot options:', error);
-      setBotOptions([]);
-    } finally {
-      setIsLoadingBots(false);
-    }
-  };
-  
   // Handle Trace Event
   const handleTraceEvent = (eventId: string) => {
     console.log(`Trace event: ${eventId}`);
@@ -608,8 +616,21 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     
     setDialogEventId(eventId);
     
-    // Load bot options
-    await loadBotOptions(queueId);
+    // Get bots that read from this queue directly from nodeData
+    const botOptionsFromNode: Array<{id: string, name: string}> = [];
+    
+    if (nodeData && nodeData.bots && nodeData.bots.read) {
+      // Extract bot information from nodeData
+      Object.entries(nodeData.bots.read).forEach(([botId, botData]: [string, any]) => {
+        botOptionsFromNode.push({
+          id: botId,
+          name: (nodeData.nodes && nodeData.nodes[botId] && nodeData.nodes[botId].label) || botId
+        });
+      });
+    }
+    
+    console.log(`Found ${botOptionsFromNode.length} bots that read from queue ${queueId}:`, botOptionsFromNode);
+    setBotOptions(botOptionsFromNode);
     
     // Show replay dialog
     setShowReplayDialog(true);
@@ -641,25 +662,37 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
       second: '2-digit'
     });
   };
-  
-  const handleJsonChange = (data: any) => {
-    // Handle JSON change in the editor
-    if (!selectedEventId || !data) return;
 
-    // Find and update the event in our cached events array
-    const updatedEvents = cachedEvents.map(event => {
-      if ((event.eventId === selectedEventId || event.eid === selectedEventId)) {
-        return {
-          ...event,
-          payload: data
-        };
-      }
-      return event;
-    });
+  // Handle loading more events when the "load more" button is clicked
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
-    // Update the cached events with the modified data
-    setCachedEvents(updatedEvents);
-  };
+  useEffect(() => {
+    // Skip effect if we're not actively loading or don't have a resumption token
+    if (!isLoadingMore || !resumptionToken) return;
+    
+    console.log('[QueueEventsTab] Loading more events with resumption token:', resumptionToken);
+    
+    // Immediately clear the loading flag to prevent multiple loads
+    setIsLoadingMore(false);
+    
+    // Create a local ref to this specific resumption token used for this request
+    const currentToken = resumptionToken;
+    
+    // Make the API call
+    refetch()
+      .then(() => {
+        console.log('[QueueEventsTab] Successfully loaded more events');
+      })
+      .catch(error => {
+        console.error('[QueueEventsTab] Error loading more events:', error);
+        // Only clear the token if it's still the one we were using
+        if (resumptionToken === currentToken) {
+          setResumptionToken(null);
+        }
+      });
+      
+    // This effect only runs when isLoadingMore becomes true
+  }, [isLoadingMore, resumptionToken, refetch]);
 
   return (
     <div className="space-y-4">
@@ -868,6 +901,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                   mode={jsonEditorMode}
                   height="100%"
                   onChange={handleJsonChange}
+                  key={`json-editor-${selectedEventId}`}
                 />
               </div>
             </div>
@@ -887,7 +921,11 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
         
         {resumptionToken && (
           <button
-            onClick={loadMoreEvents}
+            onClick={() => {
+              if (resumptionToken) {
+                setIsLoadingMore(true);
+              }
+            }}
             disabled={isLoading || isSearching}
             className="ml-auto flex items-center px-3 py-1.5 text-xs font-medium 
                      rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100

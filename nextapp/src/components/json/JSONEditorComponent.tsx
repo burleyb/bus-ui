@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import JSONEditor from 'jsoneditor';
 import 'jsoneditor/dist/jsoneditor.css';
 
@@ -34,16 +34,164 @@ const JSONEditorComponent: React.FC<JSONEditorComponentProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<JSONEditor | null>(null);
   const [prevReadOnly, setPrevReadOnly] = useState(readOnly);
-
-  // Initialize the editor when the component mounts
+  const [prevMode, setPrevMode] = useState(mode);
+  const [initializing, setInitializing] = useState(true);
+  const [dataString, setDataString] = useState<string>('');
+  
+  // Compare data objects to check if they're equal
+  const isDataEqual = useCallback((a: any, b: any) => {
+    if (!a || !b) return a === b;
+    try {
+      const strA = JSON.stringify(a);
+      const strB = JSON.stringify(b);
+      return strA === strB;
+    } catch (e) {
+      console.error('Error comparing JSON data:', e);
+      return false;
+    }
+  }, []);
+  
+  // Store data as string for comparison
   useEffect(() => {
+    if (!initializing && data) {
+      try {
+        const newDataString = JSON.stringify(data);
+        if (dataString !== newDataString) {
+          setDataString(newDataString);
+        }
+      } catch (e) {
+        console.error('Error stringifying JSON data:', e);
+      }
+    }
+  }, [data, dataString, initializing]);
+
+  // Create or destroy editor instance
+  useEffect(() => {
+    // Only create editor on mount or if it was destroyed
     if (containerRef.current && !editorRef.current) {
       try {
         const options = {
           mode: mode,
           modes: allowedModes,
           onModeChange: (newMode: string) => {
-            console.log('Mode changed to', newMode);
+            setPrevMode(newMode as any);
+          },
+          onChange: () => {
+            if (onChange && editorRef.current) {
+              try {
+                const updatedData = editorRef.current.get();
+                // Skip update if data hasn't actually changed
+                const currentDataStr = JSON.stringify(updatedData);
+                if (currentDataStr !== dataString) {
+                  onChange(updatedData);
+                }
+              } catch (e) {
+                console.error('Error getting data from JSON editor', e);
+                if (onError && e instanceof Error) {
+                  onError(e);
+                }
+              }
+            }
+          },
+          onError: (error: Error) => {
+            console.error('JSONEditor error:', error);
+            if (onError) {
+              onError(error);
+            }
+          },
+          statusBar: true,
+          navigationBar: true,
+          mainMenuBar: true,
+          readOnly
+        };
+        
+        editorRef.current = new JSONEditor(containerRef.current, options);
+        
+        // Set initial data
+        if (data) {
+          editorRef.current.set(data);
+          setDataString(JSON.stringify(data));
+        }
+        
+        setPrevMode(mode);
+        setPrevReadOnly(readOnly);
+        setInitializing(false);
+      } catch (error) {
+        console.error('Failed to initialize JSONEditor', error);
+        if (onError && error instanceof Error) {
+          onError(error);
+        }
+      }
+    }
+    
+    // Cleanup function to destroy the editor when the component unmounts
+    return () => {
+      if (editorRef.current) {
+        editorRef.current.destroy();
+        editorRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);  // Only on mount/unmount
+
+  // Update editor data when the data prop changes
+  useEffect(() => {
+    // Skip during initialization
+    if (initializing) return;
+    
+    // Only update editor if the props data changed and we have an editor
+    if (editorRef.current && data && dataString) {
+      try {
+        const currentDataString = JSON.stringify(editorRef.current.get());
+        
+        // Only update if the data is different from what's in the editor
+        if (dataString !== currentDataString) {
+          editorRef.current.update(data);
+        }
+      } catch (e) {
+        console.error('Error updating JSON editor data:', e);
+      }
+    }
+  }, [dataString, data, initializing]);
+
+  // Update editor mode when the mode prop changes
+  useEffect(() => {
+    // Skip during initialization
+    if (initializing) return;
+    
+    // Only update if mode changed and we have an editor
+    if (editorRef.current && mode && mode !== prevMode) {
+      try {
+        editorRef.current.setMode(mode);
+        setPrevMode(mode);
+      } catch (e) {
+        console.error('Error setting editor mode:', e);
+      }
+    }
+  }, [mode, prevMode, initializing]);
+
+  // Handle readOnly prop changes by recreating the editor with the new readOnly setting
+  useEffect(() => {
+    // Skip during initialization
+    if (initializing) return;
+    
+    // Only proceed if readOnly has changed and the editor exists
+    if (readOnly !== prevReadOnly && editorRef.current && containerRef.current) {
+      try {
+        // Store the current data and mode
+        const currentData = editorRef.current.get();
+        const currentMode = editorRef.current.getMode();
+        
+        // Destroy the current editor
+        editorRef.current.destroy();
+        editorRef.current = null;
+        
+        // Create a new editor with the updated readOnly setting
+        const options = {
+          mode: currentMode,
+          modes: allowedModes,
+          onModeChange: (newMode: string) => {
+            setPrevMode(newMode as any);
           },
           onChange: () => {
             if (onChange && editorRef.current) {
@@ -70,99 +218,26 @@ const JSONEditorComponent: React.FC<JSONEditorComponentProps> = ({
           readOnly
         };
         
-        editorRef.current = new JSONEditor(containerRef.current, options);
-        
-        // Set initial data
-        if (data) {
-          editorRef.current.set(data);
-        }
-      } catch (error) {
-        console.error('Failed to initialize JSONEditor', error);
-        if (onError && error instanceof Error) {
-          onError(error);
-        }
-      }
-    }
-    
-    // Cleanup function to destroy the editor when the component unmounts
-    return () => {
-      if (editorRef.current) {
-        editorRef.current.destroy();
-        editorRef.current = null;
-      }
-    };
-  }, []);  // Only run on mount/unmount
-
-  // Update editor data when the data prop changes
-  useEffect(() => {
-    if (editorRef.current && data) {
-      // Only update if the data actually changed (deep comparison is expensive, so we don't do it)
-      // Instead, we trust that the parent component only passes new data when it actually changes
-      editorRef.current.update(data);
-    }
-  }, [data]);
-
-  // Update editor mode when the mode prop changes
-  useEffect(() => {
-    if (editorRef.current && mode) {
-      editorRef.current.setMode(mode);
-    }
-  }, [mode]);
-
-  // Handle readOnly prop changes by recreating the editor with the new readOnly setting
-  useEffect(() => {
-    // Only proceed if readOnly has changed and the editor exists
-    if (readOnly !== prevReadOnly && editorRef.current && containerRef.current) {
-      setPrevReadOnly(readOnly);
-      
-      // Store the current data and mode
-      const currentData = editorRef.current.get();
-      const currentMode = editorRef.current.getMode();
-      
-      // Destroy the current editor
-      editorRef.current.destroy();
-      editorRef.current = null;
-      
-      // Create a new editor with the updated readOnly setting
-      const options = {
-        mode: currentMode,
-        modes: allowedModes,
-        onModeChange: (newMode: string) => {
-          console.log('Mode changed to', newMode);
-        },
-        onChange: () => {
-          if (onChange && editorRef.current) {
-            try {
-              const updatedData = editorRef.current.get();
-              onChange(updatedData);
-            } catch (e) {
-              console.error('Error getting data from JSON editor', e);
-              if (onError && e instanceof Error) {
-                onError(e);
-              }
+        // Add small delay to ensure DOM is ready
+        setTimeout(() => {
+          if (containerRef.current) {
+            editorRef.current = new JSONEditor(containerRef.current, options);
+            
+            // Restore the data
+            if (currentData) {
+              editorRef.current.set(currentData);
             }
+            
+            // Update state
+            setPrevReadOnly(readOnly);
           }
-        },
-        onError: (error: Error) => {
-          console.error('JSONEditor error:', error);
-          if (onError) {
-            onError(error);
-          }
-        },
-        statusBar: true,
-        navigationBar: true,
-        mainMenuBar: true,
-        readOnly
-      };
-      
-      editorRef.current = new JSONEditor(containerRef.current, options);
-      
-      // Restore the data
-      if (currentData) {
-        editorRef.current.set(currentData);
+        }, 0);
+      } catch (e) {
+        console.error('Error recreating editor:', e);
       }
     }
-  }, [readOnly, allowedModes, onChange, onError]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readOnly, initializing]);
 
   return (
     <div 
