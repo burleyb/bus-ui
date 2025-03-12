@@ -446,7 +446,62 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
     setLastQueryFailed(response.results && Array.isArray(response.results) 
       ? response.results.length === 0 
       : true);
-  }, [events.length, response.results]);
+    
+    // Auto-select first event when events load and none is currently selected
+    if (events.length > 0 && !selectedEventId && !isSearching) {
+      setSelectedEventId(events[0].eventId);
+    }
+  }, [events, selectedEventId, isSearching]);
+  
+  // Handle keyboard navigation with arrow keys
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only proceed if we have events and something is selected
+      if (events.length === 0 || !selectedEventId) return;
+      
+      // Find current index
+      const currentIndex = events.findIndex(
+        (event: any) => event.eventId === selectedEventId || event.eid === selectedEventId
+      );
+      
+      if (currentIndex === -1) return;
+      
+      // Handle arrow keys
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        // Move to next event if not at the end
+        if (currentIndex < events.length - 1) {
+          setSelectedEventId(events[currentIndex + 1].eventId);
+          
+          // Find and scroll to the newly selected row if needed
+          const rows = document.querySelectorAll('tr[data-event-id]');
+          if (rows[currentIndex + 1]) {
+            (rows[currentIndex + 1] as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        // Move to previous event if not at the beginning
+        if (currentIndex > 0) {
+          setSelectedEventId(events[currentIndex - 1].eventId);
+          
+          // Find and scroll to the newly selected row if needed
+          const rows = document.querySelectorAll('tr[data-event-id]');
+          if (rows[currentIndex - 1]) {
+            (rows[currentIndex - 1] as HTMLElement).scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }
+        }
+      }
+    };
+    
+    // Add event listener
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [events, selectedEventId]);
   
   // Memoize the selected event for more efficient rendering
   const selectedEvent = useMemo(() => {
@@ -685,6 +740,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                   return (
                     <tr 
                       key={eventId} 
+                      data-event-id={eventId}
                       onClick={() => handleSelectEvent(eventId)}
                       className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${
                         selectedEventId === eventId ? 'bg-blue-50 dark:bg-blue-900/20' : ''
