@@ -295,8 +295,11 @@ export default function SystemSettingsTab({ nodeData, onTabChangeRequest, onClos
           </Card>
 
           {/* Bottom Action Buttons */}
+          
           <div className="flex justify-between mt-6">
+          <div></div>
             {/* Archive/Unarchive button */}
+            {/*
             <Button
               type="button"
               variant={nodeData.archived ? "outline" : "danger"}
@@ -315,7 +318,8 @@ export default function SystemSettingsTab({ nodeData, onTabChangeRequest, onClos
                 </>
               )}
             </Button>
-
+            /*}
+            
             {/* Save/Discard buttons */}
             <div className="space-x-3">
               <Button

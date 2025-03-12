@@ -34,6 +34,11 @@ export function getNodeImagePath(node: NodeProps): string {
   }
 
   const type = node.type?.toLowerCase() || 'bot';
+  
+  // Special handling for system nodes with URL icons - prioritize this case
+  if (type === 'system' && node.icon && (node.icon.startsWith('http://') || node.icon.startsWith('https://'))) {
+    return node.icon;
+  }
 
   // If node has a custom icon, use it
   if (node.icon) {
@@ -77,7 +82,14 @@ export function getNodeImagePath(node: NodeProps): string {
 export function getNodeImagesSvgString(node: NodeProps, nodes?: any, baseUrl: string = ''): string {
   if (!node) return '';
   
-  // Get the image path for the node
+  const type = node.type?.toLowerCase() || 'unknown';
+  
+  // Special handling for system nodes with URL icons
+  if (type === 'system' && node.icon && (node.icon.startsWith('http://') || node.icon.startsWith('https://'))) {
+    return `<image href="${node.icon}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" />`;
+  }
+  
+  // Get the image path for other nodes
   let imgPath = getNodeImagePath(node);
   
   // Add baseUrl if the path is relative and baseUrl is provided
@@ -103,6 +115,16 @@ export default function NodeIcon({ node, size = 32, className = '' }: NodeIconPr
   const status = node.status?.toLowerCase() || 'unknown';
   const healthStatus = node.health?.status?.toLowerCase() || 'unknown';
   
+  // For debugging - log system nodes with icons to check what's happening
+  if (type === 'system' && node.icon) {
+    console.log('System node with icon:', {
+      id: node.id,
+      icon: node.icon,
+      isUrl: !!(node.icon.startsWith('http://') || node.icon.startsWith('https://')),
+      regexTest: !!node.icon.match(/^https?:/)
+    });
+  }
+  
   // Determine if the node is alarmed - from the node prop or from the state
   const isAlarmed = node.isAlarmed || (node.id && state.nodes?.[node.id]?.isAlarmed);
   
@@ -121,7 +143,25 @@ export default function NodeIcon({ node, size = 32, className = '' }: NodeIconPr
     );
   }
   
-  // For non-bot nodes, use the regular icon
+  // Special case for system nodes with icon URLs - render without container/shape
+  // Use more explicit URL check to ensure we catch all URL formats
+  if (type === 'system' && node.icon && (node.icon.startsWith('http://') || node.icon.startsWith('https://'))) {
+    return (
+      <div className={`${className}`} style={{ width: size, height: size }}>
+        <img 
+          src={node.icon} 
+          alt="System icon" 
+          className="w-full h-full object-contain"
+          onError={(e) => {
+            // Fallback if image fails to load
+            e.currentTarget.src = `/images/nodes/system.png`;
+          }}
+        />
+      </div>
+    );
+  }
+  
+  // For all other non-bot nodes, use the regular icon
   const imagePath = getNodeImagePath({ ...node, isAlarmed });
   
   return (
