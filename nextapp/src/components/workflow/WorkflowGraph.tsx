@@ -8,6 +8,8 @@ import { WorkflowGraphData } from './WorkflowGraphData';
 import { GraphData, WorkflowGraphProps } from '@/types/workflow';
 import { useWorkflowGraph } from '@/hooks/useWorkflowGraph';
 import { useAppContext } from '@/context/AppContext';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { WorkflowGraphChartDrawer } from './WorkflowGraphChartDrawer';
 
 /**
  * Main WorkflowGraph component that orchestrates the workflow graph visualization.
@@ -34,6 +36,7 @@ export default function WorkflowGraph({
   const [isArchivedMessage, setIsArchivedMessage] = useState<boolean>(false);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+  const [isChartDrawerOpen, setIsChartDrawerOpen] = useState<boolean>(false);
   
   // Hooks
   const { openNodeSettingsDialog } = useDialogs();
@@ -143,6 +146,11 @@ export default function WorkflowGraph({
     updateGraphState({ focusNode: nodeId });
   }, [updateGraphState]);
   
+  // Toggle chart drawer visibility
+  const toggleChartDrawer = useCallback(() => {
+    setIsChartDrawerOpen(prevState => !prevState);
+  }, []);
+  
   // Check if primary node is archived
   useEffect(() => {
     if (primaryNode && state.nodes && state.nodes[primaryNode]) {
@@ -207,6 +215,30 @@ export default function WorkflowGraph({
         className="w-full h-full"
         style={{ userSelect: 'none' }} // Prevent text selection during drag
       ></svg>
+      
+      {/* Toggle chart drawer button */}
+      <div className="absolute top-1/2 right-0 transform -translate-y-1/2 z-20">
+        <button
+          onClick={toggleChartDrawer}
+          className="bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 p-2 rounded-l-md shadow-md hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
+          aria-label={isChartDrawerOpen ? "Close charts" : "Open charts"}
+        >
+          {isChartDrawerOpen ? (
+            <ChevronRight className="h-5 w-5" />
+          ) : (
+            <ChevronLeft className="h-5 w-5" />
+          )}
+        </button>
+      </div>
+      
+      {/* Chart drawer */}
+      <WorkflowGraphChartDrawer
+        isOpen={isChartDrawerOpen}
+        selectedNode={selectedNodes[0] || focusNode || primaryNode}
+        graphData={graphData}
+        timePeriod={timePeriod}
+        onClose={toggleChartDrawer}
+      />
       
       {/* Legend - positioned at bottom right */}
       <div className="absolute bottom-2 right-2 bg-white dark:bg-gray-800 p-2 rounded shadow border border-gray-200 dark:border-gray-700 max-h-[80%] overflow-y-auto">
