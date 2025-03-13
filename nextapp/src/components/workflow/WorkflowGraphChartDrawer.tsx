@@ -326,7 +326,7 @@ export function WorkflowGraphChartDrawer({
   if (!isOpen) return null;
   
   return (
-    <div className={`fixed inset-y-[10%] right-0 h-[80%] bg-white dark:bg-gray-800 shadow-lg z-10 transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+    <div className={`fixed inset-y-[10%] right-0 bg-white dark:bg-gray-800 shadow-lg z-10 transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
          style={{ width: '800px' }}>
       {/* Header */}
       <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">

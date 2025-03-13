@@ -394,47 +394,56 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
           }
         }
       }
-      
-      // Try to get relationship data from dashboard data as a last resort
-      if (dashboardData && dashboardData.nodes) {
-        // Try to find the node in the dashboard data
-        const nodeStats = dashboardData.nodes[currentNodeId];
-        if (nodeStats) {
-          console.log(`[NodeSettingsDialog] Found node in dashboard data:`, nodeStats);
-          
-          if (nodeStats.link_to) {
-            console.log(`[NodeSettingsDialog] Found link_to data for bot in dashboard data:`, nodeStats.link_to);
-            
-            // Only add parent nodes if we haven't found any yet
-            if (baseData.parentNodes.length === 0 && nodeStats.link_to.parent) {
-              baseData.parentNodes = nodeStats.link_to.parent;
-            }
-            
-            // Only add child nodes if we haven't found any yet
-            if (baseData.childNodes.length === 0 && nodeStats.link_to.children) {
-              baseData.childNodes = nodeStats.link_to.children;
-            }
-          }
-          
-          // Check for other relationship properties in dashboard data
-          if (nodeStats.parent_nodes && baseData.parentNodes.length === 0) {
-            console.log(`[NodeSettingsDialog] Found parent_nodes in dashboard data:`, nodeStats.parent_nodes);
-            baseData.parentNodes = Array.isArray(nodeStats.parent_nodes) ? nodeStats.parent_nodes : [nodeStats.parent_nodes];
-          }
-          
-          if (nodeStats.child_nodes && baseData.childNodes.length === 0) {
-            console.log(`[NodeSettingsDialog] Found child_nodes in dashboard data:`, nodeStats.child_nodes);
-            baseData.childNodes = Array.isArray(nodeStats.child_nodes) ? nodeStats.child_nodes : [nodeStats.child_nodes];
-          }
-        } else {
-          console.log(`[NodeSettingsDialog] Node not found in dashboard data nodes`);
-        }
-      }
-      
-      // Check if we found any relationships
-      console.log(`[NodeSettingsDialog] Final parent nodes for ${currentNodeId}:`, baseData.parentNodes);
-      console.log(`[NodeSettingsDialog] Final child nodes for ${currentNodeId}:`, baseData.childNodes);
     }
+    
+    // Try to get relationship data from dashboard data as a fallback for ALL node types
+    if ((baseData.parentNodes.length === 0 || baseData.childNodes.length === 0) && dashboardData && dashboardData.nodes) {
+      console.log(`[NodeSettingsDialog] Checking dashboard data for relationship data for ${nodeType}`);
+      // Try to find the node in the dashboard data
+      const nodeStats = dashboardData.nodes[currentNodeId];
+      if (nodeStats) {
+        console.log(`[NodeSettingsDialog] Found node in dashboard data:`, nodeStats);
+        
+        if (nodeStats.link_to) {
+          console.log(`[NodeSettingsDialog] Found link_to data for ${nodeType} in dashboard data:`, nodeStats.link_to);
+          
+          // Only add parent nodes if we haven't found any yet
+          if (baseData.parentNodes.length === 0 && nodeStats.link_to.parent) {
+            if (Array.isArray(nodeStats.link_to.parent)) {
+              baseData.parentNodes = nodeStats.link_to.parent;
+            } else if (typeof nodeStats.link_to.parent === 'object') {
+              baseData.parentNodes = Object.keys(nodeStats.link_to.parent);
+            }
+          }
+          
+          // Only add child nodes if we haven't found any yet
+          if (baseData.childNodes.length === 0 && nodeStats.link_to.children) {
+            if (Array.isArray(nodeStats.link_to.children)) {
+              baseData.childNodes = nodeStats.link_to.children;
+            } else if (typeof nodeStats.link_to.children === 'object') {
+              baseData.childNodes = Object.keys(nodeStats.link_to.children);
+            }
+          }
+        }
+        
+        // Check for other relationship properties in dashboard data
+        if (nodeStats.parent_nodes && baseData.parentNodes.length === 0) {
+          console.log(`[NodeSettingsDialog] Found parent_nodes in dashboard data:`, nodeStats.parent_nodes);
+          baseData.parentNodes = Array.isArray(nodeStats.parent_nodes) ? nodeStats.parent_nodes : [nodeStats.parent_nodes];
+        }
+        
+        if (nodeStats.child_nodes && baseData.childNodes.length === 0) {
+          console.log(`[NodeSettingsDialog] Found child_nodes in dashboard data:`, nodeStats.child_nodes);
+          baseData.childNodes = Array.isArray(nodeStats.child_nodes) ? nodeStats.child_nodes : [nodeStats.child_nodes];
+        }
+      } else {
+        console.log(`[NodeSettingsDialog] Node not found in dashboard data nodes`);
+      }
+    }
+      
+    // Check if we found any relationships
+    console.log(`[NodeSettingsDialog] Final parent nodes for ${currentNodeId}:`, baseData.parentNodes);
+    console.log(`[NodeSettingsDialog] Final child nodes for ${currentNodeId}:`, baseData.childNodes);
     
     // Add dashboard stats if available
     let statsData = {};

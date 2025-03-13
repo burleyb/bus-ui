@@ -84,6 +84,84 @@ export function WorkflowGraphData({
     // Maximum depth for traversal as a safety measure
     const MAX_DEPTH = 20;
     
+    // Pre-check if we're likely to exceed the node limit and proactively collapse ancestors
+    const preCollapseAncestors = () => {
+      // Count potential nodes to estimate total size
+      let estimatedNodeCount = 1; // Primary node
+      
+      // Count ancestor nodes (parents)
+      const parentNodes = Object.keys(state.nodes[primaryNode]?.link_to?.parent || {});
+      estimatedNodeCount += parentNodes.length;
+      
+      // Estimate grandparents 
+      let avgGrandparentsPerParent = 0;
+      if (parentNodes.length > 0) {
+        // Sample a few parents to estimate average number of grandparents
+        const sampleSize = Math.min(3, parentNodes.length);
+        let totalGrandparents = 0;
+        
+        for (let i = 0; i < sampleSize; i++) {
+          const parentId = parentNodes[i];
+          if (state.nodes[parentId]) {
+            totalGrandparents += Object.keys(state.nodes[parentId]?.link_to?.parent || {}).length;
+          }
+        }
+        
+        avgGrandparentsPerParent = sampleSize > 0 ? totalGrandparents / sampleSize : 0;
+      }
+      
+      // Add estimated grandparents to total count
+      estimatedNodeCount += parentNodes.length * avgGrandparentsPerParent;
+      
+      // Count descendant nodes (children)
+      const childNodes = Object.keys(state.nodes[primaryNode]?.link_to?.child || {});
+      estimatedNodeCount += childNodes.length;
+      
+      // Estimate grandchildren
+      let avgGrandchildrenPerChild = 0;
+      if (childNodes.length > 0) {
+        // Sample a few children to estimate average number of grandchildren
+        const sampleSize = Math.min(3, childNodes.length);
+        let totalGrandchildren = 0;
+        
+        for (let i = 0; i < sampleSize; i++) {
+          const childId = childNodes[i];
+          if (state.nodes[childId]) {
+            totalGrandchildren += Object.keys(state.nodes[childId]?.link_to?.child || {}).length;
+          }
+        }
+        
+        avgGrandchildrenPerChild = sampleSize > 0 ? totalGrandchildren / sampleSize : 0;
+      }
+      
+      // Add estimated grandchildren to total count
+      estimatedNodeCount += childNodes.length * avgGrandchildrenPerChild;
+      
+      const finalEstimate = Math.ceil(estimatedNodeCount);
+      console.log(`Estimated total node count: ${finalEstimate} (parents: ${parentNodes.length}, children: ${childNodes.length})`);
+      
+      // If we're likely to exceed the limit, proactively collapse ALL ancestors
+      if (finalEstimate > NODE_COUNT_LIMIT * 0.8) { // Use 80% of limit as threshold
+        console.log(`PROACTIVELY collapsing ${parentNodes.length} ancestor nodes to prioritize descendants (estimated count: ${finalEstimate} > limit: ${NODE_COUNT_LIMIT})`);
+        
+        // Collapse all parent nodes
+        parentNodes.forEach(parentId => {
+          if (!effectiveCollapsedState.collapsed.left.includes(parentId)) {
+            effectiveCollapsedState.collapsed.left.push(parentId);
+            
+            // Remove from expanded if present
+            const expandedIndex = effectiveCollapsedState.expanded.left.indexOf(parentId);
+            if (expandedIndex !== -1) {
+              effectiveCollapsedState.expanded.left.splice(expandedIndex, 1);
+            }
+          }
+        });
+      }
+    };
+    
+    // Run the pre-collapse check before we start building the graph
+    preCollapseAncestors();
+    
     // Modified addNodeToGraph to track node count
     const addNodeToGraph = (nodeId: string, generation: number, group: number, branchId: string) => {
       const nodeData = state.nodes?.[nodeId];
@@ -100,7 +178,24 @@ export function WorkflowGraphData({
       // Skip if we've already added this exact node instance
       if (visited.has(uniqueNodeId)) return uniqueNodeId;
       
-      // Check if we're approaching node limit
+      // Check if we're approaching node limit - at 70% of capacity, start being selective
+      if (totalNodeCount > NODE_COUNT_LIMIT * 0.7) {
+        // If we're approaching the limit and this is an ancestor, we may want to auto-collapse it
+        if (generation < 0 && !effectiveCollapsedState.collapsed.left.includes(nodeId)) {
+          console.log(`Approaching node limit (${totalNodeCount}/${NODE_COUNT_LIMIT}), auto-collapsing ancestor node ${nodeId} with generation ${generation}`);
+          
+          // Auto-collapse parent nodes if we're getting close to the limit
+          effectiveCollapsedState.collapsed.left.push(nodeId);
+          
+          // Remove from expanded if present
+          const expandedIndex = effectiveCollapsedState.expanded.left.indexOf(nodeId);
+          if (expandedIndex !== -1) {
+            effectiveCollapsedState.expanded.left.splice(expandedIndex, 1);
+          }
+        }
+      }
+      
+      // Check if we've actually hit the node limit
       if (totalNodeCount >= NODE_COUNT_LIMIT) {
         // Auto-collapse this node if it's not the primary node
         if (generation !== 0) {
@@ -582,6 +677,23 @@ export function WorkflowGraphData({
         if (totalNodeCount >= NODE_COUNT_LIMIT) {
           console.warn(`Graph exceeded node limit of ${NODE_COUNT_LIMIT}. Some nodes were automatically collapsed to prevent browser freezing.`);
         }
+        
+        // Count ancestors vs descendants for logging
+        let ancestorCount = 0;
+        let descendantCount = 0;
+        let primaryCount = 0;
+        
+        newGraphData.nodes.forEach(node => {
+          if (!node.generation) {
+            primaryCount++;
+          } else if (node.generation < 0) {
+            ancestorCount++;
+          } else if (node.generation > 0) {
+            descendantCount++;
+          }
+        });
+        
+        console.log(`Graph composition: ${primaryCount} primary, ${ancestorCount} ancestors, ${descendantCount} descendants`);
         
         setGraphData(newGraphData);
         onDataReady(newGraphData);

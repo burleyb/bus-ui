@@ -951,54 +951,55 @@ export default function NodeSettingsDialogHeader({
             </div>
           </div>
         )}
-      {/* Node navigation controls */}
-      <div className="flex items-center space-x-2">
-        {/* Parent node navigation */}
-        {parentNodes.length > 0 && (
-          parentNodes.length === 1 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleNavigateToParent(parentNodes[0])}
-              title="Go to Parent Node"
-              className="flex items-center"
-            >
-              <ChevronLeft size={16} />
-            </Button>
-          ) : (
-            <ParentNodesDropdown
-              parentNodes={parentNodes}
-              onNavigate={handleNavigateToParent}
-              isOpen={openDropdownId === 'parentNodes'}
-              onToggle={() => setOpenDropdownId(openDropdownId === 'parentNodes' ? null : 'parentNodes')}
-              dropdownId="parentNodes"
-            />
-          )
-        )}
-        
-        {/* Child node navigation */}
-        {childNodes.length > 0 && (
-          childNodes.length === 1 ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleNavigateToChild(childNodes[0])}
-              title="Go to Child Node"
-              className="flex items-center"
-            >
-              <ChevronRight size={16} />
-            </Button>
-          ) : (
-            <ChildNodesDropdown
-              childNodes={childNodes}
-              onNavigate={handleNavigateToChild}
-              isOpen={openDropdownId === 'childNodes'}
-              onToggle={() => setOpenDropdownId(openDropdownId === 'childNodes' ? null : 'childNodes')}
-              dropdownId="childNodes"
-            />
-          )
-        )}
-      </div>
+
+        {/* Node navigation controls - Move inside the main right section */}
+        <div className="flex items-center space-x-2">
+          {/* Parent node navigation */}
+          {parentNodes.length > 0 && (
+            parentNodes.length === 1 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleNavigateToParent(parentNodes[0])}
+                title="Go to Parent Node"
+                className="flex items-center"
+              >
+                <ChevronLeft size={16} />
+              </Button>
+            ) : (
+              <ParentNodesDropdown
+                parentNodes={parentNodes}
+                onNavigate={handleNavigateToParent}
+                isOpen={openDropdownId === 'parentNodes'}
+                onToggle={() => setOpenDropdownId(openDropdownId === 'parentNodes' ? null : 'parentNodes')}
+                dropdownId="parentNodes"
+              />
+            )
+          )}
+          
+          {/* Child node navigation */}
+          {childNodes.length > 0 && (
+            childNodes.length === 1 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleNavigateToChild(childNodes[0])}
+                title="Go to Child Node"
+                className="flex items-center"
+              >
+                <ChevronRight size={16} />
+              </Button>
+            ) : (
+              <ChildNodesDropdown
+                childNodes={childNodes}
+                onNavigate={handleNavigateToChild}
+                isOpen={openDropdownId === 'childNodes'}
+                onToggle={() => setOpenDropdownId(openDropdownId === 'childNodes' ? null : 'childNodes')}
+                dropdownId="childNodes"
+              />
+            )
+          )}
+        </div>
 
         {/* Close button */}
         <Button
