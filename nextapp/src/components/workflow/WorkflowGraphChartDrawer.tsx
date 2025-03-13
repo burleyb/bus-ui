@@ -729,18 +729,15 @@ function NodeChartContent({
   if (relation === 'self') {
     // Self: For the selected node itself
     if (nodeType === 'bot') {
-      // Bot selected node
+      // Bot selected node - ['Execution Count', 'Error Count', 'Execution Time']
       const executionData = prepareChartData(metricsData.executions || []);
       const errorData = prepareChartData(metricsData.errors || []);
       const durationData = prepareChartData(metricsData.duration || []);
       
       // Apply time window filtering
-      // const filteredExecutionData = filterDataByTimeWindow(executionData);
-      // const filteredErrorData = filterDataByTimeWindow(errorData);
-      // const filteredDurationData = filterDataByTimeWindow(durationData);
-      const filteredExecutionData = executionData;
-      const filteredErrorData = errorData;
-      const filteredDurationData = durationData;
+      const filteredExecutionData = filterDataByTimeWindow(executionData);
+      const filteredErrorData = filterDataByTimeWindow(errorData);
+      const filteredDurationData = filterDataByTimeWindow(durationData);
       
       return (
         <>
@@ -769,7 +766,7 @@ function NodeChartContent({
           {/* Execution Time Chart */}
           <Card className="mb-8">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Execution Time (ms)</CardTitle>
+              <CardTitle className="text-sm font-medium">Execution Time</CardTitle>
             </CardHeader>
             <CardContent className="pt-0">
               <div className="grid grid-cols-4 gap-4">
@@ -836,13 +833,13 @@ function NodeChartContent({
         </>
       );
     } else if (nodeType === 'queue' || nodeType === 'system') {
-      // Queue/System selected node
-      const eventsInQueueData = prepareChartData(metricsData.writes || []);
+      // Queue/System selected node - ['Events Written', "Events Read", "Source Lag", "analytics"]
+      const eventsWrittenData = prepareChartData(metricsData.writes || []);
       const eventsReadData = prepareChartData(metricsData.reads || []);
       const lagData = prepareChartData(metricsData.read_lag || []);
       
       // Apply time window filtering
-      const filteredEventsInQueueData = filterDataByTimeWindow(eventsInQueueData);
+      const filteredEventsWrittenData = filterDataByTimeWindow(eventsWrittenData);
       const filteredEventsReadData = filterDataByTimeWindow(eventsReadData);
       const filteredLagData = filterDataByTimeWindow(lagData);
       
@@ -868,11 +865,11 @@ function NodeChartContent({
             </div>
           )}
           
-          {/* Events in Queue (Written) Chart */}
+          {/* Events Written Chart */}
           <ChartCard
-            title="Events in Queue"
-            data={filteredEventsInQueueData}
-            statValue={filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}
+            title="Events Written"
+            data={filteredEventsWrittenData}
+            statValue={filteredEventsWrittenData.reduce((sum, point) => sum + point.value, 0) || 0}
             statLabel={`Last write: ${formatTimeAgo(metricsData?.lastWrite)}`}
             lineColor="#22c55e"
           />
@@ -886,75 +883,32 @@ function NodeChartContent({
             lineColor="#3b82f6"
           />
           
-          {/* Lag Chart */}
+          {/* Source Lag Chart */}
           <ChartCard
-            title="Lag In Seconds"
+            title="Lag in Seconds"
             data={filteredLagData}
             statValue={filteredLagData.length > 0 
               ? Math.round(filteredLagData.reduce((sum, point) => sum + point.value, 0) / filteredLagData.length) 
               : 0}
-            statLabel={`Events behind: ${filteredEventsInQueueData.length > 0 ? filteredEventsInQueueData[filteredEventsInQueueData.length - 1].value : 0}`}
+            statLabel={`Events behind: ${filteredEventsWrittenData.length > 0 ? filteredEventsWrittenData[filteredEventsWrittenData.length - 1].value : 0}`}
             lineColor="#f59e0b"
             valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
           />
         </>
       );
     }
-  } else if (nodeType === 'bot') {
-    // Selected node is a bot, current node is something else
-    const selectedNodeData = state.nodes?.[selectedNode];
-    const selectedNodeType = selectedNodeData?.type || 'bot';
-    
-    if (relation === 'write') {
-      // Bot -> Queue/System (Bot writes to this node)
-      // Show Events Written and Write Lag
-      const eventsWrittenData = prepareChartData(metricsData?.queues?.write?.[selectedNode]?.values || []);
-      const writeLagData = prepareChartData(metricsData?.queues?.write?.[selectedNode]?.lags || []);
-      
-      // Apply time window filtering
-      const filteredEventsWrittenData = filterDataByTimeWindow(eventsWrittenData);
-      const filteredWriteLagData = filterDataByTimeWindow(writeLagData);
-      
-      return (
-        <>
-          <TimeSlider />
-          
-          {/* Events Written Chart */}
-          <ChartCard
-            title="Events Written"
-            data={filteredEventsWrittenData}
-            statValue={filteredEventsWrittenData.reduce((sum, point) => sum + point.value, 0) || 0}
-            statLabel={`Last write: ${formatTimeAgo(metricsData?.queues?.write?.[selectedNode]?.lastWrite)}`}
-            lineColor="#22c55e"
-          />
-          
-          {/* Write Lag Chart */}
-          <ChartCard
-            title="Write Lag"
-            data={filteredWriteLagData}
-            statValue={filteredWriteLagData.length > 0 
-              ? Math.round(filteredWriteLagData.reduce((sum, point) => sum + point.value, 0) / filteredWriteLagData.length) 
-              : 0}
-            statLabel="Average write lag in ms"
-            lineColor="#f59e0b"
-            valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
-          />
-        </>
-      );
-    } else if (relation === 'read') {
-      // Queue/System -> Bot (Bot reads from this node)
-      // Show Events In Queue, Events Read, Read Lag
+  } else if (relation === 'read') {
+    // Read relation - parent queue/system or child bot
+    if (nodeType === 'bot') {
+      // Queue/System -> Bot (Bot reads from this node) - ["Events In Queue", 'Events Read', "Read Source Lag"]
       const eventsInQueueData = prepareChartData(metricsData?.queues?.read?.[selectedNode]?.values || []);
       const eventsReadData = prepareChartData(metricsData?.queues?.read?.[selectedNode]?.reads || []);
       const readLagData = prepareChartData(metricsData?.queues?.read?.[selectedNode]?.lags || []);
       
       // Apply time window filtering
-      // const filteredEventsInQueueData = filterDataByTimeWindow(eventsInQueueData);
-      // const filteredEventsReadData = filterDataByTimeWindow(eventsReadData);
-      // const filteredReadLagData = filterDataByTimeWindow(readLagData);
-      const filteredEventsInQueueData = eventsInQueueData;
-      const filteredEventsReadData = eventsReadData;
-      const filteredReadLagData = readLagData;
+      const filteredEventsInQueueData = filterDataByTimeWindow(eventsInQueueData);
+      const filteredEventsReadData = filterDataByTimeWindow(eventsReadData);
+      const filteredReadLagData = filterDataByTimeWindow(readLagData);
       
       return (
         <>
@@ -980,10 +934,10 @@ function NodeChartContent({
           
           {/* Events in Queue Chart */}
           <ChartCard
-            title="Events in Queue"
+            title="Events In Queue"
             data={filteredEventsInQueueData}
             statValue={filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}
-            statLabel="Total events available in queue"
+            statLabel="Estimate of unread events in queue"
             lineColor="#22c55e"
           />
           
@@ -996,25 +950,21 @@ function NodeChartContent({
             lineColor="#3b82f6"
           />
           
-          {/* Read Lag Chart */}
+          {/* Read Source Lag Chart */}
           <ChartCard
-            title="Read Lag"
+            title="Lag"
             data={filteredReadLagData}
             statValue={filteredReadLagData.length > 0 
               ? Math.round(filteredReadLagData.reduce((sum, point) => sum + point.value, 0) / filteredReadLagData.length) 
               : 0}
-            statLabel="Average read lag in ms"
+            statLabel="Average age of events at read time"
             lineColor="#f59e0b"
             valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
           />
         </>
       );
-    }
-  } else if (nodeType === 'queue' || nodeType === 'system') {
-    // Selected node is a queue/system, current node is something else
-    if (relation === 'read') {
-      // Queue/System -> Bot (Bot reads from the selected queue)
-      // Show Events In Queue, Events Read, Lag
+    } else if (nodeType === 'queue' || nodeType === 'system') {
+      // Queue/System -> Bot (Bot reads from the selected queue) - ["Events Read", "Read Source Lag"] for system or ["Events In Queue", 'Events Read', "Read Source Lag"] for queue
       const eventsInQueueData = prepareChartData(metricsData?.writes?.values || []);
       const eventsReadData = prepareChartData(metricsData?.bots?.read?.[selectedNode]?.values || []);
       const lagData = prepareChartData(metricsData?.bots?.read?.[selectedNode]?.lags || []);
@@ -1046,14 +996,16 @@ function NodeChartContent({
             </div>
           )}
           
-          {/* Events in Queue Chart */}
-          <ChartCard
-            title="Events in Queue"
-            data={filteredEventsInQueueData}
-            statValue={filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}
-            statLabel="Total events available in queue"
-            lineColor="#22c55e"
-          />
+          {nodeType === 'queue' || nodeType === 'system' && (
+            /* Events in Queue Chart - only for queues */
+            <ChartCard
+              title="Events In Queue"
+              data={filteredEventsInQueueData}
+              statValue={filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}
+              statLabel="Estimate of unread events in queue"
+              lineColor="#22c55e"
+            />
+          )}
           
           {/* Events Read Chart */}
           <ChartCard
@@ -1064,22 +1016,59 @@ function NodeChartContent({
             lineColor="#3b82f6"
           />
           
-          {/* Lag Chart */}
+          {/* Read Source Lag Chart */}
           <ChartCard
             title="Lag"
             data={filteredLagData}
             statValue={filteredLagData.length > 0 
               ? Math.round(filteredLagData.reduce((sum, point) => sum + point.value, 0) / filteredLagData.length) 
               : 0}
-            statLabel="Average lag in ms"
+            statLabel="Average age of events at read time"
             lineColor="#f59e0b"
             valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
           />
         </>
       );
-    } else if (relation === 'write') {
-      // Bot -> Queue/System (Bot writes to the selected queue)
-      // Show Events Written and Lag
+    }
+  } else if (relation === 'write') {
+    // Write relation - child queue/system or parent bot
+    if (nodeType === 'bot') {
+      // Bot -> Queue/System (Bot writes to this node) - ['Events Written', "Write Source Lag"]
+      const eventsWrittenData = prepareChartData(metricsData?.queues?.write?.[selectedNode]?.values || []);
+      const writeLagData = prepareChartData(metricsData?.queues?.write?.[selectedNode]?.lags || []);
+      
+      // Apply time window filtering
+      const filteredEventsWrittenData = filterDataByTimeWindow(eventsWrittenData);
+      const filteredWriteLagData = filterDataByTimeWindow(writeLagData);
+      
+      return (
+        <>
+          <TimeSlider />
+          
+          {/* Events Written Chart */}
+          <ChartCard
+            title="Events Written"
+            data={filteredEventsWrittenData}
+            statValue={filteredEventsWrittenData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Last write: ${formatTimeAgo(metricsData?.queues?.write?.[selectedNode]?.lastWrite)}`}
+            lineColor="#22c55e"
+          />
+          
+          {/* Write Source Lag Chart */}
+          <ChartCard
+            title="Lag"
+            data={filteredWriteLagData}
+            statValue={filteredWriteLagData.length > 0 
+              ? Math.round(filteredWriteLagData.reduce((sum, point) => sum + point.value, 0) / filteredWriteLagData.length) 
+              : 0}
+            statLabel="Average age of events at write time"
+            lineColor="#f59e0b"
+            valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
+          />
+        </>
+      );
+    } else if (nodeType === 'queue' || nodeType === 'system') {
+      // Bot -> Queue/System (Bot writes to the selected queue) - ['Events Written', "Write Source Lag"]
       const eventsWrittenData = prepareChartData(metricsData?.bots?.write?.[selectedNode]?.values || []);
       const lagData = prepareChartData(metricsData?.bots?.write?.[selectedNode]?.lags || []);
       
@@ -1100,14 +1089,14 @@ function NodeChartContent({
             lineColor="#22c55e"
           />
           
-          {/* Lag Chart */}
+          {/* Write Source Lag Chart */}
           <ChartCard
             title="Lag"
             data={filteredLagData}
             statValue={filteredLagData.length > 0 
               ? Math.round(filteredLagData.reduce((sum, point) => sum + point.value, 0) / filteredLagData.length) 
               : 0}
-            statLabel="Average lag in ms"
+            statLabel="Average age of events at write time"
             lineColor="#f59e0b"
             valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
           />

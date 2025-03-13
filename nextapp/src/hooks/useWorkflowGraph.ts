@@ -352,6 +352,9 @@ export function useWorkflowGraph({
     handleZoom,
     toggleCollapsed,
     toggleExpanded,
-    toggleStats
+    toggleStats,
+    
+    // Expose state setters for direct usage
+    setSelectedNodes
   };
 } 

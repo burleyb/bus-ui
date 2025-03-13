@@ -53,7 +53,8 @@ export default function WorkflowGraph({
     handleZoom, 
     toggleCollapsed, 
     toggleExpanded,
-    updateGraphState
+    updateGraphState,
+    setSelectedNodes
   } = useWorkflowGraph({
     initialOffset: offset,
     initialZoom: zoom,
@@ -65,6 +66,15 @@ export default function WorkflowGraph({
   
   // Set background color for dark/light mode
   useThemeBackgroundColor();
+  
+  // Helper function to center the graph on the current selected/focus node
+  const handleCenterGraph = useCallback(() => {
+    // Update focus node to trigger centering behavior
+    const nodeToCenter = selectedNodes.length > 0 ? selectedNodes[0] : (focusNode || primaryNode);
+    if (nodeToCenter) {
+      updateGraphState({ focusNode: nodeToCenter });
+    }
+  }, [selectedNodes, focusNode, primaryNode, updateGraphState]);
   
   // Initialize container dimensions
   useEffect(() => {
@@ -115,9 +125,41 @@ export default function WorkflowGraph({
   
   // Node interaction handlers
   const handleNodeClick = useCallback((nodeId: string) => {
-    // Update selected nodes
-    updateGraphState({ selectedNodes: [nodeId] });
-  }, [updateGraphState]);
+    // Just update the selectedNodes array in the URL without causing layout recalculation
+    // We'll only change the URL hash property for 'selected', not for 'node' or other properties
+    // that would trigger a graph redraw
+    
+    // Create direct hash update instead of using updateGraphState
+    let hashData: Record<string, any> = {};
+    
+    try {
+      if (window.location.hash && window.location.hash.length > 1) {
+        try {
+          const hashStr = decodeURIComponent(window.location.hash.substring(1));
+          if (hashStr && hashStr.trim().startsWith('{') && hashStr.trim().endsWith('}')) {
+            hashData = JSON.parse(hashStr);
+          }
+        } catch (error) {
+          console.error('Error parsing hash:', error);
+        }
+      }
+      
+      // Only update selected node in hash data, not the focus node
+      hashData.selected = [nodeId];
+      
+      // Update local state for immediate UI feedback
+      setSelectedNodes([nodeId]);
+      
+      // Update the URL hash without changing other properties
+      const hashStr = JSON.stringify(hashData);
+      // Use history.replaceState instead of directly modifying window.location.hash
+      // to prevent navigation event
+      const newUrl = window.location.pathname + window.location.search + '#' + encodeURIComponent(hashStr);
+      window.history.replaceState(null, '', newUrl);
+    } catch (error) {
+      console.error('Error updating URL hash:', error);
+    }
+  }, [setSelectedNodes]);
   
   const handleNodeDoubleClick = useCallback((nodeId: string) => {
     // Update focus node
@@ -133,13 +175,19 @@ export default function WorkflowGraph({
     // Toggle collapsed state
     const newState = toggleCollapsed(nodeId, direction);
     updateGraphState({ collapsedState: newState });
-  }, [toggleCollapsed, updateGraphState]);
+    
+    // Center the graph after collapsing
+    handleCenterGraph();
+  }, [toggleCollapsed, updateGraphState, handleCenterGraph]);
   
   const handleExpandNode = useCallback((nodeId: string, direction: 'left' | 'right') => {
     // Toggle expanded state
     const newState = toggleExpanded(nodeId, direction);
     updateGraphState({ collapsedState: newState });
-  }, [toggleExpanded, updateGraphState]);
+    
+    // Center the graph after expanding
+    handleCenterGraph();
+  }, [toggleExpanded, updateGraphState, handleCenterGraph]);
   
   const handleFocusClick = useCallback((nodeId: string) => {
     // Update focus node
