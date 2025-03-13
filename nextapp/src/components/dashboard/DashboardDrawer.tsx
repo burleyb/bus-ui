@@ -210,8 +210,8 @@ export default function DashboardDrawer({ isOpen, onClose }: { isOpen: boolean, 
       alarmed: alarmedBots,
       notAlarmed: notAlarmedBots,
       donutData: [
-        { name: 'Not Alarmed', value: notAlarmedBots, color: '#4ade80' },
-        { name: 'Alarmed', value: alarmedBots, color: '#ef4444' }
+        {  value: notAlarmedBots, color: '#4ade80' },
+        {  value: alarmedBots, color: '#ef4444' }
       ],
       lastUpdated: Date.now()
     };

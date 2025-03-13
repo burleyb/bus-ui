@@ -246,7 +246,7 @@ export default function BotsList({ searchTerm, filterField, filterValue, onNodeC
         </div>
       </div>
       
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overflow-y-hidden">
         <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
           <thead className="bg-gray-50 dark:bg-gray-900">
             <tr>

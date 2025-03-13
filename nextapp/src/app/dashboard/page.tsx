@@ -53,7 +53,7 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Overview of your event bus system
+            Overview of your event system
           </p>
         </div>
         
