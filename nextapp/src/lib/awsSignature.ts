@@ -71,9 +71,6 @@ export async function signRequest(
     if (!requestHeaders['host']) {
       requestHeaders['host'] = parsedUrl.host;
     }
-    console.log('==== USE_CORS_PROXY ====', process.env.NEXT_PUBLIC_USE_CORS_PROXY);
-    console.log('==== CORS_PROXY_HOST ====', process.env.NEXT_PUBLIC_CORS_PROXY_HOST);
-    console.log('==== CORS_PROXY_PATH ====', process.env.NEXT_PUBLIC_CORS_PROXY_PATH);
     if(parsedUrl.hostname === 'localhost' && process.env.NEXT_PUBLIC_USE_CORS_PROXY == 'true') {
       requestHeaders['host'] = process.env.NEXT_PUBLIC_CORS_PROXY_HOST || 'botmon.lablpx.com';
     }

@@ -52,6 +52,14 @@ interface NodeTab {
   relatedNodeType?: string;
 }
 
+// Interface for time range window
+interface TimeRangeWindow {
+  start: string;
+  end: string;
+  percentStart: number;
+  percentEnd: number;
+}
+
 export function WorkflowGraphChartDrawer({
   isOpen,
   selectedNode,
@@ -62,6 +70,12 @@ export function WorkflowGraphChartDrawer({
   // State
   const [activeTab, setActiveTab] = useState<string>('');
   const [timeRange, setTimeRange] = useState<[number, number]>([0, 100]); // Percentage range for time slider
+  const [actualTimeWindow, setActualTimeWindow] = useState<TimeRangeWindow>({
+    start: '',
+    end: '',
+    percentStart: 0,
+    percentEnd: 100
+  });
   const [chartTimePeriod, setChartTimePeriod] = useState<string>(
     timePeriod?.interval ? 
     convertTimePeriodToString(timePeriod.interval) : 
@@ -168,11 +182,117 @@ export function WorkflowGraphChartDrawer({
     return timePeriods[interval] || '15m';
   }
   
+  // Calculate full time range based on timePeriod or default to current time minus 3:30 hours
+  const calculateFullTimeRange = (metricsData: any): { start: string, end: string } => {
+    if (metricsData && metricsData.timeStart && metricsData.timeEnd) {
+      return {
+        start: metricsData.timeStart,
+        end: metricsData.timeEnd
+      };
+    }
+    
+    // Default to current time minus 3:30 hours if no timePeriod is provided
+    const end = moment();
+    const start = moment().subtract(3, 'hours').subtract(30, 'minutes');
+    
+    return {
+      start: start.format(),
+      end: end.format()
+    };
+  };
+  
+  // Calculate initial 45-minute window position within the full time range
+  const calculateInitialWindow = (fullTimeRange: { start: string, end: string }): TimeRangeWindow => {
+    const startTime = moment(fullTimeRange.start);
+    const endTime = moment(fullTimeRange.end);
+    const fullDuration = endTime.diff(startTime);
+    
+    // Default to 45 minutes for the window size
+    const windowDuration = 45 * 60 * 1000; // 45 minutes in milliseconds
+    
+    // If the full time range is less than 45 minutes, use the full range
+    if (fullDuration <= windowDuration) {
+      return {
+        start: fullTimeRange.start,
+        end: fullTimeRange.end,
+        percentStart: 0,
+        percentEnd: 100
+      };
+    }
+    
+    // Position the 45-minute window at the end of the full range
+    const windowStart = moment(endTime).subtract(45, 'minutes');
+    
+    // Calculate percentages
+    const percentStart = Math.max(0, (windowStart.valueOf() - startTime.valueOf()) / fullDuration * 100);
+    const percentEnd = 100;
+    
+    return {
+      start: windowStart.format(),
+      end: endTime.format(),
+      percentStart,
+      percentEnd
+    };
+  };
+  
   // Convert time range slider values to actual time period
-  const handleTimeRangeChange = (values: [number, number]) => {
+  const handleTimeRangeChange = (values: [number, number], metricsData: any) => {
+    // Enforce minimum window size of 45 minutes (as percentage of total range)
+    const fullTimeRange = calculateFullTimeRange(metricsData);
+    const startTime = moment(fullTimeRange.start).valueOf();
+    const endTime = moment(fullTimeRange.end).valueOf();
+    const fullDuration = endTime - startTime;
+    const minWindowSize = Math.min(100, (45 * 60 * 1000) / fullDuration * 100); // 45 minutes as percentage
+    
+    // If window is too small, adjust the end value
+    let [start, end] = values;
+    if (end - start < minWindowSize) {
+      end = Math.min(100, start + minWindowSize);
+      
+      // If end went over 100%, adjust start instead
+      if (end > 100) {
+        end = 100;
+        start = Math.max(0, end - minWindowSize);
+      }
+      
+      values = [start, end];
+    }
+    
     setTimeRange(values);
-    // Here we would adjust the actual time window for the charts
-    // This would involve calculating the actual start/end times based on slider positions
+    
+    // Calculate the actual time window based on slider positions
+    const { start: startDate, end: endDate } = calculateTimeRange(values, fullTimeRange.start, fullTimeRange.end);
+    
+    setActualTimeWindow({
+      start: startDate,
+      end: endDate,
+      percentStart: values[0],
+      percentEnd: values[1]
+    });
+  };
+  
+  // Calculate window duration in human-readable format
+  const formatWindowDuration = (start: string, end: string): string => {
+    if (!start || !end) return '45m';
+    
+    const startTime = moment(start);
+    const endTime = moment(end);
+    const durationMs = endTime.diff(startTime);
+    const durationMinutes = Math.round(durationMs / (60 * 1000));
+    
+    if (durationMinutes < 60) {
+      return `${durationMinutes}m`;
+    } else if (durationMinutes % 60 === 0) {
+      return `${durationMinutes / 60}h`;
+    } else {
+      return `${durationMinutes}m`;
+    }
+  };
+  
+  // Format time with 12-hour AM/PM
+  const formatTime12Hour = (timestamp: string): string => {
+    if (!timestamp) return 'N/A';
+    return moment(timestamp).format('MMM D, YYYY h:mm A');
   };
   
   // Navigate to node settings dialog for queue events
@@ -193,7 +313,7 @@ export function WorkflowGraphChartDrawer({
   if (!isOpen) return null;
   
   return (
-    <div className={`fixed top-0 right-0 h-full bg-white dark:bg-gray-800 shadow-lg z-10 transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+    <div className={`fixed inset-y-[10%] right-0 h-[80%] bg-white dark:bg-gray-800 shadow-lg z-10 transition-all duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
          style={{ width: '800px' }}>
       {/* Header */}
       <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
@@ -239,6 +359,7 @@ export function WorkflowGraphChartDrawer({
                     nodeType={tab.type}
                     timePeriod={chartTimePeriod}
                     timeRange={timeRange}
+                    actualTimeWindow={actualTimeWindow}
                     onTimeRangeChange={handleTimeRangeChange}
                     onOpenQueueEvents={openQueueEventsWithCheckpoint}
                   />
@@ -262,6 +383,7 @@ function NodeChartContent({
   nodeType,
   timePeriod,
   timeRange,
+  actualTimeWindow,
   onTimeRangeChange,
   onOpenQueueEvents
 }: {
@@ -269,7 +391,8 @@ function NodeChartContent({
   nodeType: string;
   timePeriod: string;
   timeRange: [number, number];
-  onTimeRangeChange: (values: [number, number]) => void;
+  actualTimeWindow?: TimeRangeWindow;
+  onTimeRangeChange: (values: [number, number], metricsData: any) => void;
   onOpenQueueEvents: (queueId: string, checkpoint: string) => void;
 }) {
   // Fetch metrics data for the node
@@ -278,6 +401,104 @@ function NodeChartContent({
   
   // Checkpoint info for queues
   const [checkpoint, setCheckpoint] = useState<string>('');
+  
+  // Helper function to calculate full time range
+  const calculateFullTimeRange = (metricsData: any): { start: string, end: string } => {
+    if (metricsData && metricsData.timeStart && metricsData.timeEnd) {
+      return {
+        start: metricsData.timeStart,
+        end: metricsData.timeEnd
+      };
+    }
+    
+    // Default to current time minus 3:30 hours if no timePeriod is provided
+    const end = moment();
+    const start = moment().subtract(3, 'hours').subtract(30, 'minutes');
+    
+    return {
+      start: start.format(),
+      end: end.format()
+    };
+  };
+  
+  // Calculate window duration in human-readable format
+  const formatWindowDuration = (start: string, end: string): string => {
+    if (!start || !end) return '45m';
+    
+    const startTime = moment(start);
+    const endTime = moment(end);
+    const durationMs = endTime.diff(startTime);
+    const durationMinutes = Math.round(durationMs / (60 * 1000));
+    
+    if (durationMinutes < 60) {
+      return `${durationMinutes}m`;
+    } else if (durationMinutes % 60 === 0) {
+      return `${durationMinutes / 60}h`;
+    } else {
+      return `${durationMinutes}m`;
+    }
+  };
+  
+  // Calculate initial 45-minute window position within the full time range
+  const calculateInitialWindow = (fullTimeRange: { start: string, end: string }): TimeRangeWindow => {
+    const startTime = moment(fullTimeRange.start);
+    const endTime = moment(fullTimeRange.end);
+    const fullDuration = endTime.diff(startTime);
+    
+    // Default to 45 minutes for the window size
+    const windowDuration = 45 * 60 * 1000; // 45 minutes in milliseconds
+    
+    // If the full time range is less than 45 minutes, use the full range
+    if (fullDuration <= windowDuration) {
+      return {
+        start: fullTimeRange.start,
+        end: fullTimeRange.end,
+        percentStart: 0,
+        percentEnd: 100
+      };
+    }
+    
+    // Position the 45-minute window at the end of the full range
+    const windowStart = moment(endTime).subtract(45, 'minutes');
+    
+    // Calculate percentages
+    const percentStart = Math.max(0, (windowStart.valueOf() - startTime.valueOf()) / fullDuration * 100);
+    const percentEnd = 100;
+    
+    return {
+      start: windowStart.format(),
+      end: endTime.format(),
+      percentStart,
+      percentEnd
+    };
+  };
+  
+  // Initialize the time window when metrics data is loaded
+  useEffect(() => {
+    if (metricsData && metricsData.timeStart && metricsData.timeEnd) {
+      // Calculate full time range
+      const fullTimeRange = {
+        start: metricsData.timeStart,
+        end: metricsData.timeEnd
+      };
+      
+      // Calculate the initial 45-minute window
+      const initialWindow = calculateInitialWindow(fullTimeRange);
+      
+      // Calculate and set the slider percentages based on the initial window
+      const startTime = moment(fullTimeRange.start).valueOf();
+      const endTime = moment(fullTimeRange.end).valueOf();
+      const windowStart = moment(initialWindow.start).valueOf();
+      const windowEnd = moment(initialWindow.end).valueOf();
+      
+      if (endTime > startTime) {
+        const percentStart = ((windowStart - startTime) / (endTime - startTime)) * 100;
+        const percentEnd = ((windowEnd - startTime) / (endTime - startTime)) * 100;
+        
+        onTimeRangeChange([percentStart, percentEnd], metricsData);
+      }
+    }
+  }, [metricsData, onTimeRangeChange]);
   
   // Update checkpoint when metrics data changes
   useEffect(() => {
@@ -292,7 +513,7 @@ function NodeChartContent({
     
     return data.map(item => ({
       time: item.time,
-      formattedTime: formatChartTime(item.time),
+      formattedTime: moment(item.time).format('h:mm A'), // Use 12-hour AM/PM format
       value: item[key] || 0
     }));
   };
@@ -325,74 +546,109 @@ function NodeChartContent({
   }
   
   // Time slider component
-  const TimeSlider = () => (
-    <div className="pt-4 pb-6">
-      <div className="mb-2 flex justify-between items-center">
-        <h4 className="text-sm font-medium">Time Range</h4>
-        <div className="flex space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onTimeRangeChange([0, 100])}
-            className="h-7 text-xs"
-          >
-            Reset
-          </Button>
+  const TimeSlider = () => {
+    // Get full time range
+    const fullTimeRange = calculateFullTimeRange(metricsData);
+    
+    // Format actual dates based on the time window
+    const startDate = actualTimeWindow?.start || metricsData.timeStart;
+    const endDate = actualTimeWindow?.end || metricsData.timeEnd;
+    
+    // Calculate window duration
+    const windowDuration = formatWindowDuration(startDate, endDate);
+    
+    return (
+      <div className="pt-4 pb-6">
+        <div className="mb-2 flex justify-between items-center">
+          <h4 className="text-sm font-medium">Time Range</h4>
+          <div className="flex space-x-2 items-center">
+            <span className="text-xs text-gray-500 font-medium bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
+              Window: {windowDuration}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onTimeRangeChange([0, 100], metricsData)}
+              className="h-7 text-xs"
+            >
+              Reset
+            </Button>
+          </div>
+        </div>
+        <Slider
+          defaultValue={timeRange}
+          min={0}
+          max={100}
+          step={1}
+          value={timeRange}
+          onValueChange={(values) => onTimeRangeChange(values as [number, number], metricsData)}
+          className="my-4"
+        />
+        <div className="flex justify-between text-xs text-gray-500">
+          <span>Start: {moment(fullTimeRange.start).format('MMM D, YYYY h:mm A')}</span>
+          <span>End: {moment(fullTimeRange.end).format('MMM D, YYYY h:mm A')}</span>
         </div>
       </div>
-      <Slider
-        defaultValue={timeRange}
-        min={0}
-        max={100}
-        step={1}
-        value={timeRange}
-        onValueChange={onTimeRangeChange as any}
-        className="my-4"
-      />
-      <div className="flex justify-between text-xs text-gray-500">
-        <span>Start: {formatDate(metricsData.timeStart)}</span>
-        <span>End: {formatDate(metricsData.timeEnd)}</span>
-      </div>
-    </div>
-  );
+    );
+  };
   
   // Bot charts
   if (nodeType === 'bot') {
-    const executionData = prepareChartData(metricsData.execution || []);
+    const executionData = prepareChartData(metricsData.executions || []);
     const errorData = prepareChartData(metricsData.errors || []);
     const durationData = prepareChartData(metricsData.duration || []);
+    
+    // Filter chart data based on the time window if one exists
+    const filterDataByTimeWindow = (data: any[]) => {
+      if (!actualTimeWindow?.start || !actualTimeWindow?.end) return data;
+      
+      const startTime = moment(actualTimeWindow.start).valueOf();
+      const endTime = moment(actualTimeWindow.end).valueOf();
+      
+      return data.filter(item => {
+        const itemTime = moment(item.time).valueOf();
+        return itemTime >= startTime && itemTime <= endTime;
+      });
+    };
+    
+    // Apply time window filtering
+    const filteredExecutionData = filterDataByTimeWindow(executionData);
+    const filteredErrorData = filterDataByTimeWindow(errorData);
+    const filteredDurationData = filterDataByTimeWindow(durationData);
     
     return (
       <>
         <TimeSlider />
         
         {/* Execution Count Chart */}
-        <Card className="mb-4">
+        <Card className="mb-8">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Execution Count</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-4 gap-4">
               <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{metricsData.stats?.executions || 0}</div>
+                <div className="text-2xl font-bold">{filteredExecutionData.reduce((sum, point) => sum + point.value, 0) || 0}</div>
                 <div className="text-xs text-gray-500 mt-1">
                   Last run:<br/>{formatTimeAgo(metricsData.stats?.lastRun)}
                 </div>
               </div>
               <div className="col-span-3 h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={executionData}>
+                  <LineChart data={filteredExecutionData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
+                      height={40}
+                      tickMargin={15}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${value} executions`, 'Count']}
-                      labelFormatter={(label) => `Time: ${label}`}
+                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
                     />
                     <Line 
                       type="monotone" 
@@ -410,32 +666,34 @@ function NodeChartContent({
         </Card>
         
         {/* Error Count Chart */}
-        <Card className="mb-4">
+        <Card className="mb-8">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Error Count</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-4 gap-4">
               <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{metricsData.stats?.errors || 0}</div>
+                <div className="text-2xl font-bold">{filteredErrorData.reduce((sum, point) => sum + point.value, 0) || 0}</div>
                 <div className="text-xs text-gray-500 mt-1">
                   Error rate:<br/>{metricsData.stats?.errorRate || 0}%
                 </div>
               </div>
               <div className="col-span-3 h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={errorData}>
+                  <LineChart data={filteredErrorData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
+                      height={40}
+                      tickMargin={15}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${value} errors`, 'Count']}
-                      labelFormatter={(label) => `Time: ${label}`}
+                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
                     />
                     <Line 
                       type="monotone" 
@@ -453,7 +711,7 @@ function NodeChartContent({
         </Card>
         
         {/* Execution Time Chart */}
-        <Card className="mb-4">
+        <Card className="mb-8">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Execution Time (ms)</CardTitle>
           </CardHeader>
@@ -462,27 +720,37 @@ function NodeChartContent({
               <div className="col-span-1 flex flex-col justify-between">
                 <div>
                   <div className="text-sm text-gray-500">Average:</div>
-                  <div className="text-lg font-bold">{formatDuration(metricsData.stats?.avgDuration)}</div>
+                  <div className="text-lg font-bold">
+                    {filteredDurationData.length > 0 
+                      ? formatDuration(filteredDurationData.reduce((sum, point) => sum + point.value, 0) / filteredDurationData.length) 
+                      : formatDuration(0)}
+                  </div>
                 </div>
                 <div className="mt-2">
                   <div className="text-sm text-gray-500">Max:</div>
-                  <div className="text-lg font-bold">{formatDuration(metricsData.stats?.maxDuration)}</div>
+                  <div className="text-lg font-bold">
+                    {filteredDurationData.length > 0 
+                      ? formatDuration(Math.max(...filteredDurationData.map(d => d.value))) 
+                      : formatDuration(0)}
+                  </div>
                 </div>
               </div>
               <div className="col-span-3 h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={durationData}>
+                  <LineChart data={filteredDurationData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
+                      height={40}
+                      tickMargin={15}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${formatDuration(value)}`, 'Duration']}
-                      labelFormatter={(label) => `Time: ${label}`}
+                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
                     />
                     <Line 
                       type="monotone" 
@@ -504,9 +772,27 @@ function NodeChartContent({
   
   // Queue charts
   if (nodeType === 'queue') {
-    const eventsInQueueData = prepareChartData(metricsData.eventsInQueue || []);
-    const eventsReadData = prepareChartData(metricsData.eventsRead || []);
-    const lagData = prepareChartData(metricsData.lag || []);
+    const eventsInQueueData = prepareChartData(metricsData.writes || []);
+    const eventsReadData = prepareChartData(metricsData.reads || []);
+    const lagData = prepareChartData(metricsData.read_lag || []);
+    
+    // Filter chart data based on the time window if one exists
+    const filterDataByTimeWindow = (data: any[]) => {
+      if (!actualTimeWindow?.start || !actualTimeWindow?.end) return data;
+      
+      const startTime = moment(actualTimeWindow.start).valueOf();
+      const endTime = moment(actualTimeWindow.end).valueOf();
+      
+      return data.filter(item => {
+        const itemTime = moment(item.time).valueOf();
+        return itemTime >= startTime && itemTime <= endTime;
+      });
+    };
+    
+    // Apply time window filtering
+    const filteredEventsInQueueData = filterDataByTimeWindow(eventsInQueueData);
+    const filteredEventsReadData = filterDataByTimeWindow(eventsReadData);
+    const filteredLagData = filterDataByTimeWindow(lagData);
     
     return (
       <>
@@ -531,32 +817,34 @@ function NodeChartContent({
         )}
         
         {/* Events in Queue Chart */}
-        <Card className="mb-4">
+        <Card className="mb-8">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Events in Queue</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-4 gap-4">
               <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{metricsData.stats?.eventsInQueue || 0}</div>
+                <div className="text-2xl font-bold">{filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}</div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Last write:<br/>{formatTimeAgo(metricsData.stats?.lastWrite)}
+                  Last write:<br/>{formatTimeAgo(metricsData?.lastWrite)}
                 </div>
               </div>
               <div className="col-span-3 h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={eventsInQueueData}>
+                  <LineChart data={filteredEventsInQueueData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
+                      height={40}
+                      tickMargin={15}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${value} events`, 'Count']}
-                      labelFormatter={(label) => `Time: ${label}`}
+                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
                     />
                     {metricsData.lastReadPosition && (
                       <ReferenceLine 
@@ -582,32 +870,34 @@ function NodeChartContent({
         </Card>
         
         {/* Events Read Chart */}
-        <Card className="mb-4">
+        <Card className="mb-8">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Events Read</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-4 gap-4">
               <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{metricsData.stats?.eventsRead || 0}</div>
+                <div className="text-2xl font-bold">{filteredEventsReadData.reduce((sum, point) => sum + point.value, 0) || 0}</div>
                 <div className="text-xs text-gray-500 mt-1">
                   Last read:<br/>{formatTimeAgo(metricsData.stats?.lastRead)}
                 </div>
               </div>
               <div className="col-span-3 h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={eventsReadData}>
+                  <LineChart data={filteredEventsReadData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
+                      height={40}
+                      tickMargin={15}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${value} events`, 'Count']}
-                      labelFormatter={(label) => `Time: ${label}`}
+                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
                     />
                     <Line 
                       type="monotone" 
@@ -625,32 +915,36 @@ function NodeChartContent({
         </Card>
         
         {/* Lag Chart */}
-        <Card className="mb-4">
+        <Card className="mb-8">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Lag</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-4 gap-4">
               <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{metricsData.stats?.lag || 0}</div>
+                <div className="text-2xl font-bold">{filteredLagData.length > 0 
+                  ? Math.round(filteredLagData.reduce((sum, point) => sum + point.value, 0) / filteredLagData.length) 
+                  : 0}</div>
                 <div className="text-xs text-gray-500 mt-1">
-                  Events behind:<br/>{metricsData.stats?.eventsBehind || 0}
+                  Events behind:<br/>{filteredEventsInQueueData.length > 0 ? filteredEventsInQueueData[filteredEventsInQueueData.length - 1].value : 0}
                 </div>
               </div>
               <div className="col-span-3 h-[180px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={lagData}>
+                  <LineChart data={filteredLagData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
+                      height={40}
+                      tickMargin={15}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
-                      labelFormatter={(label) => `Time: ${label}`}
+                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
                     />
                     <Line 
                       type="monotone" 
