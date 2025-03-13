@@ -50,6 +50,7 @@ interface NodeTab {
   type: string;
   relation: 'self' | 'read' | 'write';
   relatedNodeType?: string;
+  selectedNode?: string;
 }
 
 // Interface for time range window
@@ -97,8 +98,9 @@ export function WorkflowGraphChartDrawer({
     if (selectedNodeData) {
       nodeTabs.push({
         id: selectedNode,
-        label: selectedNodeData.label || selectedNode,
+        label: selectedNodeData.label || selectedNodeData.name || selectedNode,
         type: selectedNodeData.type || 'bot',
+        selectedNode: selectedNode,
         relation: 'self'
       });
       
@@ -109,8 +111,13 @@ export function WorkflowGraphChartDrawer({
           if (childNode && !nodeTabs.some(tab => tab.id === childId) && 
               childNode.status !== 'archived' && !childNode.archived) {
             
-            // Determine relationship type: bot->queue/system = write
+            // Determine relationship type based on node types
             let relation: 'read' | 'write' = 'write';
+            
+            // If selected node is a bot:
+            //  - Child queues are where the bot writes to
+            // If selected node is a queue:
+            //  - Child bots are bots that read from this queue
             if ((selectedNodeData.type === 'queue' || selectedNodeData.type === 'system') && 
                 childNode.type === 'bot') {
               relation = 'read';
@@ -134,18 +141,24 @@ export function WorkflowGraphChartDrawer({
           if (parentNode && !nodeTabs.some(tab => tab.id === parentId) &&
               parentNode.status !== 'archived' && !parentNode.archived) {
             
-            // Determine relationship type: queue/system->bot = read
-            let relation: 'read' | 'write' = 'read';
+            // Determine relationship type based on node types
+            let relation: 'read' | 'write' = 'write';
+            
+            // If selected node is a bot:
+            //  - Parent queues are where the bot reads from
+            // If selected node is a queue:
+            //  - Parent bots are bots that write to this queue
             if (selectedNodeData.type === 'bot' && 
                 (parentNode.type === 'queue' || parentNode.type === 'system')) {
-              relation = 'write';
+              relation = 'read';
             }
             
             nodeTabs.push({
               id: parentId,
-              label: parentNode.label || parentId,
+              label: parentNode.label || parentNode.name || parentId,
               type: parentNode.type || 'bot',
               relation: relation,
+              selectedNode: selectedNode,
               relatedNodeType: parentNode.type
             });
           }
@@ -357,9 +370,11 @@ export function WorkflowGraphChartDrawer({
                   <NodeChartContent
                     nodeId={tab.id}
                     nodeType={tab.type}
+                    relation={tab.relation}
                     timePeriod={chartTimePeriod}
                     timeRange={timeRange}
                     actualTimeWindow={actualTimeWindow}
+                    selectedNode={selectedNode}
                     onTimeRangeChange={handleTimeRangeChange}
                     onOpenQueueEvents={openQueueEventsWithCheckpoint}
                   />
@@ -381,17 +396,21 @@ export function WorkflowGraphChartDrawer({
 function NodeChartContent({
   nodeId,
   nodeType,
+  relation,
   timePeriod,
   timeRange,
   actualTimeWindow,
+  selectedNode,
   onTimeRangeChange,
   onOpenQueueEvents
 }: {
   nodeId: string;
   nodeType: string;
+  relation: 'self' | 'read' | 'write';
   timePeriod: string;
   timeRange: [number, number];
   actualTimeWindow?: TimeRangeWindow;
+  selectedNode: string;
   onTimeRangeChange: (values: [number, number], metricsData: any) => void;
   onOpenQueueEvents: (queueId: string, checkpoint: string) => void;
 }) {
@@ -502,10 +521,22 @@ function NodeChartContent({
   
   // Update checkpoint when metrics data changes
   useEffect(() => {
-    if (metricsData?.checkpoint) {
-      setCheckpoint(metricsData.checkpoint);
+    if (relation !== 'self' && metricsData?.queues) {
+      const relationKey = relation === 'read' ? 'read' : 'write';
+      const checkpoint = metricsData.queues[relationKey]?.[selectedNode]?.checkpoint;
+      if (checkpoint) {
+        setCheckpoint(checkpoint);
+      }
+    } else if (relation !== 'self' && metricsData?.bots) {
+      const relationKey = relation === 'read' ? 'read' : 'write';
+      const checkpoint = metricsData.bots[relationKey]?.[selectedNode]?.checkpoint;
+      if (checkpoint) {
+        setCheckpoint(checkpoint);
+      }
+    } else {
+      setCheckpoint(metricsData?.checkpoint || '');
     }
-  }, [metricsData]);
+  }, [metricsData, selectedNode, relation]);
   
   // Prepare chart data
   const prepareChartData = (data: any[], key: string = 'value'): ChartData[] => {
@@ -519,6 +550,19 @@ function NodeChartContent({
         formattedTime: timeValue.isValid() ? timeValue.format('h:mm A') : '', // Use 12-hour AM/PM format with validation
         value: item[key] || 0
       };
+    });
+  };
+  
+  // Filter chart data based on the time window if one exists
+  const filterDataByTimeWindow = (data: any[]) => {
+    if (!actualTimeWindow?.start || !actualTimeWindow?.end) return data;
+    
+    const startTime = moment(actualTimeWindow.start).valueOf();
+    const endTime = moment(actualTimeWindow.end).valueOf();
+    
+    return data.filter(item => {
+      const itemTime = moment(item.time).valueOf();
+      return itemTime >= startTime && itemTime <= endTime;
     });
   };
   
@@ -596,448 +640,486 @@ function NodeChartContent({
     );
   };
   
-  // Bot charts
-  if (nodeType === 'bot') {
-    const executionData = prepareChartData(metricsData.executions || []);
-    const errorData = prepareChartData(metricsData.errors || []);
-    const durationData = prepareChartData(metricsData.duration || []);
+  // ChartCard component to standardize chart display
+  const ChartCard = ({ 
+    title, 
+    data, 
+    statValue,
+    statLabel, 
+    lineColor = "#3b82f6", 
+    valueFormatter = (value: any) => [`${value} events`, 'Count'],
+    showMax = false
+  }: {
+    title: string;
+    data: ChartData[];
+    statValue: number | string;
+    statLabel: string;
+    lineColor?: string;
+    valueFormatter?: (value: any) => [string, string];
+    showMax?: boolean;
+  }) => {
+    // Calculate max value for the data
+    const maxValue = data.length > 0 ? Math.max(...data.map((d: ChartData) => d.value)) : 0;
     
-    // Filter chart data based on the time window if one exists
-    const filterDataByTimeWindow = (data: any[]) => {
-      if (!actualTimeWindow?.start || !actualTimeWindow?.end) return data;
-      
-      const startTime = moment(actualTimeWindow.start).valueOf();
-      const endTime = moment(actualTimeWindow.end).valueOf();
-      
-      return data.filter(item => {
-        const itemTime = moment(item.time).valueOf();
-        return itemTime >= startTime && itemTime <= endTime;
-      });
-    };
-    
-    // Apply time window filtering
-    const filteredExecutionData = filterDataByTimeWindow(executionData);
-    const filteredErrorData = filterDataByTimeWindow(errorData);
-    const filteredDurationData = filterDataByTimeWindow(durationData);
-    
-    return (
-      <>
-        <TimeSlider />
-        
-        {/* Execution Count Chart */}
-        <Card className="mb-8">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Execution Count</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{filteredExecutionData.reduce((sum, point) => sum + point.value, 0) || 0}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Last run:<br/>{formatTimeAgo(metricsData.stats?.lastRun)}
-                </div>
-              </div>
-              <div className="col-span-3 h-[220px] pb-10">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart 
-                    data={filteredExecutionData}
-                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="formattedTime" 
-                      tick={{ fontSize: 10 }} 
-                      angle={-45}
-                      textAnchor="end"
-                      height={50}
-                      tickMargin={20}
-                    />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip 
-                      formatter={(value: any) => [`${value} executions`, 'Count']}
-                      labelFormatter={(label) => {
-                        // Handle when label is the formatted time
-                        if (typeof label === 'string' && label.includes('M')) {
-                          return `Time: ${label}`;
-                        }
-                        // Handle when label is a timestamp
-                        const timeValue = moment(label);
-                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#22c55e" 
-                      name="Executions" 
-                      dot={false} 
-                      activeDot={{ r: 6 }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        {/* Error Count Chart */}
-        <Card className="mb-8">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Error Count</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{filteredErrorData.reduce((sum, point) => sum + point.value, 0) || 0}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Error rate:<br/>{metricsData.stats?.errorRate || 0}%
-                </div>
-              </div>
-              <div className="col-span-3 h-[220px] pb-10">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart 
-                    data={filteredErrorData}
-                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="formattedTime" 
-                      tick={{ fontSize: 10 }} 
-                      angle={-45}
-                      textAnchor="end"
-                      height={50}
-                      tickMargin={20}
-                    />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip 
-                      formatter={(value: any) => [`${value} errors`, 'Count']}
-                      labelFormatter={(label) => {
-                        // Handle when label is the formatted time
-                        if (typeof label === 'string' && label.includes('M')) {
-                          return `Time: ${label}`;
-                        }
-                        // Handle when label is a timestamp
-                        const timeValue = moment(label);
-                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#ef4444" 
-                      name="Errors" 
-                      dot={false} 
-                      activeDot={{ r: 6 }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        {/* Execution Time Chart */}
-        <Card className="mb-8">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Execution Time (ms)</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-1 flex flex-col justify-between">
-                <div>
-                  <div className="text-sm text-gray-500">Average:</div>
-                  <div className="text-lg font-bold">
-                    {filteredDurationData.length > 0 
-                      ? formatDuration(filteredDurationData.reduce((sum, point) => sum + point.value, 0) / filteredDurationData.length) 
-                      : formatDuration(0)}
-                  </div>
-                </div>
-                <div className="mt-2">
-                  <div className="text-sm text-gray-500">Max:</div>
-                  <div className="text-lg font-bold">
-                    {filteredDurationData.length > 0 
-                      ? formatDuration(Math.max(...filteredDurationData.map(d => d.value))) 
-                      : formatDuration(0)}
-                  </div>
-                </div>
-              </div>
-              <div className="col-span-3 h-[220px] pb-10">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart 
-                    data={filteredDurationData}
-                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="formattedTime" 
-                      tick={{ fontSize: 10 }} 
-                      angle={-45}
-                      textAnchor="end"
-                      height={50}
-                      tickMargin={20}
-                    />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip 
-                      formatter={(value: any) => [`${formatDuration(value)}`, 'Duration']}
-                      labelFormatter={(label) => {
-                        // Handle when label is the formatted time
-                        if (typeof label === 'string' && label.includes('M')) {
-                          return `Time: ${label}`;
-                        }
-                        // Handle when label is a timestamp
-                        const timeValue = moment(label);
-                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#3b82f6" 
-                      name="Duration" 
-                      dot={false} 
-                      activeDot={{ r: 6 }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </>
-    );
-  }
-  
-  // Queue charts
-  if (nodeType === 'queue') {
-    const eventsInQueueData = prepareChartData(metricsData.writes || []);
-    const eventsReadData = prepareChartData(metricsData.reads || []);
-    const lagData = prepareChartData(metricsData.read_lag || []);
-    
-    // Filter chart data based on the time window if one exists
-    const filterDataByTimeWindow = (data: any[]) => {
-      if (!actualTimeWindow?.start || !actualTimeWindow?.end) return data;
-      
-      const startTime = moment(actualTimeWindow.start).valueOf();
-      const endTime = moment(actualTimeWindow.end).valueOf();
-      
-      return data.filter(item => {
-        const itemTime = moment(item.time).valueOf();
-        return itemTime >= startTime && itemTime <= endTime;
-      });
-    };
-    
-    // Apply time window filtering
-    const filteredEventsInQueueData = filterDataByTimeWindow(eventsInQueueData);
-    const filteredEventsReadData = filterDataByTimeWindow(eventsReadData);
-    const filteredLagData = filterDataByTimeWindow(lagData);
+    // Calculate average for the data
+    const avgValue = data.length > 0 ? data.reduce((sum: number, point: ChartData) => sum + point.value, 0) / data.length : 0;
     
     return (
-      <>
-        <TimeSlider />
-        
-        {/* Current Checkpoint information */}
-        {checkpoint && (
-          <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-md">
-            <div className="flex items-center justify-between">
-              <div className="text-sm">Current Checkpoint:</div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="p-0 h-auto"
-                onClick={() => onOpenQueueEvents(nodeId, checkpoint)}
-              >
-                <span className="font-mono text-xs truncate max-w-[250px]">{checkpoint}</span>
-                <ExternalLink className="ml-1 h-3 w-3" />
-              </Button>
+      <Card className="mb-8">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-4 gap-4">
+            <div className="col-span-1 flex flex-col justify-center">
+              <div className="text-2xl font-bold">{statValue}</div>
+              <div className="text-xs text-gray-500 mt-1">{statLabel}</div>
+              {showMax && (
+                <div className="text-xs text-gray-500 mt-3">
+                  <span className="font-semibold">Max:</span> {maxValue}
+                </div>
+              )}
+            </div>
+            <div className="col-span-3 h-[220px] pb-10">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart 
+                  data={data}
+                  margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="formattedTime" 
+                    tick={{ fontSize: 10 }} 
+                    angle={-45}
+                    textAnchor="end"
+                    height={50}
+                    tickMargin={20}
+                  />
+                  <YAxis tick={{ fontSize: 10 }} />
+                  <Tooltip 
+                    formatter={valueFormatter}
+                    labelFormatter={(label) => {
+                      // Handle when label is the formatted time
+                      if (typeof label === 'string' && label.includes('M')) {
+                        return `Time: ${label}`;
+                      }
+                      // Handle when label is a timestamp
+                      const timeValue = moment(label);
+                      return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
+                    }}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke={lineColor} 
+                    name={title} 
+                    dot={false} 
+                    activeDot={{ r: 6 }} 
+                  />
+                </LineChart>
+              </ResponsiveContainer>
             </div>
           </div>
-        )}
-        
-        {/* Events in Queue Chart */}
-        <Card className="mb-8">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Events in Queue</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Last write:<br/>{formatTimeAgo(metricsData?.lastWrite)}
-                </div>
-              </div>
-              <div className="col-span-3 h-[220px] pb-10">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart 
-                    data={filteredEventsInQueueData}
-                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="formattedTime" 
-                      tick={{ fontSize: 10 }} 
-                      angle={-45}
-                      textAnchor="end"
-                      height={50}
-                      tickMargin={20}
-                    />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip 
-                      formatter={(value: any) => [`${value} events`, 'Count']}
-                      labelFormatter={(label) => {
-                        // Handle when label is the formatted time
-                        if (typeof label === 'string' && label.includes('M')) {
-                          return `Time: ${label}`;
-                        }
-                        // Handle when label is a timestamp
-                        const timeValue = moment(label);
-                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
-                      }}
-                    />
-                    {metricsData.lastReadPosition && (
-                      <ReferenceLine 
-                        x={metricsData.lastReadPosition}
-                        stroke="#f59e0b"
-                        strokeDasharray="3 3"
-                        label={{ value: 'Last Read', position: 'top', fill: '#f59e0b', fontSize: 10 }}
-                      />
-                    )}
-                    <Line 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#22c55e" 
-                      name="Events" 
-                      dot={false} 
-                      activeDot={{ r: 6 }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        {/* Events Read Chart */}
-        <Card className="mb-8">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Events Read</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{filteredEventsReadData.reduce((sum, point) => sum + point.value, 0) || 0}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Last read:<br/>{formatTimeAgo(metricsData.stats?.lastRead)}
-                </div>
-              </div>
-              <div className="col-span-3 h-[220px] pb-10">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart 
-                    data={filteredEventsReadData}
-                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="formattedTime" 
-                      tick={{ fontSize: 10 }} 
-                      angle={-45}
-                      textAnchor="end"
-                      height={50}
-                      tickMargin={20}
-                    />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip 
-                      formatter={(value: any) => [`${value} events`, 'Count']}
-                      labelFormatter={(label) => {
-                        // Handle when label is the formatted time
-                        if (typeof label === 'string' && label.includes('M')) {
-                          return `Time: ${label}`;
-                        }
-                        // Handle when label is a timestamp
-                        const timeValue = moment(label);
-                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#3b82f6" 
-                      name="Events Read" 
-                      dot={false} 
-                      activeDot={{ r: 6 }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        {/* Lag Chart */}
-        <Card className="mb-8">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Lag</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="grid grid-cols-4 gap-4">
-              <div className="col-span-1 flex flex-col justify-center">
-                <div className="text-2xl font-bold">{filteredLagData.length > 0 
-                  ? Math.round(filteredLagData.reduce((sum, point) => sum + point.value, 0) / filteredLagData.length) 
-                  : 0}</div>
-                <div className="text-xs text-gray-500 mt-1">
-                  Events behind:<br/>{filteredEventsInQueueData.length > 0 ? filteredEventsInQueueData[filteredEventsInQueueData.length - 1].value : 0}
-                </div>
-              </div>
-              <div className="col-span-3 h-[220px] pb-10">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart 
-                    data={filteredLagData}
-                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="formattedTime" 
-                      tick={{ fontSize: 10 }} 
-                      angle={-45}
-                      textAnchor="end"
-                      height={50}
-                      tickMargin={20}
-                    />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip 
-                      formatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
-                      labelFormatter={(label) => {
-                        // Handle when label is the formatted time
-                        if (typeof label === 'string' && label.includes('M')) {
-                          return `Time: ${label}`;
-                        }
-                        // Handle when label is a timestamp
-                        const timeValue = moment(label);
-                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
-                      }}
-                    />
-                    <Line 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#f59e0b" 
-                      name="Lag" 
-                      dot={false} 
-                      activeDot={{ r: 6 }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </>
+        </CardContent>
+      </Card>
     );
+  };
+
+  // Display charts based on node type and relation
+  if (relation === 'self') {
+    // Self: For the selected node itself
+    if (nodeType === 'bot') {
+      // Bot selected node
+      const executionData = prepareChartData(metricsData.executions || []);
+      const errorData = prepareChartData(metricsData.errors || []);
+      const durationData = prepareChartData(metricsData.duration || []);
+      
+      // Apply time window filtering
+      // const filteredExecutionData = filterDataByTimeWindow(executionData);
+      // const filteredErrorData = filterDataByTimeWindow(errorData);
+      // const filteredDurationData = filterDataByTimeWindow(durationData);
+      const filteredExecutionData = executionData;
+      const filteredErrorData = errorData;
+      const filteredDurationData = durationData;
+      
+      return (
+        <>
+          <TimeSlider />
+          
+          {/* Execution Count Chart */}
+          <ChartCard
+            title="Execution Count"
+            data={filteredExecutionData}
+            statValue={filteredExecutionData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Last run: ${formatTimeAgo(metricsData.stats?.lastRun)}`}
+            lineColor="#22c55e"
+            valueFormatter={(value: any) => [`${value} executions`, 'Count']}
+          />
+          
+          {/* Error Count Chart */}
+          <ChartCard
+            title="Error Count"
+            data={filteredErrorData}
+            statValue={filteredErrorData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Error rate: ${metricsData.stats?.errorRate || 0}%`}
+            lineColor="#ef4444"
+            valueFormatter={(value: any) => [`${value} errors`, 'Count']}
+          />
+          
+          {/* Execution Time Chart */}
+          <Card className="mb-8">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Execution Time (ms)</CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-4 gap-4">
+                <div className="col-span-1 flex flex-col justify-between">
+                  <div>
+                    <div className="text-sm text-gray-500">Average:</div>
+                    <div className="text-lg font-bold">
+                      {filteredDurationData.length > 0 
+                        ? formatDuration(filteredDurationData.reduce((sum, point) => sum + point.value, 0) / filteredDurationData.length) 
+                        : formatDuration(0)}
+                    </div>
+                  </div>
+                  <div className="mt-2">
+                    <div className="text-sm text-gray-500">Max:</div>
+                    <div className="text-lg font-bold">
+                      {filteredDurationData.length > 0 
+                        ? formatDuration(Math.max(...filteredDurationData.map(d => d.value))) 
+                        : formatDuration(0)}
+                    </div>
+                  </div>
+                </div>
+                <div className="col-span-3 h-[220px] pb-10">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart 
+                      data={filteredDurationData}
+                      margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="formattedTime" 
+                        tick={{ fontSize: 10 }} 
+                        angle={-45}
+                        textAnchor="end"
+                        height={50}
+                        tickMargin={20}
+                      />
+                      <YAxis tick={{ fontSize: 10 }} />
+                      <Tooltip 
+                        formatter={(value: any) => [`${formatDuration(value)}`, 'Duration']}
+                        labelFormatter={(label) => {
+                          // Handle when label is the formatted time
+                          if (typeof label === 'string' && label.includes('M')) {
+                            return `Time: ${label}`;
+                          }
+                          // Handle when label is a timestamp
+                          const timeValue = moment(label);
+                          return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
+                        }}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="value" 
+                        stroke="#3b82f6" 
+                        name="Duration" 
+                        dot={false} 
+                        activeDot={{ r: 6 }} 
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      );
+    } else if (nodeType === 'queue' || nodeType === 'system') {
+      // Queue/System selected node
+      const eventsInQueueData = prepareChartData(metricsData.writes || []);
+      const eventsReadData = prepareChartData(metricsData.reads || []);
+      const lagData = prepareChartData(metricsData.read_lag || []);
+      
+      // Apply time window filtering
+      const filteredEventsInQueueData = filterDataByTimeWindow(eventsInQueueData);
+      const filteredEventsReadData = filterDataByTimeWindow(eventsReadData);
+      const filteredLagData = filterDataByTimeWindow(lagData);
+      
+      return (
+        <>
+          <TimeSlider />
+          
+          {/* Current Checkpoint information */}
+          {checkpoint && (
+            <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-md">
+              <div className="flex items-center justify-between">
+                <div className="text-sm">Current Checkpoint:</div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="p-0 h-auto"
+                  onClick={() => onOpenQueueEvents(nodeId, checkpoint)}
+                >
+                  <span className="font-mono text-xs truncate max-w-[250px]">{checkpoint}</span>
+                  <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* Events in Queue (Written) Chart */}
+          <ChartCard
+            title="Events in Queue"
+            data={filteredEventsInQueueData}
+            statValue={filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Last write: ${formatTimeAgo(metricsData?.lastWrite)}`}
+            lineColor="#22c55e"
+          />
+          
+          {/* Events Read Chart */}
+          <ChartCard
+            title="Events Read"
+            data={filteredEventsReadData}
+            statValue={filteredEventsReadData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Last read: ${formatTimeAgo(metricsData.stats?.lastRead)}`}
+            lineColor="#3b82f6"
+          />
+          
+          {/* Lag Chart */}
+          <ChartCard
+            title="Lag In Seconds"
+            data={filteredLagData}
+            statValue={filteredLagData.length > 0 
+              ? Math.round(filteredLagData.reduce((sum, point) => sum + point.value, 0) / filteredLagData.length) 
+              : 0}
+            statLabel={`Events behind: ${filteredEventsInQueueData.length > 0 ? filteredEventsInQueueData[filteredEventsInQueueData.length - 1].value : 0}`}
+            lineColor="#f59e0b"
+            valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
+          />
+        </>
+      );
+    }
+  } else if (nodeType === 'bot') {
+    // Selected node is a bot, current node is something else
+    const selectedNodeData = state.nodes?.[selectedNode];
+    const selectedNodeType = selectedNodeData?.type || 'bot';
+    
+    if (relation === 'write') {
+      // Bot -> Queue/System (Bot writes to this node)
+      // Show Events Written and Write Lag
+      const eventsWrittenData = prepareChartData(metricsData?.queues?.write?.[selectedNode]?.values || []);
+      const writeLagData = prepareChartData(metricsData?.queues?.write?.[selectedNode]?.lags || []);
+      
+      // Apply time window filtering
+      const filteredEventsWrittenData = filterDataByTimeWindow(eventsWrittenData);
+      const filteredWriteLagData = filterDataByTimeWindow(writeLagData);
+      
+      return (
+        <>
+          <TimeSlider />
+          
+          {/* Events Written Chart */}
+          <ChartCard
+            title="Events Written"
+            data={filteredEventsWrittenData}
+            statValue={filteredEventsWrittenData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Last write: ${formatTimeAgo(metricsData?.queues?.write?.[selectedNode]?.lastWrite)}`}
+            lineColor="#22c55e"
+          />
+          
+          {/* Write Lag Chart */}
+          <ChartCard
+            title="Write Lag"
+            data={filteredWriteLagData}
+            statValue={filteredWriteLagData.length > 0 
+              ? Math.round(filteredWriteLagData.reduce((sum, point) => sum + point.value, 0) / filteredWriteLagData.length) 
+              : 0}
+            statLabel="Average write lag in ms"
+            lineColor="#f59e0b"
+            valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
+          />
+        </>
+      );
+    } else if (relation === 'read') {
+      // Queue/System -> Bot (Bot reads from this node)
+      // Show Events In Queue, Events Read, Read Lag
+      const eventsInQueueData = prepareChartData(metricsData?.queues?.read?.[selectedNode]?.values || []);
+      const eventsReadData = prepareChartData(metricsData?.queues?.read?.[selectedNode]?.reads || []);
+      const readLagData = prepareChartData(metricsData?.queues?.read?.[selectedNode]?.lags || []);
+      
+      // Apply time window filtering
+      // const filteredEventsInQueueData = filterDataByTimeWindow(eventsInQueueData);
+      // const filteredEventsReadData = filterDataByTimeWindow(eventsReadData);
+      // const filteredReadLagData = filterDataByTimeWindow(readLagData);
+      const filteredEventsInQueueData = eventsInQueueData;
+      const filteredEventsReadData = eventsReadData;
+      const filteredReadLagData = readLagData;
+      
+      return (
+        <>
+          <TimeSlider />
+          
+          {/* Current Checkpoint information */}
+          {checkpoint && (
+            <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-md">
+              <div className="flex items-center justify-between">
+                <div className="text-sm">Current Checkpoint:</div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="p-0 h-auto"
+                  onClick={() => onOpenQueueEvents(nodeId, checkpoint)}
+                >
+                  <span className="font-mono text-xs truncate max-w-[250px]">{checkpoint}</span>
+                  <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* Events in Queue Chart */}
+          <ChartCard
+            title="Events in Queue"
+            data={filteredEventsInQueueData}
+            statValue={filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel="Total events available in queue"
+            lineColor="#22c55e"
+          />
+          
+          {/* Events Read Chart */}
+          <ChartCard
+            title="Events Read"
+            data={filteredEventsReadData}
+            statValue={filteredEventsReadData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Last read: ${formatTimeAgo(metricsData?.queues?.read?.[selectedNode]?.lastRead)}`}
+            lineColor="#3b82f6"
+          />
+          
+          {/* Read Lag Chart */}
+          <ChartCard
+            title="Read Lag"
+            data={filteredReadLagData}
+            statValue={filteredReadLagData.length > 0 
+              ? Math.round(filteredReadLagData.reduce((sum, point) => sum + point.value, 0) / filteredReadLagData.length) 
+              : 0}
+            statLabel="Average read lag in ms"
+            lineColor="#f59e0b"
+            valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
+          />
+        </>
+      );
+    }
+  } else if (nodeType === 'queue' || nodeType === 'system') {
+    // Selected node is a queue/system, current node is something else
+    if (relation === 'read') {
+      // Queue/System -> Bot (Bot reads from the selected queue)
+      // Show Events In Queue, Events Read, Lag
+      const eventsInQueueData = prepareChartData(metricsData?.writes?.values || []);
+      const eventsReadData = prepareChartData(metricsData?.bots?.read?.[selectedNode]?.values || []);
+      const lagData = prepareChartData(metricsData?.bots?.read?.[selectedNode]?.lags || []);
+      
+      // Apply time window filtering
+      const filteredEventsInQueueData = filterDataByTimeWindow(eventsInQueueData);
+      const filteredEventsReadData = filterDataByTimeWindow(eventsReadData);
+      const filteredLagData = filterDataByTimeWindow(lagData);
+      
+      return (
+        <>
+          <TimeSlider />
+          
+          {/* Current Checkpoint information */}
+          {checkpoint && (
+            <div className="mb-4 p-3 bg-gray-100 dark:bg-gray-700 rounded-md">
+              <div className="flex items-center justify-between">
+                <div className="text-sm">Current Checkpoint:</div>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="p-0 h-auto"
+                  onClick={() => onOpenQueueEvents(nodeId, checkpoint)}
+                >
+                  <span className="font-mono text-xs truncate max-w-[250px]">{checkpoint}</span>
+                  <ExternalLink className="ml-1 h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {/* Events in Queue Chart */}
+          <ChartCard
+            title="Events in Queue"
+            data={filteredEventsInQueueData}
+            statValue={filteredEventsInQueueData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel="Total events available in queue"
+            lineColor="#22c55e"
+          />
+          
+          {/* Events Read Chart */}
+          <ChartCard
+            title="Events Read"
+            data={filteredEventsReadData}
+            statValue={filteredEventsReadData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Last read: ${formatTimeAgo(metricsData?.bots?.read?.[selectedNode]?.lastRead)}`}
+            lineColor="#3b82f6"
+          />
+          
+          {/* Lag Chart */}
+          <ChartCard
+            title="Lag"
+            data={filteredLagData}
+            statValue={filteredLagData.length > 0 
+              ? Math.round(filteredLagData.reduce((sum, point) => sum + point.value, 0) / filteredLagData.length) 
+              : 0}
+            statLabel="Average lag in ms"
+            lineColor="#f59e0b"
+            valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
+          />
+        </>
+      );
+    } else if (relation === 'write') {
+      // Bot -> Queue/System (Bot writes to the selected queue)
+      // Show Events Written and Lag
+      const eventsWrittenData = prepareChartData(metricsData?.bots?.write?.[selectedNode]?.values || []);
+      const lagData = prepareChartData(metricsData?.bots?.write?.[selectedNode]?.lags || []);
+      
+      // Apply time window filtering
+      const filteredEventsWrittenData = filterDataByTimeWindow(eventsWrittenData);
+      const filteredLagData = filterDataByTimeWindow(lagData);
+      
+      return (
+        <>
+          <TimeSlider />
+          
+          {/* Events Written Chart */}
+          <ChartCard
+            title="Events Written"
+            data={filteredEventsWrittenData}
+            statValue={filteredEventsWrittenData.reduce((sum, point) => sum + point.value, 0) || 0}
+            statLabel={`Last write: ${formatTimeAgo(metricsData?.bots?.write?.[selectedNode]?.lastWrite)}`}
+            lineColor="#22c55e"
+          />
+          
+          {/* Lag Chart */}
+          <ChartCard
+            title="Lag"
+            data={filteredLagData}
+            statValue={filteredLagData.length > 0 
+              ? Math.round(filteredLagData.reduce((sum, point) => sum + point.value, 0) / filteredLagData.length) 
+              : 0}
+            statLabel="Average lag in ms"
+            lineColor="#f59e0b"
+            valueFormatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
+          />
+        </>
+      );
+    }
   }
   
-  // Default fallback for other node types
+  // Default fallback for other cases
   return (
     <div className="text-gray-500 dark:text-gray-400 text-center my-8">
-      Charts not available for this node type.
+      Charts not available for this configuration.
     </div>
   );
 }
