@@ -80,10 +80,33 @@ const NodeCellRenderer = (props: any) => {
 const WorkflowLinkRenderer = (props: any) => {
   const { data } = props;
   if (!data) return null;
+  
+  // Create a properly formatted workflow hash URL
+  const createWorkflowHashUrl = (nodeId: string) => {
+    // Create a date range for the last 15 minutes
+    const end = new Date();
+    const begin = new Date(end.getTime() - 15 * 60 * 1000); // 15 minutes ago
+    
+    // Create the URL hash object
+    const hashObj = {
+      selected: [nodeId],
+      view: "node",
+      timePeriod: {
+        interval: "minute_15",
+        begin: begin.toISOString(),
+        end: end.toISOString()
+      },
+      offset: [0, 0],
+      node: nodeId
+    };
+    
+    // Convert to JSON and encode for URL
+    return `/workflow#${encodeURIComponent(JSON.stringify(hashObj))}`;
+  };
 
   return (
     <a 
-      href={`/workflow?selected=${encodeURIComponent(data.id)}`}
+      href={createWorkflowHashUrl(data.id)}
       className="flex items-center justify-center h-full w-full text-primary hover:text-primary/80"
       title="View in workflow"
     >
