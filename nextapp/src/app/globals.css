@@ -127,3 +127,44 @@ body {
 .dark .custom-json-editor-button:hover {
   background-color: #374151;
 }
+
+/* AG Grid overrides and customizations */
+.ag-theme-alpine {
+  --ag-grid-size: 4px;
+  --ag-border-color: hsl(var(--border));
+  --ag-background-color: hsl(var(--background));
+  --ag-foreground-color: hsl(var(--foreground));
+  --ag-header-foreground-color: hsl(var(--foreground));
+  --ag-header-background-color: hsl(var(--muted));
+  --ag-odd-row-background-color: hsl(var(--background));
+  --ag-row-border-color: hsl(var(--border));
+  --ag-alpine-active-color: hsl(var(--primary));
+  --ag-selected-row-background-color: hsl(var(--primary) / 0.1);
+}
+
+/* Add row hover styling */
+.ag-custom-hover .ag-row:hover {
+  background-color: hsl(var(--muted) / 0.5) !important;
+  transition: background-color 0.2s ease;
+}
+
+/* Ensure checkbox styling is consistent */
+.ag-checkbox-input-wrapper {
+  color: hsl(var(--primary));
+}
+
+.ag-checkbox-input-wrapper.ag-checked::after {
+  color: hsl(var(--primary));
+}
+
+/* Dark theme overrides */
+.dark .ag-theme-alpine-dark {
+  --ag-background-color: hsl(var(--background));
+  --ag-foreground-color: hsl(var(--foreground));
+  --ag-header-foreground-color: hsl(var(--foreground));
+  --ag-header-background-color: hsl(var(--muted));
+  --ag-odd-row-background-color: hsl(var(--background));
+  --ag-row-border-color: hsl(var(--border));
+  --ag-alpine-active-color: hsl(var(--primary));
+  --ag-selected-row-background-color: hsl(var(--primary) / 0.2);
+}

@@ -1,0 +1,257 @@
+/* AG Grid Styles */
+@import 'ag-grid-community/styles/ag-grid.css';
+@import 'ag-grid-community/styles/ag-theme-alpine.css';
+
+/* Custom theming for AG Grid to match our app */
+.ag-theme-alpine {
+  --ag-foreground-color: hsl(var(--foreground));
+  --ag-secondary-foreground-color: hsl(var(--muted-foreground));
+  --ag-border-color: hsl(var(--border));
+  --ag-background-color: hsl(var(--background));
+  --ag-header-background-color: hsl(var(--muted));
+  --ag-row-hover-color: hsl(var(--accent));
+  --ag-selected-row-background-color: hsl(var(--primary) / 0.1);
+  --ag-header-foreground-color: hsl(var(--foreground));
+  --ag-alpine-active-color: hsl(var(--primary));
+  --ag-font-family: var(--font-sans, ui-sans-serif, system-ui, sans-serif);
+  --ag-font-size: 14px;
+  --ag-header-column-separator-display: none;
+  --ag-header-column-resize-handle-display: block;
+  --ag-header-column-resize-handle-color: hsl(var(--border));
+  --ag-header-column-resize-handle-width: 2px;
+  --ag-header-column-resize-handle-height: 80%;
+  --ag-border-radius: var(--radius);
+  --ag-cell-horizontal-padding: 12px;
+  --ag-cell-widget-spacing: 4px;
+  --ag-grid-size: 5px;
+  --ag-icon-size: 18px;
+  --ag-row-height: 48px;
+  --ag-header-height: 48px;
+  --ag-list-item-height: 32px;
+  --ag-column-select-indent-size: 16px;
+  --ag-cell-horizontal-border: none;
+  --ag-borders: solid 1px;
+  --ag-range-selection-border-style: solid;
+  --ag-range-selection-border-width: 1px;
+  --ag-popup-background-color: hsl(var(--background));
+  --ag-popup-shadow: 0px 2px 4px rgba(0, 0, 0, 0.1);
+  
+  /* Improve menu and panel transparencies */
+  --ag-panel-background-color: var(--ag-popup-background-color);
+  --ag-control-panel-background-color: var(--ag-popup-background-color);
+  --ag-side-bar-panel-background-color: var(--ag-popup-background-color);
+  --ag-side-button-selected-background-color: var(--ag-row-hover-color);
+  --ag-card-background-color: var(--ag-popup-background-color);
+  
+  /* Enhance menu appearance */
+  --ag-modal-overlay-background-color: rgba(0, 0, 0, 0.25);
+}
+
+/* Dark mode theme */
+.dark .ag-theme-alpine {
+  --ag-foreground-color: hsl(var(--foreground));
+  --ag-secondary-foreground-color: hsl(var(--muted-foreground));
+  --ag-border-color: hsl(var(--border));
+  --ag-background-color: hsl(var(--background));
+  --ag-header-background-color: hsl(var(--card));
+  --ag-row-hover-color: hsl(var(--accent));
+  --ag-selected-row-background-color: hsl(var(--primary) / 0.2);
+  --ag-header-foreground-color: hsl(var(--card-foreground));
+  --ag-alpine-active-color: hsl(var(--primary));
+  --ag-input-focus-border-color: hsl(var(--ring));
+  --ag-range-selection-background-color: hsl(var(--primary) / 0.2);
+  --ag-range-selection-border-color: hsl(var(--primary));
+  --ag-popup-background-color: hsl(var(--card));
+}
+
+/* Header styling */
+.ag-header-cell {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.ag-header-cell-label {
+  justify-content: flex-start;
+}
+
+/* Checkbox styling */
+.ag-checkbox-input-wrapper {
+  border-radius: 4px;
+  border: 1px solid var(--ag-border-color);
+  background-color: var(--ag-background-color);
+  width: 18px;
+  height: 18px;
+}
+
+.ag-checkbox-input-wrapper.ag-checked {
+  background-color: var(--ag-alpine-active-color);
+  border-color: var(--ag-alpine-active-color);
+}
+
+.ag-checkbox-input-wrapper.ag-checked:after {
+  color: white;
+  font-size: 12px;
+}
+
+/* Cell styling */
+.ag-cell {
+  display: flex;
+  align-items: center;
+}
+
+.ag-cell-center {
+  justify-content: center;
+}
+
+/* Row hover and selection */
+.ag-row-hover {
+  background-color: var(--ag-row-hover-color);
+}
+
+.ag-row-selected {
+  background-color: var(--ag-selected-row-background-color);
+}
+
+/* Filter button styling */
+.ag-filter-toolpanel-search input {
+  border-radius: 4px;
+  border: 1px solid var(--ag-border-color);
+  padding: 6px 8px;
+}
+
+/* Context menu styling */
+.ag-menu {
+  border-radius: 4px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 4px;
+  background-color: var(--ag-popup-background-color);
+  border: 1px solid var(--ag-border-color);
+}
+
+.ag-menu-option {
+  border-radius: 2px;
+}
+
+.ag-menu-option-active {
+  background-color: var(--ag-row-hover-color);
+}
+
+/* Additional popup styling for filters, column headers, etc. */
+.ag-popup-child {
+  background-color: var(--ag-popup-background-color);
+  border: 1px solid var(--ag-border-color);
+  box-shadow: var(--ag-popup-shadow);
+}
+
+/* Column and Filter panels */
+.ag-tool-panel-wrapper {
+  background-color: var(--ag-popup-background-color);
+}
+
+.ag-filter-toolpanel {
+  background-color: var(--ag-popup-background-color);
+}
+
+.ag-column-select {
+  background-color: var(--ag-popup-background-color);
+}
+
+.ag-column-panel {
+  background-color: var(--ag-popup-background-color);
+}
+
+/* Column drop zones */
+.ag-column-drop {
+  background-color: var(--ag-popup-background-color);
+}
+
+/* Column headers menu */
+.ag-menu-column-select-wrapper {
+  background-color: var(--ag-popup-background-color);
+}
+
+/* Filter dropdown components */
+.ag-filter-wrapper {
+  background-color: var(--ag-popup-background-color);
+}
+
+.ag-tabs {
+  background-color: var(--ag-popup-background-color);
+}
+
+.ag-tab-header {
+  background-color: var(--ag-background-color);
+}
+
+/* Fix for dropdown inputs in filters */
+.ag-picker-field-display,
+.ag-select .ag-picker-field-display {
+  background-color: var(--ag-popup-background-color);
+  border: 1px solid var(--ag-border-color);
+}
+
+.ag-popup-editor {
+  background-color: var(--ag-popup-background-color);
+  border: 1px solid var(--ag-border-color);
+  box-shadow: var(--ag-popup-shadow);
+}
+
+.ag-select {
+  background-color: var(--ag-popup-background-color);
+}
+
+.ag-filter-toolpanel-instance-filter {
+  background-color: var(--ag-popup-background-color);
+}
+
+.ag-filter-toolpanel-instance-filter:last-child {
+  border-bottom: none;
+}
+
+/* Enhance floating filters */
+.ag-floating-filter-body {
+  background-color: var(--ag-background-color);
+}
+
+.ag-floating-filter-button {
+  background-color: var(--ag-background-color);
+}
+
+.ag-floating-filter-button-button {
+  background-color: transparent;
+}
+
+/* Cell editor popups */
+.ag-cell-inline-editing {
+  background-color: var(--ag-popup-background-color);
+  border: 1px solid var(--ag-border-color);
+  box-shadow: var(--ag-popup-shadow);
+  border-radius: var(--ag-border-radius);
+}
+
+/* Improve status bar appearance */
+.ag-status-bar {
+  background-color: var(--ag-background-color);
+  border-top: 1px solid var(--ag-border-color);
+}
+
+/* Column headers popup menu improved appearance */
+.ag-header-cell-menu-button:hover {
+  background-color: var(--ag-row-hover-color);
+  border-radius: var(--ag-border-radius);
+}
+
+/* Override any transparency in popup panels */
+.ag-popup-child > div,
+.ag-popup > div {
+  background-color: var(--ag-popup-background-color);
+}
+
+/* Ensure filter inputs have proper background */
+.ag-filter-filter {
+  background-color: var(--ag-background-color);
+  border: 1px solid var(--ag-border-color);
+  border-radius: var(--ag-border-radius);
+  padding: 0.375rem 0.5rem;
+  transition: border-color 0.15s;
+} 

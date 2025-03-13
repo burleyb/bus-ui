@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import "./globals.css";
+import "./styles.css"; // Import AG Grid styles
 import { AppProvider } from '@/context/AppContext';
 import { DialogProvider } from '@/context/DialogContext';
 import { InitProvider } from '@/context/InitContext';
@@ -25,18 +25,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <InitProvider>
           <AuthProvider>
             <AppProvider>
               <ApiProvider>
                 <DialogProvider>
-                  {children}
-                  <ToastProvider>
-                    <NodeSettingsDialog />
-                    <EventReplayDialog />
-                  </ToastProvider>
+                  <ThemeProvider>
+                    {children}
+                    <ToastProvider>
+                      <NodeSettingsDialog />
+                      <EventReplayDialog />
+                    </ToastProvider>
+                  </ThemeProvider>
                 </DialogProvider>
               </ApiProvider>
             </AppProvider>
