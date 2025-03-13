@@ -3,22 +3,19 @@
 import React from 'react';
 import Link from 'next/link';
 import { 
-  PlusCircleIcon, 
-  ClockIcon, 
-  AdjustmentsHorizontalIcon, 
-  DocumentTextIcon,
-  TableCellsIcon,
-  ArrowPathIcon
-} from '@heroicons/react/24/outline';
-import { useAppContext } from '@/context/AppContext';
+  Grid2X2 as Grid2X2Icon,
+  GitFork as GitForkIcon, 
+  RotateCw as ArrowPathIcon
+} from 'lucide-react';
 import { useBots } from '@/context/ApiContext';
 
 export function QuickActions() {
-  const { state } = useAppContext();
   const botsQuery = useBots();
   
   const refreshData = () => {
-    botsQuery.refetch();
+    if (botsQuery && typeof botsQuery.refetch === 'function') {
+      botsQuery.refetch();
+    }
   };
   
   return (
@@ -28,26 +25,13 @@ export function QuickActions() {
       </div>
       
       <div className="p-4">
-        <div className="space-y-4">
-          <Link 
-            href="/create" 
-            className="flex items-center p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          >
-            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
-              <PlusCircleIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">New Bot</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Create a new bot</p>
-            </div>
-          </Link>
-          
+        <div className="space-y-4">          
           <Link 
             href="/catalog" 
             className="flex items-center p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
             <div className="flex-shrink-0 h-10 w-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center">
-              <TableCellsIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <Grid2X2Icon className="h-6 w-6 text-green-600 dark:text-green-400" />
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-900 dark:text-white">Catalog</p>
@@ -56,28 +40,17 @@ export function QuickActions() {
           </Link>
           
           <Link 
-            href="/logs" 
+            href="/workflow" 
             className="flex items-center p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
           >
-            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center">
-              <DocumentTextIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
+            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+              <div style={{ transform: 'rotate(90deg)' }}>
+                <GitForkIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
             </div>
             <div className="ml-4">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Logs</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">View system logs</p>
-            </div>
-          </Link>
-          
-          <Link 
-            href="/settings" 
-            className="flex items-center p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-          >
-            <div className="flex-shrink-0 h-10 w-10 rounded-full bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
-              <AdjustmentsHorizontalIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-            </div>
-            <div className="ml-4">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Settings</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Configure system settings</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Workflows</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">View system workflows</p>
             </div>
           </Link>
           
@@ -91,7 +64,7 @@ export function QuickActions() {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-900 dark:text-white">Refresh Data</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {botsQuery.isFetching ? 'Refreshing...' : 'Update dashboard data'}
+                {botsQuery && botsQuery.isFetching ? 'Refreshing...' : 'Update dashboard data'}
               </p>
             </div>
           </button>
