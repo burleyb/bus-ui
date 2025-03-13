@@ -751,7 +751,7 @@ function NodeChartContent({
             title="Execution Count"
             data={filteredExecutionData}
             statValue={filteredExecutionData.reduce((sum, point) => sum + point.value, 0) || 0}
-            statLabel={`Last run: ${formatTimeAgo(metricsData.stats?.lastRun)}`}
+            statLabel={`Last run: ${formatTimeAgo(metricsData.lastRun)}`}
             lineColor="#22c55e"
             valueFormatter={(value: any) => [`${value} executions`, 'Count']}
           />
