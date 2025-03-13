@@ -317,7 +317,7 @@ export function WorkflowGraphChartDrawer({
          style={{ width: '800px' }}>
       {/* Header */}
       <div className="flex justify-between items-center p-4 border-b border-gray-200 dark:border-gray-700">
-        <h2 className="text-lg font-semibold">Node Charts</h2>
+        <NodeChartHeader nodeId={selectedNode} />
         <Button variant="ghost" onClick={onClose} aria-label="Close">
           <X className="h-5 w-5" />
         </Button>
@@ -511,11 +511,15 @@ function NodeChartContent({
   const prepareChartData = (data: any[], key: string = 'value'): ChartData[] => {
     if (!data || !Array.isArray(data)) return [];
     
-    return data.map(item => ({
-      time: item.time,
-      formattedTime: moment(item.time).format('h:mm A'), // Use 12-hour AM/PM format
-      value: item[key] || 0
-    }));
+    return data.map(item => {
+      // Make sure we have a valid time value
+      const timeValue = moment(item.time);
+      return {
+        time: item.time,
+        formattedTime: timeValue.isValid() ? timeValue.format('h:mm A') : '', // Use 12-hour AM/PM format with validation
+        value: item[key] || 0
+      };
+    });
   };
   
   // If loading, show loading state
@@ -633,22 +637,33 @@ function NodeChartContent({
                   Last run:<br/>{formatTimeAgo(metricsData.stats?.lastRun)}
                 </div>
               </div>
-              <div className="col-span-3 h-[180px]">
+              <div className="col-span-3 h-[220px] pb-10">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={filteredExecutionData}>
+                  <LineChart 
+                    data={filteredExecutionData}
+                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
-                      height={40}
-                      tickMargin={15}
+                      height={50}
+                      tickMargin={20}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${value} executions`, 'Count']}
-                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
+                      labelFormatter={(label) => {
+                        // Handle when label is the formatted time
+                        if (typeof label === 'string' && label.includes('M')) {
+                          return `Time: ${label}`;
+                        }
+                        // Handle when label is a timestamp
+                        const timeValue = moment(label);
+                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
+                      }}
                     />
                     <Line 
                       type="monotone" 
@@ -678,22 +693,33 @@ function NodeChartContent({
                   Error rate:<br/>{metricsData.stats?.errorRate || 0}%
                 </div>
               </div>
-              <div className="col-span-3 h-[180px]">
+              <div className="col-span-3 h-[220px] pb-10">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={filteredErrorData}>
+                  <LineChart 
+                    data={filteredErrorData}
+                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
-                      height={40}
-                      tickMargin={15}
+                      height={50}
+                      tickMargin={20}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${value} errors`, 'Count']}
-                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
+                      labelFormatter={(label) => {
+                        // Handle when label is the formatted time
+                        if (typeof label === 'string' && label.includes('M')) {
+                          return `Time: ${label}`;
+                        }
+                        // Handle when label is a timestamp
+                        const timeValue = moment(label);
+                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
+                      }}
                     />
                     <Line 
                       type="monotone" 
@@ -735,22 +761,33 @@ function NodeChartContent({
                   </div>
                 </div>
               </div>
-              <div className="col-span-3 h-[180px]">
+              <div className="col-span-3 h-[220px] pb-10">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={filteredDurationData}>
+                  <LineChart 
+                    data={filteredDurationData}
+                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
-                      height={40}
-                      tickMargin={15}
+                      height={50}
+                      tickMargin={20}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${formatDuration(value)}`, 'Duration']}
-                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
+                      labelFormatter={(label) => {
+                        // Handle when label is the formatted time
+                        if (typeof label === 'string' && label.includes('M')) {
+                          return `Time: ${label}`;
+                        }
+                        // Handle when label is a timestamp
+                        const timeValue = moment(label);
+                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
+                      }}
                     />
                     <Line 
                       type="monotone" 
@@ -829,22 +866,33 @@ function NodeChartContent({
                   Last write:<br/>{formatTimeAgo(metricsData?.lastWrite)}
                 </div>
               </div>
-              <div className="col-span-3 h-[180px]">
+              <div className="col-span-3 h-[220px] pb-10">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={filteredEventsInQueueData}>
+                  <LineChart 
+                    data={filteredEventsInQueueData}
+                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
-                      height={40}
-                      tickMargin={15}
+                      height={50}
+                      tickMargin={20}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${value} events`, 'Count']}
-                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
+                      labelFormatter={(label) => {
+                        // Handle when label is the formatted time
+                        if (typeof label === 'string' && label.includes('M')) {
+                          return `Time: ${label}`;
+                        }
+                        // Handle when label is a timestamp
+                        const timeValue = moment(label);
+                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
+                      }}
                     />
                     {metricsData.lastReadPosition && (
                       <ReferenceLine 
@@ -882,22 +930,33 @@ function NodeChartContent({
                   Last read:<br/>{formatTimeAgo(metricsData.stats?.lastRead)}
                 </div>
               </div>
-              <div className="col-span-3 h-[180px]">
+              <div className="col-span-3 h-[220px] pb-10">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={filteredEventsReadData}>
+                  <LineChart 
+                    data={filteredEventsReadData}
+                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
-                      height={40}
-                      tickMargin={15}
+                      height={50}
+                      tickMargin={20}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${value} events`, 'Count']}
-                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
+                      labelFormatter={(label) => {
+                        // Handle when label is the formatted time
+                        if (typeof label === 'string' && label.includes('M')) {
+                          return `Time: ${label}`;
+                        }
+                        // Handle when label is a timestamp
+                        const timeValue = moment(label);
+                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
+                      }}
                     />
                     <Line 
                       type="monotone" 
@@ -929,22 +988,33 @@ function NodeChartContent({
                   Events behind:<br/>{filteredEventsInQueueData.length > 0 ? filteredEventsInQueueData[filteredEventsInQueueData.length - 1].value : 0}
                 </div>
               </div>
-              <div className="col-span-3 h-[180px]">
+              <div className="col-span-3 h-[220px] pb-10">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={filteredLagData}>
+                  <LineChart 
+                    data={filteredLagData}
+                    margin={{ top: 10, right: 10, left: 10, bottom: 30 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="formattedTime" 
                       tick={{ fontSize: 10 }} 
                       angle={-45}
                       textAnchor="end"
-                      height={40}
-                      tickMargin={15}
+                      height={50}
+                      tickMargin={20}
                     />
                     <YAxis tick={{ fontSize: 10 }} />
                     <Tooltip 
                       formatter={(value: any) => [`${formatDuration(value)}`, 'Lag']}
-                      labelFormatter={(label) => `Time: ${moment(label).format('MMM D, YYYY h:mm A')}`}
+                      labelFormatter={(label) => {
+                        // Handle when label is the formatted time
+                        if (typeof label === 'string' && label.includes('M')) {
+                          return `Time: ${label}`;
+                        }
+                        // Handle when label is a timestamp
+                        const timeValue = moment(label);
+                        return `Time: ${timeValue.isValid() ? timeValue.format('MMM D, YYYY h:mm A') : 'Unknown'}`;
+                      }}
                     />
                     <Line 
                       type="monotone" 
@@ -968,6 +1038,27 @@ function NodeChartContent({
   return (
     <div className="text-gray-500 dark:text-gray-400 text-center my-8">
       Charts not available for this node type.
+    </div>
+  );
+}
+
+function NodeChartHeader({ nodeId }: { nodeId: string }) {
+  const { state } = useAppContext();
+  
+  // Get node info from context
+  const nodeData = state.nodes?.[nodeId];
+  
+  if (!nodeData) {
+    return <h2 className="text-lg font-semibold">Node Charts</h2>;
+  }
+  
+  return (
+    <div className="flex items-center gap-2">
+      <NodeIcon node={{ type: nodeData.type }} className="w-5 h-5" />
+      <h2 className="text-lg font-semibold">{nodeData.label || nodeId}</h2>
+      <Badge variant="outline" className="ml-2 text-xs">
+        {nodeData.type}
+      </Badge>
     </div>
   );
 } 
