@@ -5,6 +5,8 @@ import * as d3 from 'd3';
 import { useAppContext } from '@/context/AppContext';
 import { useDialogs } from '@/hooks/useDialogs';
 import { ChevronRightCircle, Settings } from 'lucide-react';
+import { getNodeImagesSvgString, getNodeImagePath } from '@/components/node/NodeIcon';
+import { getNodeShape, getShapePath, getNodeVisualProperties } from '@/utils/workflowUtils';
 
 interface TraceNode {
   id: string;
@@ -67,13 +69,14 @@ export default function TraceGraph({
     pathPrefix = ''
   ): void => {
     const childKeys = Object.keys(children);
-    const spacing = 100; // Vertical spacing between nodes
+    const spacing = 80; // Vertical spacing between siblings
     
-    // Calculate vertical positioning
+    // Calculate horizontal positioning (for horizontal layout)
     childKeys.forEach((key, index) => {
       const node = children[key];
-      const y = parentY + 100; // Fixed vertical distance
-      const x = parentX - (childKeys.length - 1) * 60 / 2 + index * 60; // Horizontal spread
+      const x = parentX + 200; // Fixed horizontal distance, moving to the right
+      // Distribute children vertically, centered on the parent
+      const y = parentY - (childKeys.length - 1) * spacing / 2 + index * spacing;
       
       // Add node with position
       nodes.push({
@@ -95,8 +98,8 @@ export default function TraceGraph({
         const newPathPrefix = pathPrefix ? `${pathPrefix},${node.id}` : node.id;
         processChildren(
           node.children,
-          x,
-          y,
+          x, // New parent X
+          y, // New parent Y
           depth + 1,
           nodes,
           links,
@@ -116,11 +119,11 @@ export default function TraceGraph({
     const eventNode = { ...traceData.event, x: 0, y: 0 };
     nodes.push(eventNode);
     
-    // Process parent nodes (placed above)
+    // Process parent nodes (placed to the left for horizontal layout)
     if (traceData.parents && traceData.parents.length > 0) {
       traceData.parents.forEach((parent, index, arr) => {
-        const y = -100; // Fixed vertical position above
-        const x = -(arr.length - 1) * 60 / 2 + index * 60; // Spread horizontally
+        const x = -200; // Fixed horizontal position to the left
+        const y = -(arr.length - 1) * 80 / 2 + index * 80; // Distribute vertically
         
         nodes.push({
           ...parent,
@@ -138,7 +141,7 @@ export default function TraceGraph({
       });
     }
     
-    // Process children (placed below)
+    // Process children (placed to the right for horizontal layout)
     if (traceData.children && Object.keys(traceData.children).length > 0) {
       processChildren(
         traceData.children,
@@ -178,24 +181,32 @@ export default function TraceGraph({
       .append('g')
       .attr('class', 'link');
     
-    // Draw link lines
-    link.append('line')
-      .attr('x1', d => {
+    // Draw link paths with curves
+    link.append('path')
+      .attr('d', d => {
         const source = nodes.find(n => n.id === d.source);
-        return source?.x || 0;
-      })
-      .attr('y1', d => {
-        const source = nodes.find(n => n.id === d.source);
-        return source?.y || 0;
-      })
-      .attr('x2', d => {
         const target = nodes.find(n => n.id === d.target);
-        return target?.x || 0;
+        
+        if (!source || !target) return '';
+        
+        const dx = target.x! - source.x!;
+        const dy = target.y! - source.y!;
+        
+        // If nodes are horizontally aligned, use a straight line
+        if (Math.abs(dy) < 5) {
+          return `M${source.x},${source.y} L${target.x},${target.y}`;
+        }
+        
+        // Otherwise use a curved path
+        // Calculate curve control points
+        const midX = (source.x! + target.x!) / 2;
+        
+        return `M${source.x},${source.y} 
+                C${source.x! + dx/3},${source.y!},
+                  ${target.x! - dx/3},${target.y!},
+                  ${target.x},${target.y}`;
       })
-      .attr('y2', d => {
-        const target = nodes.find(n => n.id === d.target);
-        return target?.y || 0;
-      })
+      .attr('fill', 'none')
       .attr('stroke', d => d.tracing ? '#3B82F6' : (d.processed ? '#10B981' : '#D1D5DB'))
       .attr('stroke-width', 2)
       .attr('stroke-dasharray', d => d.tracing ? '5,5' : 'none');
@@ -203,15 +214,14 @@ export default function TraceGraph({
     // Add link labels (for trace links)
     link.filter(d => d.processed && d.type === 'child')
       .append('text')
-      .attr('x', d => {
+      .attr('transform', d => {
         const source = nodes.find(n => n.id === d.source);
         const target = nodes.find(n => n.id === d.target);
-        return ((source?.x || 0) + (target?.x || 0)) / 2;
-      })
-      .attr('y', d => {
-        const source = nodes.find(n => n.id === d.source);
-        const target = nodes.find(n => n.id === d.target);
-        return ((source?.y || 0) + (target?.y || 0)) / 2 - 5;
+        if (!source || !target) return '';
+        
+        const x = (source.x! + target.x!) / 2;
+        const y = (source.y! + target.y!) / 2 - 10;
+        return `translate(${x}, ${y})`;
       })
       .attr('text-anchor', 'middle')
       .attr('class', 'text-xs cursor-pointer')
@@ -222,7 +232,7 @@ export default function TraceGraph({
         // Mark as tracing
         d.tracing = true;
         d3.select(event.currentTarget.parentNode)
-          .select('line')
+          .select('path')
           .attr('stroke', '#3B82F6')
           .attr('stroke-dasharray', '5,5');
         
@@ -255,9 +265,12 @@ export default function TraceGraph({
         hideTooltip();
       });
     
-    // Node background circles
+    // Create shape outlines for nodes (similar to WorkflowGraph)
+    const nodeSize = 26;
+    
+    // Draw node backgrounds based on type
     nodeGroups.append('circle')
-      .attr('r', 20)
+      .attr('r', nodeSize)
       .attr('fill', d => {
         if (d.id === traceData.event.id) return '#2563EB'; // Primary event
         if (d.type === 'bot') {
@@ -268,10 +281,59 @@ export default function TraceGraph({
       .attr('stroke', '#FFFFFF')
       .attr('stroke-width', 2);
     
+    // Add node icons using proper icon paths (similar to WorkflowGraph)
+    nodeGroups.each(function(d) {
+      const node = d3.select(this);
+      const iconSize = nodeSize * 1.4;
+      
+      // Create a group for the icon
+      const iconGroup = node.append('g')
+        .attr('transform', `translate(${-iconSize/2}, ${-iconSize/2})`);
+      
+      // Add proper node icons
+      if (d.type === 'bot' || d.type === 'queue') {
+        // Create SVG icon based on node type
+        const iconHtml = getNodeImagesSvgString({ 
+          type: d.type, 
+          id: d.id,
+          has_processed: d.has_processed,
+          status: d.has_processed ? 'running' : 'blocked'
+        });
+        
+        // Add a background circle for the icon with appropriate color
+        iconGroup.append('circle')
+          .attr('cx', iconSize/2)
+          .attr('cy', iconSize/2)
+          .attr('r', nodeSize * 0.8)
+          .attr('fill', 'white');
+          
+        // Add the icon as an SVG element
+        iconGroup.append('g')
+          .attr('transform', `translate(${iconSize * 0.2}, ${iconSize * 0.2}) scale(${(iconSize * 0.6) / 100})`)
+          .html(iconHtml);
+      } else {
+        // Fallback for other node types
+        iconGroup.append('circle')
+          .attr('cx', iconSize/2)
+          .attr('cy', iconSize/2)
+          .attr('r', nodeSize * 0.65)
+          .attr('fill', 'white');
+          
+        iconGroup.append('text')
+          .attr('x', iconSize/2)
+          .attr('y', iconSize/2)
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'central')
+          .attr('font-size', '14px')
+          .attr('fill', d.id === traceData.event.id ? '#2563EB' : '#6B7280')
+          .text(d.type?.charAt(0).toUpperCase() || 'E');
+      }
+    });
+      
     // Node labels
     nodeGroups.append('text')
       .attr('text-anchor', 'middle')
-      .attr('dy', 30)
+      .attr('dy', nodeSize + 15)
       .attr('fill', '#4B5563')
       .attr('class', 'text-xs font-medium')
       .text(d => {
@@ -288,7 +350,7 @@ export default function TraceGraph({
         
         // Add gear icon
         group.append('g')
-          .attr('transform', 'translate(15, -15)')
+          .attr('transform', `translate(${nodeSize - 5}, ${-nodeSize + 5})`)
           .attr('class', 'settings-button')
           .style('cursor', 'pointer')
           .style('opacity', 0) // Start hidden
@@ -327,7 +389,7 @@ export default function TraceGraph({
       .filter(d => d.type === 'bot')
       .append('text')
       .attr('text-anchor', 'middle')
-      .attr('dy', -30)
+      .attr('dy', -nodeSize - 15)
       .attr('fill', d => d.has_processed ? '#10B981' : '#EF4444')
       .attr('class', 'text-xs font-medium')
       .text(d => d.has_processed ? 'Processed' : 'Not Processed');
