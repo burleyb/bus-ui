@@ -16,6 +16,7 @@ import {
   useEventReplay,
   useEventResubmit
 } from '@/context/ApiContext';
+import { useToast } from '@/components/ui/toast';
 import { 
   formatDateToEid, 
   getEidForTimeRange, 
@@ -63,6 +64,7 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
 }) => {
   const [selectedBotId, setSelectedBotId] = useState<string>('');
   const replayMutation = useEventReplay();
+  const { addToast } = useToast();
   
   // Select first bot when options load or change
   useEffect(() => {
@@ -86,11 +88,21 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
         eventId: eventId
       });
       
-      alert(`Event will be replayed to ${selectedBotId}`);
+      addToast({
+        title: 'Event replayed',
+        description: `Event will be replayed to ${selectedBotId}`,
+        type: 'success'
+      });
+      
       onClose();
     } catch (error) {
-      console.error('Error setting checkpoint:', error);
-      alert(`Failed to set checkpoint: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error replaying event:', error);
+      
+      addToast({
+        title: 'Failed to replay event',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        type: 'error'
+      });
     }
   };
 
@@ -175,6 +187,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const payloadDataRef = useRef<any>(event?.payload || {});
   const resubmitMutation = useEventResubmit();
+  const { addToast } = useToast();
 
   // Initialize payload data when event changes
   useEffect(() => {
@@ -233,11 +246,21 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
       // Use the mutation hook from ApiContext
       await resubmitMutation.mutateAsync(data);
       
-      alert(`Event has been resubmitted to queue ${queueId}`);
+      addToast({
+        title: 'Event resubmitted',
+        description: `Event has been resubmitted to queue ${queueId}`,
+        type: 'success'
+      });
+      
       onClose();
     } catch (error) {
       console.error('Error resubmitting event:', error);
-      alert(`Failed to resubmit event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      addToast({
+        title: 'Failed to resubmit event',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        type: 'error'
+      });
     }
   };
 

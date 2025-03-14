@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import { NodeData } from '@/types/node';
 import { useBotPause, useBotCheckpoint, useBotForceRun } from '@/context/ApiContext';
 import { useWorkflowGraph } from '@/hooks/useWorkflowGraph';
+import { useAppContext } from '@/context/AppContext';
 import {
   Dialog,
   DialogContent,
@@ -502,6 +503,7 @@ export default function NodeSettingsDialogHeader({
   onTimePeriodChange,
   onCustomPeriodClick
 }: NodeSettingsDialogHeaderProps) {
+  const { state } = useAppContext();
   const { openNodeSettingsDialog } = useDialogs();
   const router = useRouter();
   const { addToast } = useToast();
@@ -536,8 +538,8 @@ export default function NodeSettingsDialogHeader({
   const nodeType = nodeData?.type || 'unknown';
   const nodeFullId = nodeData?.id ? `${nodeType}:${nodeData.id}` : 'Loading...';
   const nodeId = nodeData?.id || '';
-  const parentNodes = (typeof nodeData?.parentNodes === 'object' && !Array.isArray(nodeData?.parentNodes) ? Object.keys(nodeData?.parentNodes) : nodeData?.parentNodes || []) || [];
-  const childNodes = (typeof nodeData?.childNodes === 'object' && !Array.isArray(nodeData?.childNodes) ? Object.keys(nodeData?.childNodes) : nodeData?.childNodes || []) || [];
+  const parentNodes = (state?.nodes[nodeId]?.link_to?.parent && typeof state?.nodes[nodeId]?.link_to?.parent === 'object' && !Array.isArray(state?.nodes[nodeId]?.link_to?.parent) ? Object.keys(state?.nodes[nodeId]?.link_to?.parent) : state?.nodes[nodeId]?.link_to?.parent || []) || [];
+  const childNodes = (state?.nodes[nodeId]?.link_to?.children && typeof state?.nodes[nodeId]?.link_to?.children === 'object' && !Array.isArray(state?.nodes[nodeId]?.link_to?.children) ? Object.keys(state?.nodes[nodeId]?.link_to?.children) : state?.nodes[nodeId]?.link_to?.children || []) || [];
   
   // Check if the node is paused/stopped
   const isPaused = localIsPaused || nodeData?.paused || nodeData?.status === 'PAUSED' || nodeData?.status === 'STOPPED';

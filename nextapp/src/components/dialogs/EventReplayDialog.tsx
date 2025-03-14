@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useAppContext } from '@/context/AppContext';
 import { useDialogContext } from '@/hooks/useDialogContext';
+import { useToast } from '@/components/ui/toast';
 
 export interface EventReplayDialogProps {
   queueId?: string;
@@ -16,6 +17,7 @@ export default function EventReplayDialog({
 }: EventReplayDialogProps) {
   const { state } = useAppContext();
   const { dialogData, closeDialog, isOpen } = useDialogContext() || {};
+  const { addToast } = useToast();
   const [selectedBotId, setSelectedBotId] = useState<string>('');
   const [availableBots, setAvailableBots] = useState<{id: string; name: string}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -55,7 +57,11 @@ export default function EventReplayDialog({
     console.log(`Replaying event ${eventId} from queue ${queueId} to bot ${selectedBotId}`);
     
     // Show success message
-    alert(`Event ${eventId} has been sent to ${selectedBotId} for replay processing.`);
+    addToast({
+      title: 'Event Replayed',
+      description: `Event ${eventId} has been sent to ${selectedBotId} for replay processing.`,
+      type: 'success'
+    });
     
     // Close the dialog
     closeDialog?.();

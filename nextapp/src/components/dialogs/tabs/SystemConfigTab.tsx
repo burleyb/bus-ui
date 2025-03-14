@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { useToast } from '@/components/ui/toast';
 
 interface SystemConfigTabProps {
   nodeData: any;
@@ -36,22 +37,35 @@ const SystemConfigTab: React.FC<SystemConfigTabProps> = ({ nodeData }) => {
 }`);
 
   const [isReadOnly, setIsReadOnly] = useState(true);
+  const { addToast } = useToast();
   
   const handleFormatConfig = () => {
     try {
       const parsed = JSON.parse(config);
       setConfig(JSON.stringify(parsed, null, 2));
     } catch (error) {
-      alert("Invalid JSON: " + (error as Error).message);
+      addToast({
+        title: 'Invalid JSON',
+        description: (error as Error).message,
+        type: 'error'
+      });
     }
   };
   
   const handleValidateConfig = () => {
     try {
       JSON.parse(config);
-      alert("Configuration is valid JSON");
+      addToast({
+        title: 'Configuration Validated',
+        description: 'Configuration is valid JSON',
+        type: 'success'
+      });
     } catch (error) {
-      alert("Invalid JSON: " + (error as Error).message);
+      addToast({
+        title: 'Invalid JSON',
+        description: (error as Error).message,
+        type: 'error'
+      });
     }
   };
   

@@ -28,6 +28,7 @@ import 'react-datepicker/dist/react-datepicker.css';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { awsNativeFetch } from '@/lib/authUtils';
 import JSONEditorComponent, { JSONEditorHandle } from '@/components/json/JSONEditorComponent';
+import { useToast } from '@/components/ui/toast';
 
 interface QueueEventsTabProps {
   nodeData: any;
@@ -63,6 +64,7 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
 }) => {
   const [selectedBotId, setSelectedBotId] = useState<string>('');
   const replayMutation = useEventReplay();
+  const { addToast } = useToast();
   
   // Select first bot when options load or change
   useEffect(() => {
@@ -86,11 +88,21 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
         eventId: eventId
       });
       
-      alert(`Event will be replayed to ${selectedBotId}`);
+      addToast({
+        title: 'Event replayed',
+        description: `Event will be replayed to ${selectedBotId}`,
+        type: 'success'
+      });
+      
       onClose();
     } catch (error) {
-      console.error('Error setting checkpoint:', error);
-      alert(`Failed to set checkpoint: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error replaying event:', error);
+      
+      addToast({
+        title: 'Failed to replay event',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        type: 'error'
+      });
     }
   };
 
@@ -120,12 +132,12 @@ const EventReplayDialog: React.FC<ReplayDialogProps> = ({
                 className="w-full rounded-md border border-gray-300 dark:border-gray-700 
                         bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
                         focus:ring-2 focus:ring-blue-500"
-                value={selectedBotId}
+                value={selectedBotId.split(':').pop()}
                 onChange={(e) => setSelectedBotId(e.target.value)}
               >
                 {botOptions.map((bot) => (
-                  <option key={bot.id} value={bot.id}>
-                    {bot.name}
+                  <option key={bot.id.split(':').pop()} value={bot.id.split(':').pop()}>
+                    {bot.name.split(':').pop()}
                   </option>
                 ))}
               </select>
@@ -187,6 +199,7 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [editorMode, setEditorMode] = useState<'tree' | 'code' | 'view'>('code');
   const resubmitMutation = useEventResubmit();
+  const { addToast } = useToast();
 
   // Initialize payload when dialog opens
   useEffect(() => {
@@ -239,11 +252,21 @@ const EventResubmitDialog: React.FC<ResubmitDialogProps> = ({
       // Use the mutation hook from ApiContext
       await resubmitMutation.mutateAsync(data);
       
-      alert(`Event has been resubmitted to queue ${queueId}`);
+      addToast({
+        title: 'Event resubmitted',
+        description: `Event has been resubmitted to queue ${queueId}`,
+        type: 'success'
+      });
+      
       onClose();
     } catch (error) {
       console.error('Error resubmitting event:', error);
-      alert(`Failed to resubmit event: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+      addToast({
+        title: 'Failed to resubmit event',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        type: 'error'
+      });
     }
   };
 

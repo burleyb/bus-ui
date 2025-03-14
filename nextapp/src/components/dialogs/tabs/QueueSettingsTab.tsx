@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useForm, Controller, SubmitHandler } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,6 +33,19 @@ export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onClose
   // Check if we're using fallback data
   const jsonParseError = nodeData && ('_jsonParseError' in nodeData);
   
+  // Initialize with default values to avoid conditional hooks
+  const defaultFormState = {
+    values: { name: "", tags: "", minCheckpointNumber: "" },
+    errors: null,
+    isDirty: false,
+    isSubmitting: false,
+    setValue: () => {},
+    handleSubmit: async () => {},
+    resetForm: () => {},
+    archiveQueue: async () => Promise.resolve(),
+    unarchiveQueue: async () => Promise.resolve()
+  };
+
   // Use a try-catch to handle any errors in useQueueFormState
   let formState;
   try {
@@ -40,17 +53,7 @@ export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onClose
   } catch (error) {
     console.error("Error initializing queue form state:", error);
     setLoadError(error instanceof Error ? error.message : "Failed to load queue settings");
-    formState = {
-      values: { name: "", tags: "", minCheckpointNumber: "" },
-      errors: null,
-      isDirty: false,
-      isSubmitting: false,
-      setValue: () => {},
-      handleSubmit: async () => {},
-      resetForm: () => {},
-      archiveQueue: async () => {},
-      unarchiveQueue: async () => {}
-    };
+    formState = defaultFormState;
   }
   
   const {
@@ -299,7 +302,7 @@ export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onClose
             {/* Archive/Unarchive button */}
             <Button
               type="button"
-              variant={nodeData.archived ? "outline" : "danger"}
+              variant={nodeData.archived ? "outline" : "destructive"}
               onClick={() => setIsArchiveDialogOpen(true)}
               className="flex items-center"
             >
@@ -383,7 +386,7 @@ export default function QueueSettingsTab({ nodeData, onTabChangeRequest, onClose
               Cancel
             </Button>
             <Button 
-              variant={nodeData.archived ? "primary" : "danger"} 
+              variant={nodeData.archived ? "default" : "destructive"} 
               onClick={handleArchiveConfirm}
             >
               {nodeData.archived ? 'Unarchive' : 'Archive'}

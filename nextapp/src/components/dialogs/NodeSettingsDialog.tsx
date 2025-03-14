@@ -573,21 +573,15 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
   return (
     <>
       <FullScreenModal isOpen={!!shouldShow} onClose={handleClose}>
-        <NodeSettingsDialogHeader 
-          nodeData={nodeData || { 
-            id: currentNodeId, 
-            name: currentNodeId.split(':').pop() || currentNodeId, 
-            type: (nodeType === 'bot' ? 'bot' : (nodeType === 'queue' ? 'queue' : nodeType === 'system' ? 'system' : 'unknown')) as NodeData['type'], 
-            status: 'UNKNOWN' as NodeData['status'],
-            parentNodes: [] as string[],
-            childNodes: [] as string[]
-          }} 
-          onClose={handleClose}
-          timePeriod={activeTab !== 'settings' ? timePeriod : undefined}
-          onTimePeriodChange={activeTab !== 'settings' ? handleTimePeriodChange : undefined}
-          onCustomPeriodClick={activeTab !== 'settings' ? () => setShowCustomPeriodDialog(true) : undefined}
-        />
-        
+        {nodeData && (
+            <NodeSettingsDialogHeader 
+              nodeData={nodeData} 
+              onClose={handleClose}
+              timePeriod={activeTab !== 'settings' ? timePeriod : undefined}
+              onTimePeriodChange={activeTab !== 'settings' ? handleTimePeriodChange : undefined}
+              onCustomPeriodClick={activeTab !== 'settings' ? () => setShowCustomPeriodDialog(true) : undefined}
+            />  
+        )}
         <div className="flex-1 flex flex-col overflow-hidden">
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full flex-1 flex flex-col overflow-hidden">
             <div className="border-b border-gray-200 dark:border-gray-700">

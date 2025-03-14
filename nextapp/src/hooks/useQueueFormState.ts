@@ -109,9 +109,7 @@ export function useQueueFormState(nodeData: NodeData | null) {
 
   // Reset form if queue data changes and form is not dirty
   useEffect(() => {
-    // Only run this effect if queueData exists
-    if (!queueData) return;
-    
+    // Update previous data reference to compare on next render
     const prevQueueData = prevQueueDataRef.current;
     
     // Skip the first render
@@ -128,7 +126,7 @@ export function useQueueFormState(nodeData: NodeData | null) {
     }
 
     // Skip if queue data is the same by doing a shallow comparison of relevant fields
-    const isDataUnchanged = prevQueueData && 
+    const isDataUnchanged = prevQueueData && queueData && 
       prevQueueData.id === queueData.id &&
       prevQueueData.name === queueData.name &&
       prevQueueData.tags === queueData.tags &&
@@ -140,12 +138,12 @@ export function useQueueFormState(nodeData: NodeData | null) {
     }
 
     console.log('[DEBUG] Queue data changed, updating form values');
-    // Use a functional update to ensure we don't depend on the current values
+    // Always set values to avoid conditional hook calls
     setValues(getInitialValues(queueData));
     setErrors(null);
     setIsDirty(false);
     prevQueueDataRef.current = queueData;
-  }, [queueData]); // Only depend on queueData, not isDirty
+  }, [queueData, isDirty]); // Include isDirty in dependencies to avoid lint warnings
 
   // Validation function
   const validateForm = (): boolean => {

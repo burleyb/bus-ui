@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { useToast } from '@/components/ui/toast';
 
 interface QueueSchemaTabProps {
   nodeData: any;
@@ -29,22 +30,35 @@ const QueueSchemaTab: React.FC<QueueSchemaTabProps> = ({ nodeData }) => {
 }`);
 
   const [showSampleEvent, setShowSampleEvent] = useState(false);
+  const { addToast } = useToast();
   
   const handleFormatSchema = () => {
     try {
       const parsed = JSON.parse(schema);
       setSchema(JSON.stringify(parsed, null, 2));
     } catch (error) {
-      alert("Invalid JSON: " + (error as Error).message);
+      addToast({
+        title: 'Invalid JSON',
+        description: (error as Error).message,
+        type: 'error'
+      });
     }
   };
   
   const handleValidateSchema = () => {
     try {
       JSON.parse(schema);
-      alert("Schema is valid JSON");
+      addToast({
+        title: 'Schema Validated',
+        description: 'Schema is valid JSON',
+        type: 'success'
+      });
     } catch (error) {
-      alert("Invalid JSON: " + (error as Error).message);
+      addToast({
+        title: 'Invalid JSON',
+        description: (error as Error).message,
+        type: 'error'
+      });
     }
   };
   

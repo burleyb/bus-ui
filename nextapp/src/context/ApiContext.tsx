@@ -475,17 +475,33 @@ const API = {
 
   // Queue Events related functions
   replayEvent: async (botId: string, queueId: string, eventId: string) => {
-    const url = `/api/checkpoint/${botId}/${queueId}/${eventId}`;
-    
-    const response = await awsNativeFetch(url, {
+    // Format the checkpoint string (removing last digit or decrementing it)
+    let checkpoint = eventId;
+    if (checkpoint.slice(-1) === '0') {
+      checkpoint = checkpoint.slice(0, -1);
+    } else {
+      checkpoint = checkpoint.slice(0, -1) + (parseInt(checkpoint.slice(-1)) - 1);
+    }
+
+    // Construct payload in the format expected by /api/cron/save
+    const payload = {
+      id: botId,
+      checkpoint: { [`queue:${queueId}`]: checkpoint },
+      executeNow: true
+    };
+
+    console.log('Sending replay request with payload:', payload);
+
+    const response = await awsNativeFetch('/api/cron/save', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify(payload)
     });
     
     if (!response.ok) {
-      throw new Error(`Error setting checkpoint: ${response.status}`);
+      throw new Error(`Error replaying event: ${response.status}`);
     }
     
     return await response.json();

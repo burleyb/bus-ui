@@ -89,8 +89,18 @@ export function WorkflowGraphData({
       // Count potential nodes to estimate total size
       let estimatedNodeCount = 1; // Primary node
       
-      // Count ancestor nodes (parents)
-      const parentNodes = Object.keys(state.nodes[primaryNode]?.link_to?.parent || {});
+      // Count ancestor nodes (parents), skipping archived ones
+      const primaryNodeData = state.nodes[primaryNode];
+      const parentNodes = Object.keys(primaryNodeData?.link_to?.parent || {})
+        .filter(parentId => {
+          const parentNode = state.nodes[parentId];
+          return parentNode && !(
+            parentNode.status === 'archived' || 
+            parentNode.archived === true || 
+            parentNode.status?.toLowerCase() === 'archived'
+          );
+        });
+      
       estimatedNodeCount += parentNodes.length;
       
       // Estimate grandparents 
@@ -102,8 +112,20 @@ export function WorkflowGraphData({
         
         for (let i = 0; i < sampleSize; i++) {
           const parentId = parentNodes[i];
-          if (state.nodes[parentId]) {
-            totalGrandparents += Object.keys(state.nodes[parentId]?.link_to?.parent || {}).length;
+          const parentNode = state.nodes[parentId];
+          if (parentNode && parentNode.link_to?.parent) {
+            // Count only non-archived grandparents
+            const grandparentCount = Object.keys(parentNode.link_to.parent)
+              .filter(grandparentId => {
+                const grandparentNode = state.nodes[grandparentId];
+                return grandparentNode && !(
+                  grandparentNode.status === 'archived' || 
+                  grandparentNode.archived === true || 
+                  grandparentNode.status?.toLowerCase() === 'archived'
+                );
+              }).length;
+            
+            totalGrandparents += grandparentCount;
           }
         }
         
@@ -113,8 +135,17 @@ export function WorkflowGraphData({
       // Add estimated grandparents to total count
       estimatedNodeCount += parentNodes.length * avgGrandparentsPerParent;
       
-      // Count descendant nodes (children)
-      const childNodes = Object.keys(state.nodes[primaryNode]?.link_to?.child || {});
+      // Count descendant nodes (children), skipping archived ones
+      const childNodes = Object.keys(primaryNodeData?.link_to?.children || {})
+        .filter(childId => {
+          const childNode = state.nodes[childId];
+          return childNode && !(
+            childNode.status === 'archived' || 
+            childNode.archived === true || 
+            childNode.status?.toLowerCase() === 'archived'
+          );
+        });
+      
       estimatedNodeCount += childNodes.length;
       
       // Estimate grandchildren
@@ -126,8 +157,20 @@ export function WorkflowGraphData({
         
         for (let i = 0; i < sampleSize; i++) {
           const childId = childNodes[i];
-          if (state.nodes[childId]) {
-            totalGrandchildren += Object.keys(state.nodes[childId]?.link_to?.child || {}).length;
+          const childNode = state.nodes[childId];
+          if (childNode && childNode.link_to?.children) {
+            // Count only non-archived grandchildren
+            const grandchildCount = Object.keys(childNode.link_to.children)
+              .filter(grandchildId => {
+                const grandchildNode = state.nodes[grandchildId];
+                return grandchildNode && !(
+                  grandchildNode.status === 'archived' || 
+                  grandchildNode.archived === true || 
+                  grandchildNode.status?.toLowerCase() === 'archived'
+                );
+              }).length;
+            
+            totalGrandchildren += grandchildCount;
           }
         }
         
@@ -167,8 +210,13 @@ export function WorkflowGraphData({
       const nodeData = state.nodes?.[nodeId];
       if (!nodeData) return null;
       
-      // Skip archived nodes
-      if (nodeData.status === 'archived' || nodeData.archived) {
+      // Skip archived nodes - Enhanced check to cover all cases
+      if (
+        nodeData.status === 'archived' || 
+        nodeData.archived === true || 
+        nodeData.status?.toLowerCase() === 'archived'
+      ) {
+        console.log(`Skipping archived node ${nodeId}`);
         return null;
       }
       
@@ -353,8 +401,13 @@ export function WorkflowGraphData({
         const parentNode = state.nodes[parentId];
         if (!parentNode) return;
         
-        // Skip archived nodes
-        if (parentNode.status === 'archived' || parentNode.archived) {
+        // Enhanced check for archived nodes
+        if (
+          parentNode.status === 'archived' || 
+          parentNode.archived === true || 
+          parentNode.status?.toLowerCase() === 'archived'
+        ) {
+          console.log(`Skipping archived parent node ${parentId}`);
           return;
         }
         
@@ -514,8 +567,13 @@ export function WorkflowGraphData({
         const childNode = state.nodes[childId];
         if (!childNode) return;
         
-        // Skip archived nodes
-        if (childNode.status === 'archived' || childNode.archived) {
+        // Enhanced check for archived nodes
+        if (
+          childNode.status === 'archived' || 
+          childNode.archived === true || 
+          childNode.status?.toLowerCase() === 'archived'
+        ) {
+          console.log(`Skipping archived child node ${childId}`);
           return;
         }
         
@@ -591,49 +649,59 @@ export function WorkflowGraphData({
               // Get the descendants of this child (which creates the cycle)
               if (childNode.link_to?.children) {
                 Object.keys(childNode.link_to.children).forEach(grandchildId => {
-                  if (state.nodes[grandchildId]) {
-                    const gcBranchId = `${childBranchId}:${grandchildId}`;
-                    const gcNodeId = addNodeToGraph(grandchildId, generation + 2, 2, gcBranchId);
+                  const gcNode = state.nodes[grandchildId];
+                  if (!gcNode) return;
+                  
+                  // Skip archived grandchild nodes
+                  if (
+                    gcNode.status === 'archived' || 
+                    gcNode.archived === true || 
+                    gcNode.status?.toLowerCase() === 'archived'
+                  ) {
+                    console.log(`Skipping archived grandchild node ${grandchildId} in cycle detection`);
+                    return;
+                  }
+                  
+                  const gcBranchId = `${childBranchId}:${grandchildId}`;
+                  const gcNodeId = addNodeToGraph(grandchildId, generation + 2, 2, gcBranchId);
+                  
+                  if (gcNodeId) {
+                    // Add link to child
+                    const cycleLinkStats = {
+                      count: 0,
+                      last_time: '',
+                      lag: 0
+                    };
                     
-                    if (gcNodeId) {
-                      // Add link to child
-                      const cycleLinkStats = {
-                        count: 0,
-                        last_time: '',
-                        lag: 0
-                      };
-                      
-                      // Check for stats for this link
-                      const childNode = state.nodes[childId];
-                      const gcNode = state.nodes[grandchildId];
-                      
-                      if (childNode && gcNode) {
-                        if (childNode.type === 'bot' && gcNode.type === 'queue') {
-                          // Bot -> Queue relationship
-                          if (childNode.link_to?.children && childNode.link_to.children[grandchildId] && 
-                              typeof childNode.link_to.children[grandchildId].units !== 'undefined') {
-                            cycleLinkStats.count = Number(childNode.link_to.children[grandchildId].units);
-                          }
-                        } else if (childNode.type === 'queue' && gcNode.type === 'bot') {
-                          // Queue -> Bot relationship
-                          if (gcNode.link_to?.parent && gcNode.link_to.parent[childId] && 
-                              typeof gcNode.link_to.parent[childId].units !== 'undefined') {
-                            cycleLinkStats.count = Number(gcNode.link_to.parent[childId].units);
-                          }
+                    // Check for stats for this link
+                    const childNode = state.nodes[childId];
+                    
+                    if (childNode && gcNode) {
+                      if (childNode.type === 'bot' && gcNode.type === 'queue') {
+                        // Bot -> Queue relationship
+                        if (childNode.link_to?.children && childNode.link_to.children[grandchildId] && 
+                            typeof childNode.link_to.children[grandchildId].units !== 'undefined') {
+                          cycleLinkStats.count = Number(childNode.link_to.children[grandchildId].units);
+                        }
+                      } else if (childNode.type === 'queue' && gcNode.type === 'bot') {
+                        // Queue -> Bot relationship
+                        if (gcNode.link_to?.parent && gcNode.link_to.parent[childId] && 
+                            typeof gcNode.link_to.parent[childId].units !== 'undefined') {
+                          cycleLinkStats.count = Number(gcNode.link_to.parent[childId].units);
                         }
                       }
-                      
-                      newGraphData.links.push({
-                        source: childNodeId,
-                        target: gcNodeId,
-                        value: 1,
-                        relationType: 'default',
-                        stats: cycleLinkStats
-                      });
-                      
-                      // Add infinity node as terminator
-                      addInfinityNode(gcNodeId, childId, generation + 2, gcBranchId);
                     }
+                    
+                    newGraphData.links.push({
+                      source: childNodeId,
+                      target: gcNodeId,
+                      value: 1,
+                      relationType: 'default',
+                      stats: cycleLinkStats
+                    });
+                    
+                    // Add infinity node as terminator
+                    addInfinityNode(gcNodeId, childId, generation + 2, gcBranchId);
                   }
                 });
               }
@@ -648,8 +716,12 @@ export function WorkflowGraphData({
     
     // Start building the graph from the primary node
     if (state.nodes && primaryNode && state.nodes[primaryNode]) {
-      // Skip if primary node is archived
-      if (state.nodes[primaryNode].status === 'archived' || state.nodes[primaryNode].archived) {
+      // Enhanced check for primary node being archived
+      if (
+        state.nodes[primaryNode].status === 'archived' || 
+        state.nodes[primaryNode].archived === true || 
+        state.nodes[primaryNode].status?.toLowerCase() === 'archived'
+      ) {
         console.log('Primary node is archived, not displaying graph');
         setGraphData(newGraphData);
         onDataReady(newGraphData);
