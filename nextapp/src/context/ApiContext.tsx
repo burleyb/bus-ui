@@ -92,7 +92,19 @@ const API = {
     
     return fetchAndParse(url);
   },
-  
+
+  // Add new trace method for event trace visualization
+  getTrace: async (queueId: string, eventId: string, children?: string) => {
+    // Create URL parameters
+    const params = new URLSearchParams();
+    if (children) params.append('children', children);
+    
+    const queryString = params.toString();
+    const url = `/api/trace/${encodeURIComponent(queueId)}/${encodeURIComponent(eventId)}${queryString ? `?${queryString}` : ''}`;
+    
+    return fetchAndParse(url);
+  },
+
   getEventDetails: async (queueId: string, eventId: string) => {
     return fetchAndParse(`/api/queue/${queueId}/event/${eventId}`);
   },
@@ -167,11 +179,11 @@ const API = {
       
       // Add the EID if provided
       if (eid) {
-        url += `/${encodeURIComponent(eid)}`;
+        url += `/${encodeURIComponent(eid)}/`;
         
         // Add the search text if provided
         if (searchText) {
-          url += `/${encodeURIComponent(searchText)}`;
+          url += `${encodeURIComponent(searchText)}/`;
         }
       }
       
@@ -181,6 +193,7 @@ const API = {
         params.append('count', count.toString());
       }
       
+      // Add query parameters if any exist
       const queryString = params.toString();
       if (queryString) {
         url += `?${queryString}`;
@@ -216,11 +229,11 @@ const API = {
       
       // Add the EID if provided
       if (eid) {
-        url += `/${encodeURIComponent(eid)}`;
+        url += `/${encodeURIComponent(eid)}/`;
         
         // Add the search text if provided
         if (searchText) {
-          url += `/${encodeURIComponent(searchText)}`;
+          url += `${encodeURIComponent(searchText)}/`;
         }
       }
       
@@ -230,13 +243,14 @@ const API = {
         params.append('count', count.toString());
       }
       
+      // Add query parameters if any exist
       const queryString = params.toString();
       if (queryString) {
         url += `?${queryString}`;
       }
       
       if (process.env.NODE_ENV !== 'production') {
-        console.log('Searching queue events:', url);
+        console.log('Searching system events:', url);
       }
       
       const response = await awsNativeFetch(url, {
@@ -253,8 +267,8 @@ const API = {
       
       return response.json();
     } catch (error) {
-      console.error('Error searching queue events:', error);
-      throw error;
+      console.error('Error searching system events:', error);
+      throw error; // Let React Query handle the error state
     }
   },
   
@@ -2047,5 +2061,16 @@ export function useSaveSystemSettings() {
       console.error('Error in saveSystemSettings mutation:', error);
       // Error will be handled by the component
     }
+  });
+}
+
+// Add new hook for trace data
+export function useTrace(queueId: string, eventId: string, children?: string) {
+  return useQuery({
+    queryKey: ['trace', queueId, eventId, children],
+    queryFn: () => API.getTrace(queueId, eventId, children),
+    enabled: !!(queueId && eventId),
+    refetchOnWindowFocus: false,
+    staleTime: Infinity // Don't auto-refetch as trace data is static for a specific event
   });
 }

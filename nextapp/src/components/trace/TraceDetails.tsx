@@ -9,8 +9,10 @@ import {
   ArrowPathIcon,
   InformationCircleIcon,
   ChevronDownIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  Share2Icon
 } from '@heroicons/react/24/outline';
+import TraceDialog from '@/components/dialogs/TraceDialog';
 
 interface TraceDetailsProps {
   queueId: string;
@@ -34,6 +36,7 @@ export default function TraceDetails({
   const { state } = useAppContext();
   const [activeTab, setActiveTab] = useState<'trace' | 'payload' | 'schema'>('trace');
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [showTraceDialog, setShowTraceDialog] = useState(false);
   
   // For a real application, this would use a Tanstack Query hook to fetch event details
   const eventDetailsQuery = useEventDetails(queueId, eventId);
@@ -179,7 +182,7 @@ export default function TraceDetails({
   }
   
   return (
-    <div>
+    <div className="flex flex-col h-full">
       {/* Event Header */}
       <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 mb-4">
         <div className="flex justify-between items-start">
@@ -203,40 +206,50 @@ export default function TraceDetails({
       
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700 mb-4">
-        <nav className="flex space-x-8">
-          <button
-            onClick={() => setActiveTab('trace')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'trace'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            Trace Flow
-          </button>
+        <div className="flex justify-between items-center">
+          <nav className="-mb-px flex" aria-label="Tabs">
+            <button
+              onClick={() => setActiveTab('trace')}
+              className={`py-2 px-4 text-sm font-medium border-b-2 ${
+                activeTab === 'trace'
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Trace Info
+            </button>
+            <button
+              onClick={() => setActiveTab('payload')}
+              className={`py-2 px-4 text-sm font-medium border-b-2 ${
+                activeTab === 'payload'
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Payload
+            </button>
+            <button
+              onClick={() => setActiveTab('schema')}
+              className={`py-2 px-4 text-sm font-medium border-b-2 ${
+                activeTab === 'schema'
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+              }`}
+            >
+              Schema
+            </button>
+          </nav>
           
+          {/* Add Trace Graph button */}
           <button
-            onClick={() => setActiveTab('payload')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'payload'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
+            onClick={() => setShowTraceDialog(true)}
+            className="ml-2 inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            disabled={!eventId || !queueId}
           >
-            Payload
+            <Share2Icon className="h-4 w-4 mr-1" />
+            View Trace Graph
           </button>
-          
-          <button
-            onClick={() => setActiveTab('schema')}
-            className={`pb-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'schema'
-                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}
-          >
-            Schema
-          </button>
-        </nav>
+        </div>
       </div>
       
       {/* Tab Content */}
@@ -277,6 +290,14 @@ export default function TraceDetails({
           </div>
         )}
       </div>
+      
+      {/* Trace Dialog */}
+      <TraceDialog
+        open={showTraceDialog}
+        onClose={() => setShowTraceDialog(false)}
+        queueId={queueId}
+        eventId={eventId}
+      />
     </div>
   );
 } 

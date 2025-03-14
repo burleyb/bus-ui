@@ -1,146 +1,198 @@
 "use client";
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { CalendarIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '@/context/AppContext';
+import { MagnifyingGlassIcon } from '@heroicons/react/24/outline';
+import { NodeData } from '@/types/nodes';
+import NodeIcon from '@/components/node/NodeIcon';
 
-interface TraceSearchProps {
-  initialQueue: string;
-  initialEvent: string;
-  initialStartTime: string;
-  initialEndTime: string;
+interface CatalogSearchProps {
+  initialSearch: string;
+  onSearchChange: (search: string) => void;
 }
 
-export default function TraceSearch({ 
-  initialQueue = '', 
-  initialEvent = '',
-  initialStartTime = '',
-  initialEndTime = ''
-}: TraceSearchProps) {
-  const router = useRouter();
+export default function CatalogSearch({ 
+  initialSearch = '',
+  onSearchChange
+}: CatalogSearchProps) {
   const { state } = useAppContext();
+  const [searchText, setSearchText] = useState(initialSearch);
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1);
+  const [nodeOptions, setNodeOptions] = useState<{ value: string; label: string; type: string }[]>([]);
+  const [filteredOptions, setFilteredOptions] = useState<{ value: string; label: string; type: string }[]>([]);
   
-  const [queueId, setQueueId] = useState(initialQueue);
-  const [eventId, setEventId] = useState(initialEvent);
-  const [startTime, setStartTime] = useState(initialStartTime || getDefaultStartTime());
-  const [endTime, setEndTime] = useState(initialEndTime || getDefaultEndTime());
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   
-  // Helper functions for default time values
-  function getDefaultStartTime() {
-    const date = new Date();
-    date.setHours(date.getHours() - 24); // 24 hours ago
-    return date.toISOString().slice(0, 16); // Format as YYYY-MM-DDTHH:MM
-  }
+  // Prepare node options for the dropdown
+  useEffect(() => {
+    if (state.nodes && Object.keys(state.nodes).length > 0) {
+      const options = Object.values(state.nodes)
+        .filter((node: NodeData) => node.type === 'queue' || node.type === 'system')
+        .map((node: NodeData) => {
+          // Extract the name part (everything after the colon)
+          const idParts = node.id.split(':');
+          const name = idParts.length > 1 ? idParts.slice(1).join(':') : node.id;
+          const type = idParts[0] === 'bot' || idParts[0] === 'queue' || idParts[0] === 'system' 
+            ? idParts[0] 
+            : 'bot';
+
+          return {
+            value: node.id,
+            label: name,
+            type
+          };
+        })
+        .sort((a, b) => a.label.localeCompare(b.label));
+      
+      setNodeOptions(options);
+    }
+  }, [state.nodes]);
   
-  function getDefaultEndTime() {
-    return new Date().toISOString().slice(0, 16); // Current time
-  }
+  // Filter options based on search text
+  useEffect(() => {
+    if (!searchText.trim()) {
+      setFilteredOptions([]);
+      return;
+    }
+    
+    const filtered = nodeOptions.filter(option => 
+      option.label.toLowerCase().includes(searchText.toLowerCase()) ||
+      option.value.toLowerCase().includes(searchText.toLowerCase())
+    );
+    
+    setFilteredOptions(filtered);
+    
+    // Reset highlighted index
+    setHighlightedIndex(-1);
+  }, [searchText, nodeOptions]);
   
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+  
+  // Handle input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchText(value);
+    setIsOpen(true);
+  };
+  
+  // Handle option selection
+  const handleSelectOption = (option: { value: string; label: string; type: string }) => {
+    setSearchText(option.label);
+    onSearchChange(option.label);
+    setIsOpen(false);
+  };
+  
+  // Handle key navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // If dropdown is not open, open it on arrow down
+    if (!isOpen && e.key === 'ArrowDown') {
+      setIsOpen(true);
+      return;
+    }
+    
+    if (!isOpen) return;
+    
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setHighlightedIndex(prev => 
+          prev < filteredOptions.length - 1 ? prev + 1 : prev
+        );
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setHighlightedIndex(prev => prev > 0 ? prev - 1 : 0);
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (highlightedIndex >= 0 && filteredOptions[highlightedIndex]) {
+          handleSelectOption(filteredOptions[highlightedIndex]);
+        } else if (searchText) {
+          onSearchChange(searchText);
+          setIsOpen(false);
+        }
+        break;
+      case 'Escape':
+        e.preventDefault();
+        setIsOpen(false);
+        break;
+    }
+  };
+  
+  // Handle submit of the form
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Build query parameters
-    const params = new URLSearchParams();
-    if (queueId) params.set('queue', queueId);
-    if (eventId) params.set('event', eventId);
-    if (startTime) params.set('start', startTime);
-    if (endTime) params.set('end', endTime);
-    
-    // Navigate to trace page with parameters
-    router.push(`/trace?${params.toString()}`);
+    onSearchChange(searchText);
+    setIsOpen(false);
   };
   
   return (
-    <form onSubmit={handleSubmit} className="w-full bg-white dark:bg-gray-800 rounded-lg shadow p-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div>
-          <label htmlFor="queue-select" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Queue
-          </label>
-          <div className="relative">
-            <select
-              id="queue-select"
-              className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none pr-8"
-              value={queueId}
-              onChange={(e) => setQueueId(e.target.value)}
-            >
-              <option value="">Select a queue</option>
-              {state.nodes && Object.values(state.nodes)
-                .filter(node => node.type === 'queue')
-                .map(queue => (
-                  <option key={queue.id} value={queue.id}>
-                    {queue.id}
-                  </option>
-                ))
-              }
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700 dark:text-gray-300">
-              <svg className="h-4 w-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-            </div>
-          </div>
-        </div>
-        
-        <div>
-          <label htmlFor="event-id" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Event ID
-          </label>
-          <input
-            type="text"
-            id="event-id"
-            className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md px-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Enter event ID"
-            value={eventId}
-            onChange={(e) => setEventId(e.target.value)}
-          />
-        </div>
-      </div>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-        <div>
-          <label htmlFor="start-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Start Time
-          </label>
-          <div className="relative">
-            <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="datetime-local"
-              id="start-time"
-              className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md pl-10 pr-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          </div>
-        </div>
-        
-        <div>
-          <label htmlFor="end-time" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            End Time
-          </label>
-          <div className="relative">
-            <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="datetime-local"
-              id="end-time"
-              className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md pl-10 pr-3 py-2 text-sm w-full focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
-      
-      <div className="flex justify-end">
-        <button
+    <div className="relative" ref={dropdownRef}>
+      <form onSubmit={handleSubmit} className="relative">
+        <input
+          ref={searchInputRef}
+          type="text"
+          className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="Search nodes..."
+          value={searchText}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          onKeyDown={handleKeyDown}
+          autoComplete="off"
+        />
+        <button 
           type="submit"
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          className="absolute inset-y-0 left-0 pl-3 flex items-center"
         >
-          <MagnifyingGlassIcon className="h-4 w-4 mr-2" />
-          Search
+          <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
         </button>
-      </div>
-    </form>
+      </form>
+      
+      {isOpen && filteredOptions.length > 0 && (
+        <div className="absolute z-10 mt-2 w-full bg-white dark:bg-gray-800 shadow-lg rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 max-h-60 overflow-y-auto">
+          <ul>
+            {filteredOptions.map((option, index) => (
+              <li 
+                key={option.value}
+                className={`px-4 py-2 cursor-pointer flex items-center ${
+                  index === highlightedIndex
+                    ? 'bg-blue-100 dark:bg-blue-900'
+                    : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+                onClick={() => handleSelectOption(option)}
+              >
+                <div className="mr-2">
+                  <NodeIcon 
+                    node={{ 
+                      id: option.value, 
+                      type: option.type
+                    }} 
+                    size={20} 
+                  />
+                </div>
+                <span>{option.label}</span>
+                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                  {option.type}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 } 
