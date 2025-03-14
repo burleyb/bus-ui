@@ -112,7 +112,7 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   }, [searchInput]);
 
   // Extract queue ID from nodeData
-  const queueId = nodeData.id.split(':').pop();
+  const queueId = nodeData.id;
   
   // Fetch events using the hook
   const { 

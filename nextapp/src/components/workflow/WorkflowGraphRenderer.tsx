@@ -203,7 +203,7 @@ export function WorkflowGraphRenderer({
       const lambdaName = (nodeData as any).lambdaName || '';
       
       tooltipContent = `
-        <div class="font-medium">${nodeId}</div>
+        <div class="font-medium">${nodeId.split(':').pop()}</div>
         <div class="mt-1">Status: ${nodeData.status || 'Unknown'}</div>
         ${description ? `<div class="mt-1">Description: ${description}</div>` : ''}
         ${lambdaName ? `<div class="mt-1">Lambda: ${lambdaName}</div>` : ''}
@@ -217,14 +217,14 @@ export function WorkflowGraphRenderer({
       const checkpoint = (nodeData as any).checkpoint || '';
       
       tooltipContent = `
-        <div class="font-medium">${nodeId}</div>
+        <div class="font-medium">${nodeId.split(':').pop()}</div>
         <div class="mt-1">Last Write: ${lastWrite}</div>
         ${checkpoint ? `<div class="mt-1">Latest Checkpoint: ${checkpoint}</div>` : ''}
       `;
     } else {
       // Default tooltip for other node types
       tooltipContent = `
-        <div class="font-medium">${nodeId}</div>
+        <div class="font-medium">${nodeId.split(':').pop()}</div>
         <div class="mt-1">Type: ${nodeData.type || 'Unknown'}</div>
         <div class="mt-1">Status: ${nodeData.status || 'Unknown'}</div>
       `;
@@ -879,7 +879,7 @@ export function WorkflowGraphRenderer({
         .style('font-size', '12px');  // Increased font size for better visibility
       
       // Store the rendered height for positioning stats
-      const nodeId = d.originalId || (d.id.includes(':') ? d.id.split(':').pop() : d.id);
+      const nodeId = d.originalId || d.id;
       const lineCount = wrapNodeLabel(labelGroup, nodeId || '');
       
       // Store the line count in a map instead of on the node

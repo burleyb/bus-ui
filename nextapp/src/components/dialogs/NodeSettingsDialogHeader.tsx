@@ -536,7 +536,11 @@ export default function NodeSettingsDialogHeader({
   // Safely handle the node data
   const nodeName = nodeData?.name || 'Loading...';
   const nodeType = nodeData?.type || 'unknown';
-  const nodeFullId = nodeData?.id ? `${nodeType}:${nodeData.id}` : 'Loading...';
+  const nodeFullId = nodeData?.id 
+  ? nodeData.id.startsWith(`${nodeType}:`) 
+    ? nodeData.id 
+    : `${nodeType}:${nodeData.id}`
+  : 'Loading...';
   const nodeId = nodeData?.id || '';
   const parentNodes = (state?.nodes[nodeId]?.link_to?.parent && typeof state?.nodes[nodeId]?.link_to?.parent === 'object' && !Array.isArray(state?.nodes[nodeId]?.link_to?.parent) ? Object.keys(state?.nodes[nodeId]?.link_to?.parent) : state?.nodes[nodeId]?.link_to?.parent || []) || [];
   const childNodes = (state?.nodes[nodeId]?.link_to?.children && typeof state?.nodes[nodeId]?.link_to?.children === 'object' && !Array.isArray(state?.nodes[nodeId]?.link_to?.children) ? Object.keys(state?.nodes[nodeId]?.link_to?.children) : state?.nodes[nodeId]?.link_to?.children || []) || [];
@@ -891,7 +895,7 @@ export default function NodeSettingsDialogHeader({
         {/* Play/Pause button - Only shown for bots */}
         {nodeType === 'bot' && (
           <Button
-            variant={isPaused ? "outline" : "primary"}
+            variant={isPaused ? "outline" : "default"}
             size="sm"
             className={`px-3 py-1 flex items-center gap-1 ${
               isPaused 

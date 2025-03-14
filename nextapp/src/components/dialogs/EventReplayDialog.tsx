@@ -97,11 +97,11 @@ const EventReplayDialog: React.FC<EventReplayDialogProps> = ({
                 className="w-full rounded-md border border-gray-300 dark:border-gray-700 
                         bg-white dark:bg-gray-800 px-3 py-2 text-sm focus:outline-none 
                         focus:ring-2 focus:ring-blue-500"
-                value={selectedBotId.split(':').pop()}
+                value={selectedBotId}
                 onChange={(e) => setSelectedBotId(e.target.value)}
               >
                 {safeBotOptions.map((bot) => (
-                  <option key={bot.id.split(':').pop()} value={bot.id.split(':').pop()}>
+                  <option key={bot.id} value={bot.id}>
                     {bot.name.split(':').pop()}
                   </option>
                 ))}

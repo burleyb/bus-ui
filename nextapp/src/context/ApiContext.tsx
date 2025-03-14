@@ -486,7 +486,7 @@ const API = {
     // Construct payload in the format expected by /api/cron/save
     const payload = {
       id: botId,
-      checkpoint: { [`queue:${queueId}`]: checkpoint },
+      checkpoint: { [`${queueId}`]: checkpoint },
       executeNow: true
     };
 

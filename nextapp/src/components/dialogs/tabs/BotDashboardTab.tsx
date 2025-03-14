@@ -414,9 +414,9 @@ export default function BotDashboardTab({ nodeData, timePeriod, onClose }: BotDa
                         </td>
                         <td className="px-4 py-3">
                                   <div className="h-10 w-32 mx-auto">
-                                    {readqueue.values && readqueue.values.length > 0 ? (
+                                    {readqueue.reads && readqueue.reads.length > 0 ? (
                                       <SparklineChart 
-                                        data={readqueue.values}
+                                        data={readqueue.reads}
                                         referenceLine={readqueue.last_read_event_timestamp ? {
                                           timestamp: readqueue.last_read_event_timestamp,
                                           color: "#ef4444"
