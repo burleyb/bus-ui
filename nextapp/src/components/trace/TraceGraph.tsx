@@ -334,7 +334,7 @@ export default function TraceGraph({
     
     // Add drag behavior
     svgElement.call(
-      d3.drag()
+      d3.drag<SVGSVGElement, unknown, unknown>()
         .on('start', (event) => {
           if (event.sourceEvent.target.closest('.settings-button')) return;
           setIsDragging(true);

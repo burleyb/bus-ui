@@ -450,15 +450,15 @@ export default function TracePage() {
             {/* Date picker popover */}
             {showDatePicker && !isLoading && (
               <div className="absolute mt-1 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg">
-                <DatePicker
-                  selected={customDate}
-                  onChange={handleDateSelect}
-                  showTimeSelect
-                  timeFormat="HH:mm"
-                  timeIntervals={15}
-                  dateFormat="MMMM d, yyyy h:mm aa"
-                  inline
-                />
+                {(DatePicker as any)({
+                  selected: customDate,
+                  onChange: handleDateSelect,
+                  showTimeSelect: true,
+                  timeFormat: "HH:mm",
+                  timeIntervals: 15,
+                  dateFormat: "MMMM d, yyyy h:mm aa",
+                  inline: true
+                })}
               </div>
             )}
           </div>

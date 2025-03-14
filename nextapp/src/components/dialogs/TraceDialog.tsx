@@ -3,9 +3,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X, ZoomIn, ZoomOut, Crosshair } from 'lucide-react';
 import { useTrace } from '@/hooks/useTrace';
-import TraceGraph from '@/components/trace/TraceGraph';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/toast';
+import TraceGraph from '@/components/trace/TraceGraph';
 
 interface TraceDialogProps {
   open: boolean;
