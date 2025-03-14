@@ -569,6 +569,14 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
   }, [hasError, botError, queueError, systemError, dashboardError, addToast]);
   
   if (!currentNodeId || !shouldShow) return null;
+
+  if ((nodeType === 'queue' || nodeType === 'system') && !['settings','dashboard','events', 'schema'].includes(activeTab) ) {
+    setActiveTab('dashboard');
+  }
+
+  if (nodeType === 'bot' && !['settings','dashboard','code','logs'].includes(activeTab) ) {
+    setActiveTab('dashboard');
+  }
   
   return (
     <>
