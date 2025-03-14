@@ -12,7 +12,6 @@ import QueueDashboardTab from './tabs/QueueDashboardTab';
 import QueueEventsTab from './tabs/QueueEventsTab';
 import QueueSettingsTab from './tabs/QueueSettingsTab';
 import SystemDashboardTab from './tabs/SystemDashboardTab';
-import SystemEventsTab from './tabs/SystemEventsTab';
 import SystemSettingsTab from './tabs/SystemSettingsTab';
 import BotLogsTab from './tabs/BotLogsTab';
 import BotSettingsTab from './tabs/BotSettingsTab';
@@ -686,7 +685,7 @@ export default function NodeSettingsDialog({ nodeId: propNodeId }: NodeSettingsD
                   {(nodeType === 'queue' || nodeType === 'system') && (
                     <TabsContent value="events" className="mt-0 h-full overflow-y-hidden">
                       {nodeType === 'queue' && <QueueEventsTab nodeData={nodeData} />}
-                      {nodeType === 'system' && <SystemEventsTab nodeData={nodeData} />}
+                      {nodeType === 'system' && <QueueEventsTab nodeData={nodeData} />}
                     </TabsContent>
                   )}
                   
