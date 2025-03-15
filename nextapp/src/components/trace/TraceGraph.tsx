@@ -40,6 +40,7 @@ interface TraceGraphProps {
   zoom: number;
   offset: [number, number];
   onOffsetChange: (offset: [number, number]) => void;
+  onZoomChange?: (zoom: number) => void;
   onTraceToChild: (path: string) => void;
 }
 
@@ -48,6 +49,7 @@ export default function TraceGraph({
   zoom,
   offset,
   onOffsetChange,
+  onZoomChange,
   onTraceToChild
 }: TraceGraphProps) {
   const { state } = useAppContext();
@@ -256,13 +258,34 @@ export default function TraceGraph({
       .append('g')
       .attr('class', 'node')
       .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`)
+      .style('cursor', 'pointer')
       .on('mouseenter', (event, d) => {
         setHoveredNode(d.id);
+        // Add highlight effect
+        d3.select(event.currentTarget)
+          .select('circle:first-child')
+          .attr('stroke', '#3B82F6')
+          .attr('stroke-width', 2);
         showTooltip(d, event);
       })
-      .on('mouseleave', () => {
+      .on('mouseleave', (event) => {
         setHoveredNode(null);
+        // Remove highlight effect
+        d3.select(event.currentTarget)
+          .select('circle:first-child')
+          .attr('stroke', '#FFFFFF')
+          .attr('stroke-width', 2);
         hideTooltip();
+      })
+      .on('click', (event, d) => {
+        // Handle node click - could show more details or focus on the node
+        console.log('Node clicked:', d.id);
+        // Center the graph on this node
+        if (d.x !== undefined && d.y !== undefined) {
+          const newOffsetX = -d.x * zoom;
+          const newOffsetY = -d.y * zoom;
+          onOffsetChange([newOffsetX, newOffsetY]);
+        }
       });
     
     // Create shape outlines for nodes (similar to WorkflowGraph)
@@ -281,47 +304,40 @@ export default function TraceGraph({
       .attr('stroke', '#FFFFFF')
       .attr('stroke-width', 2);
     
-    // Add node icons using proper icon paths (similar to WorkflowGraph)
+    // Add node icons using proper icon paths
     nodeGroups.each(function(d) {
       const node = d3.select(this);
-      const iconSize = nodeSize * 1.4;
-      
-      // Create a group for the icon
-      const iconGroup = node.append('g')
-        .attr('transform', `translate(${-iconSize/2}, ${-iconSize/2})`);
       
       // Add proper node icons
       if (d.type === 'bot' || d.type === 'queue') {
-        // Create SVG icon based on node type
-        const iconHtml = getNodeImagesSvgString({ 
+        // Add a white background circle for the icon
+        node.append('circle')
+          .attr('r', nodeSize * 0.7)
+          .attr('fill', 'white');
+        
+        // Get image path for the node type
+        const imgPath = getNodeImagePath({ 
           type: d.type, 
-          id: d.id,
           has_processed: d.has_processed,
           status: d.has_processed ? 'running' : 'blocked'
         });
         
-        // Add a background circle for the icon with appropriate color
-        iconGroup.append('circle')
-          .attr('cx', iconSize/2)
-          .attr('cy', iconSize/2)
-          .attr('r', nodeSize * 0.8)
-          .attr('fill', 'white');
-          
-        // Add the icon as an SVG element
-        iconGroup.append('g')
-          .attr('transform', `translate(${iconSize * 0.2}, ${iconSize * 0.2}) scale(${(iconSize * 0.6) / 100})`)
-          .html(iconHtml);
+        // Add image directly using SVG image element with proper centering
+        node.append('image')
+          .attr('href', typeof window !== 'undefined' ? 
+            `${window.location.origin}${imgPath}` : imgPath)
+          .attr('x', -nodeSize * 0.5)
+          .attr('y', -nodeSize * 0.5)
+          .attr('width', nodeSize)
+          .attr('height', nodeSize)
+          .attr('preserveAspectRatio', 'xMidYMid meet');
       } else {
         // Fallback for other node types
-        iconGroup.append('circle')
-          .attr('cx', iconSize/2)
-          .attr('cy', iconSize/2)
-          .attr('r', nodeSize * 0.65)
+        node.append('circle')
+          .attr('r', nodeSize * 0.7)
           .attr('fill', 'white');
           
-        iconGroup.append('text')
-          .attr('x', iconSize/2)
-          .attr('y', iconSize/2)
+        node.append('text')
           .attr('text-anchor', 'middle')
           .attr('dominant-baseline', 'central')
           .attr('font-size', '14px')
@@ -465,7 +481,18 @@ export default function TraceGraph({
       tooltipRef.current.style.display = 'none';
     }
   };
-  
+
+  // Handle zoom changes
+  const handleZoomChange = (zoomFactor: number) => {
+    // Limit zoom to reasonable bounds (0.5 to 2)
+    const newZoom = Math.max(0.5, Math.min(2, zoom * zoomFactor));
+    
+    // Use the onZoomChange handler if provided
+    if (onZoomChange) {
+      onZoomChange(newZoom);
+    }
+  };
+
   return (
     <div className="relative w-full h-full">
       <svg
@@ -478,6 +505,43 @@ export default function TraceGraph({
         ref={tooltipRef}
         className="absolute hidden z-50 bg-white dark:bg-gray-800 p-2 rounded shadow-lg border border-gray-200 dark:border-gray-700 max-w-xs"
       />
+      
+      {/* Zoom and position controls */}
+      <div className="absolute bottom-4 right-4 flex flex-row gap-2">
+        <button 
+          className="p-2 bg-white dark:bg-gray-800 rounded-full shadow hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
+          onClick={() => handleZoomChange(1.1)} // Zoom in
+          title="Zoom in"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+          </svg>
+        </button>
+        <button 
+          className="p-2 bg-white dark:bg-gray-800 rounded-full shadow hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
+          onClick={() => handleZoomChange(0.9)} // Zoom out
+          title="Zoom out"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 12H6" />
+          </svg>
+        </button>
+        <button 
+          className="p-2 bg-white dark:bg-gray-800 rounded-full shadow hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
+          onClick={() => {
+            // Reset both position and zoom
+            onOffsetChange([0, 0]);
+            if (onZoomChange) {
+              onZoomChange(1);
+            }
+          }}
+          title="Reset view"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l-3 3m0 0l-3-3m3 3V7m6 10l-3-3m0 0l-3 3m3-3v3M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 } 
