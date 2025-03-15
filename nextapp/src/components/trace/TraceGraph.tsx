@@ -46,7 +46,7 @@ interface TraceGraphProps {
   onTraceToChild: (path: string) => void;
 }
 
-// Function to wrap text similar to WorkflowGraph
+// Fix the text wrapping function for proper vertical stacking
 const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, label: string) => {
   // If text is very short, just add it directly
   if (label.length <= 10) {
@@ -56,49 +56,41 @@ const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, label: string) =>
 
   // Otherwise, split into multiple lines for longer text
   const words = label.split(/(?=[A-Z])|\s+/); // Split on spaces or camelCase
-  const lineHeight = 1.1; // ems
-  let line: string[] = [];
-  let lineNumber = 0;
-  const y = text.attr('y') || '0';
-  const dy = parseFloat(text.attr('dy') || '0');
-  const maxWidth = 100; // Maximum width in pixels
-
+  const lineHeight = 1.2; // ems - increased for better spacing
+  
   // Clear any existing content
   text.text(null);
 
-  let tspan = text.append('tspan')
-    .attr('x', 0)
-    .attr('y', y)
-    .attr('dy', dy + 'px');
-
+  // Create a wrapper group for better positioning
+  let y = 0;
   let currentLine = '';
-  let currentWidth = 0;
-
-  words.forEach((word, i) => {
-    // Test adding this word to the line
+  const maxWidth = 12; // Character limit per line
+  
+  // Create multiple tspans for each line
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
     const testLine = currentLine + (currentLine ? ' ' : '') + word;
-    const testWidth = (testLine.length * 5); // Approximate width based on character count
-
-    if (testWidth > maxWidth && currentLine) {
+    
+    if (testLine.length > maxWidth && i > 0) {
       // Line would be too long, create a new line
-      tspan.text(currentLine);
-      tspan = text.append('tspan')
+      text.append('tspan')
         .attr('x', 0)
-        .attr('y', y)
-        .attr('dy', ++lineNumber * lineHeight + dy + 'px')
-        .text(word);
+        .attr('dy', y === 0 ? 0 : lineHeight + 'em')
+        .text(currentLine);
+      
       currentLine = word;
-      currentWidth = word.length * 5;
+      y++;
     } else {
-      // Add to current line
       currentLine = testLine;
-      currentWidth = testWidth;
     }
-  });
-
+  }
+  
   // Add the last line
   if (currentLine) {
-    tspan.text(currentLine);
+    text.append('tspan')
+      .attr('x', 0)
+      .attr('dy', y === 0 ? 0 : lineHeight + 'em')
+      .text(currentLine);
   }
 };
 
@@ -119,14 +111,51 @@ export default function TraceGraph({
   const [queuePayloads, setQueuePayloads] = useState<Record<string, any>>({});
   const { openNodeSettingsDialog } = useDialogs();
 
-  // Vertical spacing is doubled
-  const VERTICAL_SPACING = 160; 
+  // Vertical spacing is increased by 60% more
+  const VERTICAL_SPACING = 260; // Increased from 160 to 260 
   // Using a consistent blue color for all nodes and processed links
   const NODE_STROKE_COLOR = '#3B82F6'; 
   // Thinner stroke weight
   const STROKE_WEIGHT = 1;
 
-  // Function to fetch queue payload data
+  // Define drag handlers at component level for better type safety
+  const handleMouseMove = (event: MouseEvent) => {
+    if (!isDragging) return;
+    
+    const dx = event.clientX - dragStart[0];
+    const dy = event.clientY - dragStart[1];
+    onOffsetChange([offset[0] + dx, offset[1] + dy]);
+    setDragStart([event.clientX, event.clientY]);
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    
+    // Reset cursor back to grab
+    if (svgRef.current) {
+      d3.select(svgRef.current).select('rect').style('cursor', 'grab');
+    }
+  };
+
+  // Improved wheel event handler to fix zoom functionality
+  const handleWheel = (event: WheelEvent) => {
+    if (!onZoomChange) return;
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const delta = event.deltaY;
+    const zoomFactor = delta > 0 ? 0.9 : 1.1; // Zoom out if positive delta, in if negative
+    
+    // Limit zoom to reasonable bounds (0.25 to 3)
+    const newZoom = Math.max(0.25, Math.min(3, zoom * zoomFactor));
+    
+    onZoomChange(newZoom);
+  };
+
+  // Function to fetch queue payload data and event timestamps
   const fetchQueuePayload = async (queueId: string, eid: string) => {
     try {
       // Only fetch if we don't already have it cached
@@ -137,7 +166,10 @@ export default function TraceGraph({
           if (data.results && data.results.length > 0) {
             setQueuePayloads(prev => ({
               ...prev,
-              [`${queueId}:${eid}`]: data.results[0].payload
+              [`${queueId}:${eid}`]: {
+                payload: data.results[0].payload,
+                created_at: data.results[0].created_at || data.results[0].ts
+              }
             }));
           }
         }
@@ -145,6 +177,19 @@ export default function TraceGraph({
     } catch (error) {
       console.error('Error fetching queue payload:', error);
     }
+  };
+
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
   };
 
   // Process children - modified to create unique instances for shared children
@@ -261,20 +306,6 @@ export default function TraceGraph({
     return { nodes, links };
   };
 
-  // Handle zoom via mouse wheel
-  const handleWheel = (event: WheelEvent) => {
-    if (!onZoomChange) return;
-    
-    event.preventDefault();
-    const delta = event.deltaY;
-    const zoomFactor = delta > 0 ? 0.9 : 1.1; // Zoom out if positive delta, in if negative
-    
-    // Limit zoom to reasonable bounds (0.25 to 3)
-    const newZoom = Math.max(0.25, Math.min(3, zoom * zoomFactor));
-    
-    onZoomChange(newZoom);
-  };
-
   // Draw the graph
   useEffect(() => {
     if (!svgRef.current || !traceData) return;
@@ -285,15 +316,62 @@ export default function TraceGraph({
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
     
-    // Add wheel event listener for zooming
-    svgRef.current.addEventListener('wheel', handleWheel);
+    // Remove any existing wheel listener to prevent duplicates
+    svgRef.current.removeEventListener('wheel', handleWheel);
+    // Add wheel event listener for zooming with passive:false to allow preventDefault
+    svgRef.current.addEventListener('wheel', handleWheel, { passive: false });
+    
+    // Clear any lingering event listeners
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
     
     // Clear previous content
     svgElement.selectAll('*').remove();
     
+    // Create background rect to capture events
+    svgElement.append('rect')
+      .attr('width', width)
+      .attr('height', height)
+      .attr('fill', '#f3f4f6') // Light grey background
+      .style('cursor', 'grab')
+      .style('touch-action', 'none') // Prevent default touch actions
+      .on('mousedown', function(this: any, event: any) {
+        // Only start drag if clicking on background (not a node)
+        if (event.target === this) {
+          event.preventDefault();
+          event.stopPropagation();
+          setIsDragging(true);
+          setDragStart([event.clientX, event.clientY]);
+          
+          // Set a 'grabbing' cursor to indicate active dragging
+          d3.select(this).style('cursor', 'grabbing');
+          
+          // Add event listeners to document for better tracking
+          document.addEventListener('mousemove', handleMouseMove);
+          document.addEventListener('mouseup', handleMouseUp);
+        }
+      });
+
+    // Add a specific mouse wheel handler to the SVG
+    svgElement.on('wheel.zoom', function(this: any, event: any) {
+      if (!onZoomChange) return;
+      
+      event.preventDefault();
+      event.stopPropagation();
+      
+      const delta = event.deltaY;
+      const zoomFactor = delta > 0 ? 0.9 : 1.1; // Zoom out if positive delta, in if negative
+      
+      // Limit zoom to reasonable bounds (0.25 to 3)
+      const newZoom = Math.max(0.25, Math.min(3, zoom * zoomFactor));
+      
+      onZoomChange(newZoom);
+    });
+    
     // Create the zoom/pan container group
     const g = svgElement.append('g')
-      .attr('transform', `translate(${width/2 + offset[0]}, ${height/2 + offset[1]}) scale(${zoom})`);
+      .attr('transform', `translate(${width/2 + offset[0]}, ${height/2 + offset[1]}) scale(${zoom})`)
+      .attr('class', 'graph-container');
     
     // Draw links first (so they're behind nodes)
     const link = g.selectAll('.link')
@@ -351,23 +429,25 @@ export default function TraceGraph({
       .each(function(this: any, d: any) {
         const g = d3.select(this);
         
-        // Add background pill
+        // Add background pill with improved styling
         g.append('rect')
-          .attr('x', -40)
-          .attr('y', -10)
-          .attr('width', 80)
-          .attr('height', 20)
-          .attr('rx', 10)
-          .attr('ry', 10)
+          .attr('x', -45)
+          .attr('y', -12)
+          .attr('width', 90)
+          .attr('height', 24)
+          .attr('rx', 12)
+          .attr('ry', 12)
           .attr('fill', 'white')
           .attr('stroke', NODE_STROKE_COLOR)
-          .attr('stroke-width', 1);
+          .attr('stroke-width', 1)
+          .attr('class', 'trace-label-bg');
         
-        // Add text
+        // Add text with improved visibility
         g.append('text')
           .attr('text-anchor', 'middle')
           .attr('dominant-baseline', 'middle')
           .attr('fill', NODE_STROKE_COLOR)
+          .attr('font-weight', 'bold')
           .attr('class', 'text-xs cursor-pointer')
           .attr('pointer-events', 'all')
           .text(d.tracing ? 'tracing...' : 'click to trace')
@@ -383,8 +463,12 @@ export default function TraceGraph({
               .attr('stroke-dasharray', '5,5');
             
             // Update label
-            d3.select(event.currentTarget)
+            d3.select(this)
               .text('tracing...');
+            
+            d3.select(this.parentNode)
+              .select('.trace-label-bg')
+              .attr('fill', '#EBF5FF');
             
             // Build the children path
             const sourceNode = nodes.find(n => n.uniqueId === d.source);
@@ -449,15 +533,15 @@ export default function TraceGraph({
     // Draw node backgrounds based on type
     nodeGroups.append('circle')
       .attr('r', nodeSize)
-      .attr('fill', d => {
-        if (d.id === traceData.event.id) return '#2563EB'; // Primary event
-        if (d.type === 'bot') {
-          return d.has_processed ? '#10B981' : '#EF4444'; // Green for processed, red for not
-        }
-        return '#F59E0B'; // Queue nodes are orange
-      })
-      .attr('stroke', NODE_STROKE_COLOR) // Use consistent blue stroke
+      .attr('fill', 'white') // All nodes have white background
+      .attr('stroke', NODE_STROKE_COLOR) // Blue stroke for all nodes
       .attr('stroke-width', STROKE_WEIGHT);
+    
+    // For bot nodes, use dashed outline for unprocessed bots
+    nodeGroups
+      .filter(d => d.type === 'bot' && !d.has_processed)
+      .select('circle')
+      .attr('stroke-dasharray', '2,2');
     
     // Add node icons using proper icon paths
     nodeGroups.each(function(d) {
@@ -506,16 +590,88 @@ export default function TraceGraph({
     // Node labels with text wrapping
     nodeGroups.append('text')
       .attr('text-anchor', 'middle')
-      .attr('dy', nodeSize + 15)
+      .attr('y', nodeSize + 15)
       .attr('fill', '#4B5563')
-      .attr('class', 'text-xs font-medium')
+      .attr('class', 'text-xs font-medium node-label')
       .each(function(d) {
-        // Extract short label from server_id
+        const text = d3.select(this);
+        // Extract short label
         const parts = d.server_id ? d.server_id.split(':') : (d.id ? d.id.split(':') : []);
         const label = parts.length > 1 ? parts[1] : (d.label || d.id || '');
         
-        // Apply text wrapping
-        wrapNodeLabel(d3.select(this), label);
+        // Apply simplified text wrapping to avoid overlapping
+        if (label.length <= 12) {
+          text.text(label);
+        } else {
+          // For longer labels, add line breaks
+          const lines = [];
+          let currentLine = '';
+          
+          // Split the label into words
+          const words = label.split(/(?=[A-Z])|\s+/);
+          
+          words.forEach(word => {
+            if ((currentLine + word).length <= 12) {
+              currentLine += word;
+            } else {
+              if (currentLine) lines.push(currentLine);
+              currentLine = word;
+            }
+          });
+          
+          if (currentLine) lines.push(currentLine);
+          
+          // Add each line as a tspan with proper vertical spacing
+          lines.forEach((line, i) => {
+            text.append('tspan')
+              .attr('x', 0)
+              .attr('dy', i === 0 ? 0 : '1.2em')
+              .text(line);
+          });
+        }
+      });
+    
+    // Add processed/not processed labels BELOW node name for bot nodes
+    nodeGroups
+      .filter(d => d.type === 'bot')
+      .append('text')
+      .attr('text-anchor', 'middle')
+      .attr('y', nodeSize + 40) // Fixed position below the node label
+      .attr('fill', d => d.has_processed ? '#10B981' : '#EF4444')
+      .attr('class', 'text-xs font-medium status-label')
+      .text(d => d.has_processed ? 'Processed' : 'Not Processed');
+    
+    // Adjust the queue timestamp to be better positioned and formatted
+    nodeGroups
+      .filter(d => d.type === 'queue')
+      .append('text')
+      .attr('text-anchor', 'middle')
+      .attr('y', nodeSize + 45) // Position further down below the node label
+      .attr('fill', '#6B7280')
+      .attr('class', 'text-xs timestamp-label')
+      .each(function(d) {
+        const text = d3.select(this);
+        const payloadKey = `${d.id}:${traceData.event.id}`;
+        const queueData = queuePayloads[payloadKey];
+        
+        if (queueData && queueData.created_at) {
+          text.text(formatDate(queueData.created_at));
+        } else {
+          text.text('Loading time...');
+          
+          // Fetch the data if not available
+          if (d.type === 'queue' && traceData.event.id) {
+            fetchQueuePayload(d.id, traceData.event.id).then(() => {
+              // Update the text when data is available
+              const updatedData = queuePayloads[payloadKey];
+              if (updatedData && updatedData.created_at) {
+                text.text(formatDate(updatedData.created_at));
+              } else {
+                text.text('Time unavailable');
+              }
+            });
+          }
+        }
       });
     
     // Add queue settings button
@@ -560,44 +716,16 @@ export default function TraceGraph({
         });
       });
     
-    // Bot nodes show processed/not processed
-    nodeGroups
-      .filter(d => d.type === 'bot')
-      .append('text')
-      .attr('text-anchor', 'middle')
-      .attr('dy', -nodeSize - 15)
-      .attr('fill', d => d.has_processed ? '#10B981' : '#EF4444')
-      .attr('class', 'text-xs font-medium')
-      .text(d => d.has_processed ? 'Processed' : 'Not Processed');
-    
-    // Add drag behavior for panning
-    svgElement.call(
-      d3.drag<SVGSVGElement, unknown, unknown>()
-        .on('start', (event) => {
-          if (event.sourceEvent.target.closest('.settings-button') || 
-              event.sourceEvent.target.closest('.trace-label')) return;
-          setIsDragging(true);
-          setDragStart([event.x, event.y]);
-        })
-        .on('drag', (event) => {
-          if (!isDragging) return;
-          const dx = event.x - dragStart[0];
-          const dy = event.y - dragStart[1];
-          onOffsetChange([offset[0] + dx, offset[1] + dy]);
-          setDragStart([event.x, event.y]);
-        })
-        .on('end', () => {
-          setIsDragging(false);
-        })
-    );
-    
-    // Cleanup event listener
+    // Cleanup event listeners in return function
     return () => {
       if (svgRef.current) {
         svgRef.current.removeEventListener('wheel', handleWheel);
       }
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      svgElement.on('wheel.zoom', null);
     };
-  }, [traceData, zoom, offset, onOffsetChange, onZoomChange, onTraceToChild, openNodeSettingsDialog]);
+  }, [traceData, zoom, offset, onOffsetChange, onZoomChange, onTraceToChild, openNodeSettingsDialog, isDragging, queuePayloads]);
 
   // Handle tooltip positioning and content
   const showTooltip = (node: TraceNode, event: any) => {
@@ -612,13 +740,15 @@ export default function TraceGraph({
     
     if (node.type === 'queue') {
       const payloadKey = `${node.id}:${traceData.event.id}`;
-      const hasPayload = queuePayloads[payloadKey];
+      const queueData = queuePayloads[payloadKey];
+      const hasPayload = queueData?.payload;
       
       content = `
         <div class="text-sm">
           <div class="font-semibold mb-1">${node.label || node.id}</div>
           <div class="text-gray-500">Type: Queue</div>
           ${node.lag !== undefined && node.lag !== null ? `<div class="text-gray-500">Lag: ${node.lag}ms</div>` : ''}
+          ${queueData?.created_at ? `<div class="text-gray-500">Time: ${formatDate(queueData.created_at)}</div>` : ''}
           
           ${hasPayload ? `
             <div class="mt-2 border-t border-gray-200 pt-2">
@@ -635,7 +765,9 @@ export default function TraceGraph({
         <div class="text-sm">
           <div class="font-semibold mb-1">${node.label || node.id}</div>
           <div class="text-gray-500">Type: Bot</div>
-          <div class="text-gray-500">Status: ${node.has_processed ? 'Processed' : 'Not Processed'}</div>
+          <div class="${node.has_processed ? 'text-green-500' : 'text-red-500'} font-medium">
+            ${node.has_processed ? 'Processed' : 'Not Processed'}
+          </div>
           ${node.checkpoint ? `
             <div class="mt-1 text-xs text-gray-500">
               ${node.checkpoint.checkpoint ? `<div>Last checkpoint: ${node.checkpoint.checkpoint}</div>` : ''}
