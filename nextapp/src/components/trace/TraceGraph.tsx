@@ -162,22 +162,19 @@ export default function TraceGraph({
     try {
       // Only fetch if we don't already have it cached
       if (!queuePayloads[`${queueId}:${eid}`]) {
-        const response = await fetch(`/api/queues/${queueId}/events?eid=${eid}&limit=1`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.results && data.results.length > 0) {
-            setQueuePayloads(prev => ({
-              ...prev,
-              [`${queueId}:${eid}`]: {
-                payload: data.results[0].payload,
-                created_at: data.results[0].created_at || data.results[0].ts
-              }
-            }));
+        // This API call isn't needed as specified by the user
+        // Don't make calls to /api/queues endpoint
+        
+        // Just set a placeholder timestamp if needed
+        setQueuePayloads(prev => ({
+          ...prev,
+          [`${queueId}:${eid}`]: {
+            created_at: traceData.event?.timestamp || new Date().toISOString()
           }
-        }
+        }));
       }
     } catch (error) {
-      console.error('Error fetching queue payload:', error);
+      console.error('Error handling queue data:', error);
     }
   };
 
@@ -194,7 +191,7 @@ export default function TraceGraph({
     });
   };
 
-  // Process children - modified to create unique instances for ALL nodes, not just shared children
+  // Process children - modified to create unique instances for ALL nodes and avoid overlaps
   const processChildren = (
     children: Record<string, TraceNode>,
     parentX: number, 
@@ -204,9 +201,15 @@ export default function TraceGraph({
     links: TraceLink[],
     parentId: string,
     pathPrefix = '',
-    processedNodes: Set<string> = new Set()
+    processedNodes: Set<string> = new Set(),
+    occupiedPositions: Map<number, Set<number>> = new Map()
   ): void => {
     const childKeys = Object.keys(children);
+    
+    // Track occupied positions at each X coordinate
+    if (!occupiedPositions.has(parentX + 400)) {
+      occupiedPositions.set(parentX + 400, new Set<number>());
+    }
     
     // Calculate horizontal positioning (for horizontal layout)
     childKeys.forEach((key, index) => {
@@ -214,7 +217,21 @@ export default function TraceGraph({
       const x = parentX + 400; // Doubled horizontal distance from 200 to 400
       
       // Distribute children vertically with more space, centered on the parent
-      const y = parentY - (childKeys.length - 1) * VERTICAL_SPACING / 2 + index * VERTICAL_SPACING;
+      let y = parentY - (childKeys.length - 1) * VERTICAL_SPACING / 2 + index * VERTICAL_SPACING;
+      
+      // Check if this position is occupied and adjust if needed
+      const occupiedYs = occupiedPositions.get(x)!;
+      
+      // Find a non-overlapping Y position by incrementing in VERTICAL_SPACING/2 units if needed
+      let attempts = 0;
+      const originalY = y;
+      while (occupiedYs.has(y) && attempts < 20) { // Limit attempts to avoid infinite loops
+        y = originalY + (VERTICAL_SPACING / 2) * (attempts + 1);
+        attempts++;
+      }
+      
+      // Mark this position as occupied
+      occupiedYs.add(y);
       
       // Always create a unique ID for this instance of the node
       const uniqueId = `${node.id}_${parentId}_${index}`;
@@ -254,7 +271,8 @@ export default function TraceGraph({
           links,
           uniqueId, // Use unique ID as parent
           newPathPrefix,
-          processedNodes
+          processedNodes,
+          occupiedPositions
         );
       }
     });
@@ -506,10 +524,10 @@ export default function TraceGraph({
       .on('mouseenter', (event, d) => {
         setHoveredNode(d.id);
         
-        // For queue nodes that have been traced, fetch their payload
-        if (d.type === 'queue' && traceData.event.id) {
-          fetchQueuePayload(d.id, traceData.event.id);
-        }
+        // For queue nodes, don't fetch their payload
+        // if (d.type === 'queue' && traceData.event.id) {
+        //   fetchQueuePayload(d.id, traceData.event.id);
+        // }
         
         // Add highlight effect
         d3.select(event.currentTarget)
@@ -678,33 +696,13 @@ export default function TraceGraph({
           .attr('fill', '#6B7280')
           .attr('class', 'text-xs timestamp-label');
         
-        // Logic to determine timestamp text
+        // Logic to determine timestamp text - simplified to not rely on API calls
         if (d.timestamp) {
           timestampLabel.text(formatDate(d.timestamp));
         } else if (traceData.event && traceData.event.timestamp) {
           timestampLabel.text(formatDate(traceData.event.timestamp));
         } else {
-          const payloadKey = `${d.id}:${traceData.event.id}`;
-          const queueData = queuePayloads[payloadKey];
-          
-          if (queueData && queueData.created_at) {
-            timestampLabel.text(formatDate(queueData.created_at));
-          } else {
-            timestampLabel.text('Loading time...');
-            
-            // Fetch the data if not available
-            if (traceData.event.id) {
-              fetchQueuePayload(d.id, traceData.event.id).then(() => {
-                // Update the text when data is available
-                const updatedData = queuePayloads[payloadKey];
-                if (updatedData && updatedData.created_at) {
-                  timestampLabel.text(formatDate(updatedData.created_at));
-                } else {
-                  timestampLabel.text('Time unavailable');
-                }
-              });
-            }
-          }
+          timestampLabel.text('Time unavailable');
         }
       }
     });
@@ -776,7 +774,6 @@ export default function TraceGraph({
     if (node.type === 'queue') {
       const payloadKey = `${node.id}:${traceData.event.id}`;
       const queueData = queuePayloads[payloadKey];
-      const hasPayload = queueData?.payload;
       
       content = `
         <div class="text-sm">
@@ -785,14 +782,7 @@ export default function TraceGraph({
           ${node.lag !== undefined && node.lag !== null ? `<div class="text-gray-500">Lag: ${node.lag}ms</div>` : ''}
           ${queueData?.created_at ? `<div class="text-gray-500">Time: ${formatDate(queueData.created_at)}</div>` : ''}
           
-          ${hasPayload ? `
-            <div class="mt-2 border-t border-gray-200 pt-2">
-              <div class="font-medium text-gray-700 mb-1">Event Payload:</div>
-              <div class="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-60">
-                <pre>${JSON.stringify(hasPayload, null, 2)}</pre>
-              </div>
-            </div>
-          ` : ''}
+          <!-- Removed payload section as we're not fetching that data -->
         </div>
       `;
     } else if (node.type === 'bot') {
