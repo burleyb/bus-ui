@@ -168,3 +168,21 @@ body {
   --ag-alpine-active-color: hsl(var(--primary));
   --ag-selected-row-background-color: hsl(var(--primary) / 0.2);
 }
+
+/* Hide built-in close button for dialogs with our custom close button */
+.hide-close-button > button:last-of-type {
+  display: none;
+}
+
+/* Cursor utilities for trace graph */
+.cursor-default {
+  cursor: default !important;
+}
+
+.cursor-grab {
+  cursor: grab !important;
+}
+
+.cursor-grabbing {
+  cursor: grabbing !important;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { useAppContext } from '@/context/AppContext';
 import { useDialogs } from '@/hooks/useDialogs';
@@ -135,22 +135,6 @@ export default function TraceGraph({
   const NODE_STROKE_COLOR = '#3B82F6'; 
   // Thinner stroke weight
   const STROKE_WEIGHT = 2;
-
-  // Improved wheel event handler to fix zoom functionality
-  const handleWheel = (event: WheelEvent) => {
-    if (!onZoomChange) return;
-    
-    event.preventDefault();
-    event.stopPropagation();
-    
-    const delta = event.deltaY;
-    const zoomFactor = delta > 0 ? 0.9 : 1.1; // Zoom out if positive delta, in if negative
-    
-    // Limit zoom to reasonable bounds (0.25 to 3)
-    const newZoom = Math.max(0.25, Math.min(3, zoom * zoomFactor));
-    
-    onZoomChange(newZoom);
-  };
 
   // Function to fetch queue payload data and event timestamps
   const fetchQueuePayload = async (queueId: string, eid: string) => {
@@ -347,11 +331,6 @@ export default function TraceGraph({
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
     
-    // Remove any existing wheel listener to prevent duplicates
-    svgRef.current.removeEventListener('wheel', handleWheel);
-    // Add wheel event listener for zooming with passive:false to allow preventDefault
-    svgRef.current.addEventListener('wheel', handleWheel, { passive: false });
-    
     // Clear previous content
     svgElement.selectAll('*').remove();
     
@@ -366,8 +345,7 @@ export default function TraceGraph({
           dragging: true
         };
         
-        // Set cursor to grabbing during drag
-        d3.select(this).style('cursor', 'grabbing');
+        // Use React state to control cursor
         setIsDragging(true);
       })
       .on('drag', function(event) {
@@ -388,8 +366,7 @@ export default function TraceGraph({
         // Reset drag state
         dragRef.current.dragging = false;
         
-        // Reset cursor to grab when drag ends
-        d3.select(this).style('cursor', 'grab');
+        // Use React state to control cursor
         setIsDragging(false);
       });
     
@@ -398,27 +375,10 @@ export default function TraceGraph({
       .attr('width', width)
       .attr('height', height)
       .attr('fill', '#f3f4f6') // Light grey background
-      .style('cursor', 'grab')
       .style('touch-action', 'none') // Prevent default touch actions
       .style('user-select', 'none') // Prevent selection during drag
       .call(dragBehavior as any); // Apply the drag behavior
       
-    // Add a specific mouse wheel handler to the SVG
-    svgElement.on('wheel.zoom', function(event) {
-      if (!onZoomChange) return;
-      
-      event.preventDefault();
-      event.stopPropagation();
-      
-      const delta = event.deltaY;
-      const zoomFactor = delta > 0 ? 0.9 : 1.1; // Zoom out if positive delta, in if negative
-      
-      // Limit zoom to reasonable bounds (0.25 to 3)
-      const newZoom = Math.max(0.25, Math.min(3, zoom * zoomFactor));
-      
-      onZoomChange(newZoom);
-    });
-    
     // Create the zoom/pan container group
     const g = svgElement.append('g')
       .attr('transform', `translate(${width/2 + offset[0]}, ${height/2 + offset[1]}) scale(${zoom})`)
@@ -780,13 +740,8 @@ export default function TraceGraph({
     
     // Cleanup function
     return () => {
-      // Remove wheel event listener
-      if (svgRef.current) {
-        svgRef.current.removeEventListener('wheel', handleWheel);
-      }
-      
       // Clean up D3 event listeners
-      svgElement.on('wheel.zoom', null);
+      svgElement.on('wheel', null);
     };
   }, [traceData, zoom, offset, onOffsetChange, onZoomChange, onTraceToChild, openNodeSettingsDialog, isDragging, queuePayloads]);
 
@@ -859,24 +814,35 @@ export default function TraceGraph({
     }
   };
 
-  // Handle zoom changes
-  const handleZoomChange = (zoomFactor: number) => {
-    // Limit zoom to reasonable bounds (0.25 to 3)
-    const newZoom = Math.max(0.25, Math.min(3, zoom * zoomFactor));
-    
-    // Use the onZoomChange handler if provided
-    if (onZoomChange) {
-      onZoomChange(newZoom);
-    }
-  };
-
   return (
-    <div className="relative w-full h-full">
+    <div 
+      className="relative w-full h-full"
+      onWheel={(e) => {
+        if (!onZoomChange) return;
+        
+        // Prevent default scrolling behavior
+        e.preventDefault();
+        
+        // Determine direction and apply zoom
+        const isScrollingUp = e.deltaY < 0;
+        
+        if (isScrollingUp) {
+          // Zoom in - same as zoom in button
+          const newZoom = Math.min(3, zoom * 1.1);
+          onZoomChange(newZoom);
+        } else {
+          // Zoom out - same as zoom out button
+          const newZoom = Math.max(0.25, zoom * 0.9);
+          onZoomChange(newZoom);
+        }
+      }}
+    >
       <svg
         ref={svgRef}
-        className="w-full h-full bg-gray-100 dark:bg-gray-800"
+        className={`w-full h-full bg-gray-100 dark:bg-gray-800 ${isDragging ? 'cursor-grabbing' : 'cursor-default'}`}
         width="100%"
         height="100%"
+        style={{ touchAction: 'none' }} // Prevent browser-default touch actions
       />
       <div
         ref={tooltipRef}
@@ -887,7 +853,13 @@ export default function TraceGraph({
       <div className="absolute bottom-4 right-4 flex flex-row gap-2">
         <button 
           className="p-2 bg-white dark:bg-gray-800 rounded-full shadow hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
-          onClick={() => handleZoomChange(1.1)} // Zoom in
+          onClick={() => {
+            if (onZoomChange) {
+              // Zoom in by 10%
+              const newZoom = Math.min(3, zoom * 1.1);
+              onZoomChange(newZoom);
+            }
+          }}
           title="Zoom in"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -896,7 +868,13 @@ export default function TraceGraph({
         </button>
         <button 
           className="p-2 bg-white dark:bg-gray-800 rounded-full shadow hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none"
-          onClick={() => handleZoomChange(0.9)} // Zoom out
+          onClick={() => {
+            if (onZoomChange) {
+              // Zoom out by 10%
+              const newZoom = Math.max(0.25, zoom * 0.9);
+              onZoomChange(newZoom);
+            }
+          }}
           title="Zoom out"
         >
           <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
