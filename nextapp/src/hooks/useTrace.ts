@@ -11,6 +11,9 @@ const getTrace = async (queueId: string, eventId: string, children?: string) => 
     
     // Add children parameter if provided
     if (children) {
+      // Format the children path parameter 
+      // The path should be a comma-separated list of node IDs
+      // This matches the format expected by the API: api/trace/queueName/eid?children=nodePath
       url += `?children=${encodeURIComponent(children)}`;
     }
     

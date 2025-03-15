@@ -23,6 +23,10 @@ interface TraceNode {
   uniqueId?: string;
   // Add timestamp property that might be present
   timestamp?: string;
+  // Add payload property that might be present
+  payload?: any;
+  // Store path from root for tracing
+  pathFromRoot?: string;
 }
 
 interface TraceLink {
@@ -248,7 +252,9 @@ export default function TraceGraph({
         timestamp,
         x,
         y,
-        uniqueId
+        uniqueId,
+        // Store path from root for tracing
+        pathFromRoot: pathPrefix ? `${pathPrefix},${node.id}` : node.id
       });
       
       // Add link from parent to this node
@@ -284,6 +290,11 @@ export default function TraceGraph({
     const links: TraceLink[] = [];
     const processedNodes = new Set<string>();
     
+    // Handle potential missing traceData
+    if (!traceData || !traceData.event) {
+      return { nodes, links };
+    }
+    
     // Start with the event node (center)
     const eventNode = { ...traceData.event, x: 0, y: 0, uniqueId: traceData.event.id };
     nodes.push(eventNode);
@@ -291,6 +302,8 @@ export default function TraceGraph({
     // Process parent nodes (placed to the left for horizontal layout)
     if (traceData.parents && traceData.parents.length > 0) {
       traceData.parents.forEach((parent, index, arr) => {
+        if (!parent.id) return; // Skip if parent has no id
+        
         const x = -400; // Doubled horizontal position to the left (from -200 to -400)
         // Increased vertical spacing
         const y = -(arr.length - 1) * VERTICAL_SPACING / 2 + index * VERTICAL_SPACING; 
@@ -505,8 +518,14 @@ export default function TraceGraph({
             const sourceNode = nodes.find(n => n.uniqueId === d.source);
             const targetNode = nodes.find(n => n.uniqueId === d.target);
             
-            if (sourceNode && targetNode) {
-              onTraceToChild([sourceNode.id, targetNode.id].join(','));
+            // Only call onTraceToChild if both nodes exist and have ids
+            if (sourceNode && targetNode && sourceNode.id && targetNode.id) {
+              // If target node has a stored path from root, use that for more complete tracing
+              // This enables deeper tracing through the tree as described in requirements
+              const tracePath = targetNode.pathFromRoot || `${sourceNode.id},${targetNode.id}`;
+              onTraceToChild(tracePath);
+            } else {
+              console.error('Cannot trace: missing node data');
             }
           });
       });
@@ -709,7 +728,7 @@ export default function TraceGraph({
     
     // Add queue settings button
     nodeGroups
-      .filter(d => d.type === 'queue')
+      .filter(d => d.type === 'queue' || d.type === 'bot') // Modified to include bot nodes
       .each(function(d) {
         const group = d3.select(this);
         
@@ -727,11 +746,14 @@ export default function TraceGraph({
           .attr('r', 10)
           .attr('fill', '#4B5563');
         
-        // Add settings icon
+        // Add settings icon - replaced with proper gear icon from WorkflowGraphRenderer
         group.select('.settings-button')
-          .append('g')
-          .attr('transform', 'translate(0, 0) scale(0.6)')
-          .html('<path d="M9 2.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" fill="white"/><path d="M9 8.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" fill="white"/><path d="M9 14.5a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3Z" fill="white"/>');
+          .append('path')
+          .attr('d', 'M9.594 3.094A1.5 1.5 0 0 1 11.07 4.5h.164a1.5 1.5 0 0 1 1.477 1.256l.133.792a1.5 1.5 0 0 0 1.732 1.132l.316-.07a1.5 1.5 0 0 1 1.706.8l.082.16a1.5 1.5 0 0 1-.292 1.841l-.63.54a1.5 1.5 0 0 0 0 2.25l.63.54a1.5 1.5 0 0 1 .292 1.841l-.082.16a1.5 1.5 0 0 1-1.706.8l-.316-.07a1.5 1.5 0 0 0-1.732 1.132l-.133.792A1.5 1.5 0 0 1 11.234 19h-.164a1.5 1.5 0 0 1-1.477-1.256l-.133-.792a1.5 1.5 0 0 0-1.732-1.132l-.316.07a1.5 1.5 0 0 1-1.706-.8l-.082-.16a1.5 1.5 0 0 1 .292-1.841l.63-.54a1.5 1.5 0 0 0 0-2.25l-.63-.54a1.5 1.5 0 0 1-.292-1.841l.082-.16a1.5 1.5 0 0 1 1.706-.8l.316.07a1.5 1.5 0 0 0 1.732-1.132l.133-.792ZM11 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z')
+          .attr('transform', 'translate(-10, -10) scale(0.85)')
+          .attr('fill', 'white')
+          .attr('stroke', 'white')
+          .attr('stroke-width', '0.2');
         
         // Show buttons on hover
         group.on('mouseenter.buttons', function() {
@@ -775,6 +797,10 @@ export default function TraceGraph({
       const payloadKey = `${node.id}:${traceData.event.id}`;
       const queueData = queuePayloads[payloadKey];
       
+      // Show payload if this is the primary node with payload
+      const isPrimaryNode = node.id === traceData.event.id;
+      const hasPayload = isPrimaryNode && traceData.event.payload;
+      
       content = `
         <div class="text-sm">
           <div class="font-semibold mb-1">${node.label || node.id}</div>
@@ -782,7 +808,14 @@ export default function TraceGraph({
           ${node.lag !== undefined && node.lag !== null ? `<div class="text-gray-500">Lag: ${node.lag}ms</div>` : ''}
           ${queueData?.created_at ? `<div class="text-gray-500">Time: ${formatDate(queueData.created_at)}</div>` : ''}
           
-          <!-- Removed payload section as we're not fetching that data -->
+          ${hasPayload ? `
+            <div class="mt-2 border-t border-gray-200 pt-2">
+              <div class="font-medium text-gray-700 mb-1">Event Payload:</div>
+              <div class="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-60">
+                <pre>${JSON.stringify(traceData.event.payload, null, 2)}</pre>
+              </div>
+            </div>
+          ` : ''}
         </div>
       `;
     } else if (node.type === 'bot') {

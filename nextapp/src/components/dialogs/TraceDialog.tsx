@@ -66,6 +66,10 @@ export default function TraceDialog({
   
   // Handle tracing to a child node
   const handleTraceToChild = (path: string) => {
+    // The path parameter is a comma-separated list of node IDs that represents
+    // the path through the trace tree, e.g. "nodeA,nodeB,nodeC"
+    // This is passed directly to useTrace which will use it in the API call:
+    // api/trace/queueName/eid?children=nodeA,nodeB,nodeC
     setActiveTrace(path);
   };
   
