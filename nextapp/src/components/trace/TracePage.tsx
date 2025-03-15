@@ -7,10 +7,7 @@ import {
   Search, 
   Calendar,
   Clock,
-  Zap,
-  ZoomIn,
-  ZoomOut,
-  Target
+  Zap
 } from 'lucide-react';
 import { useTraceSearch } from '@/hooks/useTraceActions';
 import { 
@@ -24,7 +21,6 @@ import { useAppContext } from '@/context/AppContext';
 import JSONEditorComponent, { JSONEditorHandle } from '@/components/json/JSONEditorComponent';
 import CatalogSearch from '@/components/catalog/CatalogSearch';
 import TraceDialog from '@/components/dialogs/TraceDialog';
-import * as d3 from 'd3';
 
 export default function TracePage() {
   const router = useRouter();
@@ -42,6 +38,7 @@ export default function TracePage() {
   const [selectedEventId, setSelectedEventId] = useState<string | null>(initialEventId || null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const editorRef = useRef<JSONEditorHandle>(null);
+  const [jsonEditorMode, setJsonEditorMode] = useState<'tree' | 'view' | 'code'>('code');
   
   // State for trace dialog
   const [showTraceDialog, setShowTraceDialog] = useState(false);
@@ -51,18 +48,6 @@ export default function TracePage() {
   // Refs for event list and keyboard navigation
   const eventsContainerRef = useRef<HTMLDivElement>(null);
   const eventRowsRef = useRef<{ [id: string]: HTMLTableRowElement }>({});
-  
-  // D3 graph refs
-  const svgRef = useRef<SVGSVGElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const graphContainerRef = useRef<HTMLDivElement>(null);
-  
-  // Graph view state
-  const [graphZoom, setGraphZoom] = useState(1);
-  const [graphOffset, setGraphOffset] = useState([0, 0]);
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [graphTraceData, setGraphTraceData] = useState<any>(null);
   
   // Use the trace search hook to handle searching and filtering
   const { 
@@ -196,176 +181,6 @@ export default function TracePage() {
       return 'Invalid Date';
     }
   };
-  
-  // Graph zoom/pan functions
-  const handleZoomIn = () => {
-    setGraphZoom(prev => Math.min(prev * 1.2, 3));
-  };
-  
-  const handleZoomOut = () => {
-    setGraphZoom(prev => Math.max(prev / 1.2, 0.3));
-  };
-  
-  const startDrag = (e: React.MouseEvent) => {
-    setIsDragging(true);
-    setDragStart({ x: e.clientX, y: e.clientY });
-  };
-  
-  const updateDrag = (e: React.MouseEvent) => {
-    if (isDragging) {
-      const dx = e.clientX - dragStart.x;
-      const dy = e.clientY - dragStart.y;
-      setGraphOffset([graphOffset[0] + dx, graphOffset[1] + dy]);
-      setDragStart({ x: e.clientX, y: e.clientY });
-    }
-  };
-  
-  const endDrag = () => {
-    setIsDragging(false);
-  };
-  
-  // Render D3 graph
-  useEffect(() => {
-    if (!selectedEvent || !selectedEvent.trace || !svgRef.current || !graphContainerRef.current) {
-      return;
-    }
-    
-    // Store the trace data for the graph
-    setGraphTraceData(selectedEvent.trace);
-    
-    // Clear previous graph
-    d3.select(svgRef.current).selectAll("*").remove();
-    
-    // Extract trace data
-    const traceData = selectedEvent.trace;
-    if (!traceData || !traceData.nodes || !traceData.nodes.length) {
-      return;
-    }
-    
-    const svg = d3.select(svgRef.current);
-    const width = graphContainerRef.current.clientWidth;
-    const height = graphContainerRef.current.clientHeight;
-    
-    svg.attr("width", width).attr("height", height);
-    
-    // Create a main group for zoom/pan transformations
-    const g = svg.append("g")
-      .attr("transform", `translate(${graphOffset[0]},${graphOffset[1]}) scale(${graphZoom})`);
-    
-    // Create an object to track existing nodes and their positions
-    const nodePositions: {[key: string]: {x: number, y: number}} = {};
-    
-    // Extract nodes and links from trace data
-    const nodes = traceData.nodes || [];
-    const links = traceData.edges || [];
-    
-    // Create a horizontal layout
-    const nodeWidth = 120;
-    const nodeHeight = 60;
-    const horizontalSpacing = 200;
-    const verticalSpacing = 100;
-    
-    // Position nodes horizontally in order of sequence
-    nodes.forEach((node: any, index: number) => {
-      const x = 100 + index * horizontalSpacing;
-      const y = height / 2;
-      nodePositions[node.id] = { x, y };
-    });
-    
-    // Draw links first (to be behind nodes)
-    g.selectAll(".link")
-      .data(links)
-      .enter()
-      .append("path")
-      .attr("class", "link")
-      .attr("d", (d: any) => {
-        const source = nodePositions[d.source];
-        const target = nodePositions[d.target];
-        
-        if (source && target) {
-          // Create a curved path between nodes
-          return `M ${source.x + nodeWidth/2} ${source.y}
-                  C ${source.x + nodeWidth/2 + horizontalSpacing/3} ${source.y},
-                    ${target.x - nodeWidth/2 - horizontalSpacing/3} ${target.y},
-                    ${target.x - nodeWidth/2} ${target.y}`;
-        }
-        return "";
-      })
-      .attr("fill", "none")
-      .attr("stroke", "#aaa")
-      .attr("stroke-width", 2)
-      .attr("marker-end", "url(#arrowhead)");
-    
-    // Define arrowhead marker
-    svg.append("defs").append("marker")
-      .attr("id", "arrowhead")
-      .attr("viewBox", "0 -5 10 10")
-      .attr("refX", 8)
-      .attr("refY", 0)
-      .attr("markerWidth", 6)
-      .attr("markerHeight", 6)
-      .attr("orient", "auto")
-      .append("path")
-      .attr("d", "M0,-5L10,0L0,5")
-      .attr("fill", "#aaa");
-    
-    // Draw nodes
-    const nodeGroups = g.selectAll(".node")
-      .data(nodes)
-      .enter()
-      .append("g")
-      .attr("class", "node")
-      .attr("transform", (d: any) => {
-        const pos = nodePositions[d.id] || { x: 0, y: 0 };
-        return `translate(${pos.x - nodeWidth/2}, ${pos.y - nodeHeight/2})`;
-      })
-      .attr("cursor", "pointer")
-      .on("click", (event: any, d: any) => {
-        // Handle node click
-      });
-    
-    // Node rectangles
-    nodeGroups.append("rect")
-      .attr("width", nodeWidth)
-      .attr("height", nodeHeight)
-      .attr("rx", 6)
-      .attr("ry", 6)
-      .attr("fill", "white")
-      .attr("stroke", "#2563eb")
-      .attr("stroke-width", 2);
-    
-    // Node icons
-    nodeGroups.append("circle")
-      .attr("cx", 30)
-      .attr("cy", nodeHeight / 2)
-      .attr("r", 12)
-      .attr("fill", "#2563eb");
-    
-    nodeGroups.append("text")
-      .attr("x", 30)
-      .attr("y", nodeHeight / 2)
-      .attr("text-anchor", "middle")
-      .attr("dominant-baseline", "central")
-      .attr("fill", "white")
-      .attr("font-family", "sans-serif")
-      .attr("font-size", "12px")
-      .text((d: any) => d.type && d.type.charAt(0).toUpperCase() || "E");
-    
-    // Node labels
-    nodeGroups.append("text")
-      .attr("x", nodeWidth / 2 + 10)
-      .attr("y", nodeHeight / 2)
-      .attr("text-anchor", "start")
-      .attr("dominant-baseline", "central")
-      .attr("fill", "#333")
-      .attr("font-family", "sans-serif")
-      .attr("font-size", "12px")
-      .text((d: any) => {
-        const label = d.id || d.name || "Unknown";
-        return label.length > 15 ? label.substring(0, 12) + "..." : label;
-      });
-    
-  }, [selectedEvent, graphOffset, graphZoom]);
   
   // Auto-select first event when events load
   useEffect(() => {
@@ -584,41 +399,75 @@ export default function TracePage() {
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Event Details</h2>
             
-            {/* Zoom controls */}
-            <div className="flex space-x-2">
-              <button 
-                onClick={handleZoomIn}
-                className="p-1 rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300"
-                title="Zoom In"
-              >
-                <ZoomIn size={16} />
-              </button>
-              <button 
-                onClick={handleZoomOut}
-                className="p-1 rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300"
-                title="Zoom Out"
-              >
-                <ZoomOut size={16} />
-              </button>
+            {/* JSON Editor Controls */}
+            <div className="flex space-x-2 items-center">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search JSON..."
+                  className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-700 rounded w-32
+                            bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200
+                            focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  onChange={(e) => {
+                    if (editorRef.current) {
+                      try {
+                        editorRef.current.search(e.target.value);
+                      } catch (err) {
+                        console.error('Error searching JSON:', err);
+                      }
+                    }
+                  }}
+                />
+                <Search className="absolute right-2 top-1 h-3 w-3 text-gray-400 dark:text-gray-500" />
+              </div>
+              
+              <div className="flex space-x-1">
+                <button
+                  onClick={() => editorRef.current?.expandAll()}
+                  className="p-1 rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs"
+                  title="Expand All"
+                >
+                  Expand
+                </button>
+                <button
+                  onClick={() => editorRef.current?.collapseAll()}
+                  className="p-1 rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs"
+                  title="Collapse All"
+                >
+                  Collapse
+                </button>
+              </div>
+              
+              {/* View modes */}
+              <div className="flex space-x-1">
+                {['tree', 'code', 'view'].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setJsonEditorMode(m as any)}
+                    className={`p-1 rounded-md ${
+                      jsonEditorMode === m
+                        ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300'
+                        : 'bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300'
+                    } text-xs`}
+                  >
+                    {m.charAt(0).toUpperCase() + m.slice(1)}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
           
-          <div 
-            ref={graphContainerRef}
-            className="flex-1 overflow-hidden border border-gray-200 dark:border-gray-700 rounded-md relative"
-            onMouseDown={startDrag}
-            onMouseMove={updateDrag}
-            onMouseUp={endDrag}
-            onMouseLeave={endDrag}
-          >
+          <div className="flex-1 overflow-hidden border border-gray-200 dark:border-gray-700 rounded-md relative">
             {selectedEvent ? (
-              <>
-                <svg 
-                  ref={svgRef} 
-                  className="w-full h-full"
-                ></svg>
-                <div ref={tooltipRef} className="absolute hidden"></div>
-              </>
+              <JSONEditorComponent 
+                data={selectedEvent.payload}
+                height="100%"
+                width="100%"
+                mode={jsonEditorMode}
+                ref={editorRef}
+                className="h-full"
+                showMainMenu={false}
+              />
             ) : (
               <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
                 <p>Select an event to view details</p>
