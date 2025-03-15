@@ -112,7 +112,6 @@ export default function TraceGraph({
   const svgRef = useRef<SVGSVGElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<[number, number]>([0, 0]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [queuePayloads, setQueuePayloads] = useState<Record<string, any>>({});
   const { openNodeSettingsDialog } = useDialogs();
@@ -123,27 +122,6 @@ export default function TraceGraph({
   const NODE_STROKE_COLOR = '#3B82F6'; 
   // Thinner stroke weight
   const STROKE_WEIGHT = 2;
-
-  // Define drag handlers at component level for better type safety
-  const handleMouseMove = (event: MouseEvent) => {
-    if (!isDragging) return;
-    
-    const dx = event.clientX - dragStart[0];
-    const dy = event.clientY - dragStart[1];
-    onOffsetChange([offset[0] + dx, offset[1] + dy]);
-    setDragStart([event.clientX, event.clientY]);
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    
-    // Reset cursor back to grab
-    if (svgRef.current) {
-      d3.select(svgRef.current).select('rect').style('cursor', 'grab');
-    }
-  };
 
   // Improved wheel event handler to fix zoom functionality
   const handleWheel = (event: WheelEvent) => {
@@ -361,12 +339,25 @@ export default function TraceGraph({
     // Add wheel event listener for zooming with passive:false to allow preventDefault
     svgRef.current.addEventListener('wheel', handleWheel, { passive: false });
     
-    // Clear any lingering event listeners
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    
     // Clear previous content
     svgElement.selectAll('*').remove();
+    
+    // Create the D3 drag behavior
+    const dragBehavior = d3.drag()
+      .on('start', function() {
+        // Set cursor to grabbing during drag
+        d3.select(this).style('cursor', 'grabbing');
+        setIsDragging(true);
+      })
+      .on('drag', function(event) {
+        // Update offset based on drag delta
+        onOffsetChange([offset[0] + event.dx, offset[1] + event.dy]);
+      })
+      .on('end', function() {
+        // Reset cursor to grab when drag ends
+        d3.select(this).style('cursor', 'grab');
+        setIsDragging(false);
+      });
     
     // Create background rect to capture events
     svgElement.append('rect')
@@ -376,28 +367,10 @@ export default function TraceGraph({
       .style('cursor', 'grab')
       .style('touch-action', 'none') // Prevent default touch actions
       .style('user-select', 'none') // Prevent selection during drag
-      .on('mousedown', function(this: any, event: any) {
-        // Only start drag if clicking on background (not a node or control)
-        if (event.target === this) {
-          event.preventDefault();
-          event.stopPropagation();
-          
-          // Set dragging state
-          setIsDragging(true);
-          setDragStart([event.clientX, event.clientY]);
-          
-          // Set a 'grabbing' cursor to indicate active dragging
-          d3.select(this).style('cursor', 'grabbing');
-          
-          // Important: Add the mouse event listeners to document
-          // This ensures drag continues even if mouse moves outside SVG
-          document.addEventListener('mousemove', handleMouseMove);
-          document.addEventListener('mouseup', handleMouseUp);
-        }
-      });
-
+      .call(dragBehavior as any); // Apply the drag behavior
+      
     // Add a specific mouse wheel handler to the SVG
-    svgElement.on('wheel.zoom', function(this: any, event: any) {
+    svgElement.on('wheel.zoom', function(event) {
       if (!onZoomChange) return;
       
       event.preventDefault();
@@ -771,13 +744,14 @@ export default function TraceGraph({
         });
       });
     
-    // Cleanup event listeners in return function
+    // Cleanup function
     return () => {
+      // Remove wheel event listener
       if (svgRef.current) {
         svgRef.current.removeEventListener('wheel', handleWheel);
       }
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      
+      // Clean up D3 event listeners
       svgElement.on('wheel.zoom', null);
     };
   }, [traceData, zoom, offset, onOffsetChange, onZoomChange, onTraceToChild, openNodeSettingsDialog, isDragging, queuePayloads]);
