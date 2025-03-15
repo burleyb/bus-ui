@@ -52,7 +52,7 @@ interface TraceGraphProps {
   onTraceToChild: (path: string) => void;
 }
 
-// Fix the text wrapping function for proper vertical stacking
+// Fix the text wrapping function for proper vertical stackincode
 const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, label: string) => {
   // If text is very short, just add it directly
   if (label.length <= 10) {

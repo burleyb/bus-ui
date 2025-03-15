@@ -25,7 +25,7 @@ import TraceDialog from '@/components/dialogs/TraceDialog';
 export default function TracePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
   
   // Get query parameters with defaults
   const initialQueueId = searchParams?.get('queue') || '';
@@ -49,6 +49,117 @@ export default function TracePage() {
   const eventsContainerRef = useRef<HTMLDivElement>(null);
   const eventRowsRef = useRef<{ [id: string]: HTMLTableRowElement }>({});
   
+  // Ref to track if we're manually updating the hash
+  const isUpdatingHashRef = useRef(false);
+  
+  // Helper function to get URL hash parameters
+  const getUrlHash = useCallback((): Record<string, any> => {
+    if (typeof window === 'undefined') return {};
+    
+    try {
+      if (window.location.hash && window.location.hash.length > 1) {
+        // Get hash and remove the # character
+        let hashStr = window.location.hash.substring(1);
+        
+        // Decode the URL-encoded hash
+        try {
+          hashStr = decodeURIComponent(hashStr);
+        } catch (decodeError) {
+          console.error('Error decoding hash:', decodeError);
+          return {}; // If we can't decode, return empty object
+        }
+        
+        // Parse the hash as JSON
+        if (hashStr && hashStr.trim().startsWith('{') && hashStr.trim().endsWith('}')) {
+          return JSON.parse(hashStr);
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing hash:', error);
+    }
+    
+    return {};
+  }, []);
+  
+  // Helper function to update URL hash - use history.replaceState to avoid
+  // triggering hashchange events when we're the ones updating the hash
+  const updateUrlHash = useCallback((newParams: Record<string, any>) => {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      // Get current parameters
+      const currentParams = getUrlHash();
+      
+      // Merge with new parameters
+      const updatedParams = { ...currentParams, ...newParams };
+      
+      // Mark that we're updating the hash
+      isUpdatingHashRef.current = true;
+      
+      // Convert to JSON string, encode, and update URL hash using history.replaceState
+      const hashStr = JSON.stringify(updatedParams);
+      const newUrl = window.location.pathname + window.location.search + '#' + encodeURIComponent(hashStr);
+      window.history.replaceState(null, '', newUrl);
+      
+      // Update AppContext state without triggering another URL update
+      if (newParams.timePeriod) {
+        dispatch({
+          type: 'CHANGE_TIME_PERIOD',
+          payload: newParams.timePeriod
+        });
+      }
+      
+      // Reset the flag after a short delay
+      setTimeout(() => {
+        isUpdatingHashRef.current = false;
+      }, 50);
+    } catch (error) {
+      console.error('Error updating URL hash:', error);
+      isUpdatingHashRef.current = false;
+    }
+  }, [getUrlHash, dispatch]);
+  
+  // Get initial time settings from URL hash or use defaults
+  const getInitialTimeSettings = useCallback(() => {
+    const hashParams = getUrlHash();
+    let initialTimeRange = '5m';  // Default time range
+    let initialCustomDate: Date | null = null;
+    
+    if (hashParams.timePeriod) {
+      if (hashParams.timePeriod.interval) {
+        // Extract the time range - we need to convert from the app context format (like "hour_6") 
+        // to our local format (like "6h")
+        const interval = hashParams.timePeriod.interval;
+        
+        if (interval.includes('_')) {
+          const [unit, value] = interval.split('_');
+          if (unit === 'minute' && value === '15') initialTimeRange = '15m';
+          else if (unit === 'hour' && value === '1') initialTimeRange = '1h';
+          else if (unit === 'hour' && value === '6') initialTimeRange = '6h';
+          else if (unit === 'day' && value === '1') initialTimeRange = '1d';
+          else if (unit === 'day' && value === '7') initialTimeRange = '1w';
+          else if (unit === 'week' && value === '1') initialTimeRange = '1w'; // Support week_1 format
+        }
+        
+        console.log(`Initial interval from hash: ${interval}, converted to: ${initialTimeRange}`);
+      }
+      
+      // If we have begin or end times, use them for custom date
+      if (hashParams.timePeriod.end) {
+        try {
+          initialCustomDate = new Date(hashParams.timePeriod.end);
+          initialTimeRange = ''; // Clear time range if we have a custom date
+        } catch (e) {
+          console.error('Error parsing custom date from hash:', e);
+        }
+      }
+    }
+    
+    return { initialTimeRange, initialCustomDate };
+  }, [getUrlHash]);
+  
+  const { initialTimeRange, initialCustomDate } = getInitialTimeSettings();
+  
   // Use the trace search hook to handle searching and filtering
   const { 
     events,
@@ -62,10 +173,10 @@ export default function TracePage() {
     setCustomDate,
     refetch: refreshEvents
   } = useTraceSearch(
-    queueId, // queueId to search
-    '5m',    // default time range
-    null,    // no initial custom date
-    ''       // no initial search text
+    queueId,                // queueId to search
+    initialTimeRange,       // time range from URL hash or default
+    initialCustomDate,      // custom date from URL hash or null
+    ''                      // no initial search text
   );
   
   // Track whether events are being loaded
@@ -153,18 +264,80 @@ export default function TracePage() {
     }
   }, [events, selectedEventId, handleSelectEvent]);
   
-  // Handle time range change
+  // Handle time range change with URL hash update
   const handleTimeRangeChange = (range: string) => {
+    console.log(`Time range selected: ${range}`);
     setTimeRange(range);
     setShowDatePicker(false);
     setSelectedEventId(null); // Clear selection
+    
+    // Update URL hash - convert our time ranges to format used in the rest of the app
+    let interval = 'minute_15'; // Default
+    
+    switch(range) {
+      case '30s':
+        interval = 'minute_1'; // Approximate equivalent
+        break;
+      case '1m':
+        interval = 'minute_1';
+        break;
+      case '5m':
+        interval = 'minute_5';
+        break;
+      case '15m':
+        interval = 'minute_15';
+        break;
+      case '1h':
+        interval = 'hour_1';
+        break;
+      case '6h':
+        interval = 'hour_6';
+        break;
+      case '1d':
+        interval = 'day_1';
+        break;
+      case '1w':
+        // Use week_1 instead of day_7 for consistency with other parts of the app
+        interval = 'week_1';
+        break;
+    }
+    
+    console.log(`Converting ${range} to interval format: ${interval}`);
+    
+    // Update URL hash for persistence (this will also update AppContext via our updateUrlHash function)
+    updateUrlHash({ 
+      timePeriod: { 
+        interval,
+        begin: undefined,
+        end: undefined
+      } 
+    });
   };
   
-  // Handle date select
+  // Handle date select with URL hash update
   const handleDateSelect = (date: Date | null) => {
     setCustomDate(date);
     setShowDatePicker(false);
     setSelectedEventId(null); // Clear selection
+    
+    if (date) {
+      // For custom date, calculate a time range around the selected date
+      // Using a 15-minute window centered on the selected time
+      const begin = new Date(date.getTime() - 7.5 * 60 * 1000); // 7.5 minutes before
+      const end = new Date(date.getTime() + 7.5 * 60 * 1000);   // 7.5 minutes after
+      
+      // Update URL hash (this will also update AppContext via our updateUrlHash function)
+      updateUrlHash({ 
+        timePeriod: { 
+          interval: 'minute_15',
+          begin: begin.toISOString(),
+          end: end.toISOString()
+        } 
+      });
+    } else {
+      // If date is null, reset to default time range
+      handleTimeRangeChange('5m');
+    }
   };
   
   // Helper function to format time
@@ -209,6 +382,75 @@ export default function TracePage() {
   useEffect(() => {
     setLastQueryFailed(events.length === 0);
   }, [events.length]);
+  
+  // Listen for hash changes from other components
+  useEffect(() => {
+    const handleHashChange = () => {
+      // Skip if we're the ones who just updated the hash
+      if (isUpdatingHashRef.current) return;
+      
+      // Parse the hash to get the new time period
+      const hashParams = getUrlHash();
+      if (hashParams.timePeriod) {
+        // Only update if the time period has actually changed
+        const currentTimePeriod = state.urlObj.timePeriod || {};
+        const hashTimePeriod = hashParams.timePeriod;
+        
+        // Compare the values to see if anything's changed
+        const hasIntervalChanged = currentTimePeriod.interval !== hashTimePeriod.interval;
+        const hasBeginChanged = (currentTimePeriod as any).begin !== hashTimePeriod.begin;
+        const hasEndChanged = (currentTimePeriod as any).end !== hashTimePeriod.end;
+        
+        if (hasIntervalChanged || hasBeginChanged || hasEndChanged) {
+          console.log('Hash changed, updating time settings from hash:', hashTimePeriod);
+          
+          // Update time range or custom date based on the hash values
+          if (hashTimePeriod.interval) {
+            const interval = hashTimePeriod.interval;
+            let newTimeRange = '';
+            
+            console.log(`Converting from interval format: ${interval}`);
+            
+            // Convert from app format to our format
+            if (interval === 'minute_1') newTimeRange = '1m';
+            else if (interval === 'minute_5') newTimeRange = '5m';
+            else if (interval === 'minute_15') newTimeRange = '15m';
+            else if (interval === 'hour_1') newTimeRange = '1h';
+            else if (interval === 'hour_6') newTimeRange = '6h';
+            else if (interval === 'day_1') newTimeRange = '1d';
+            else if (interval === 'day_7') newTimeRange = '1w';
+            else if (interval === 'week_1') newTimeRange = '1w'; // Also support week_1 format
+            
+            console.log(`Converted to local format: ${newTimeRange}`);
+            
+            // If we have begin/end times, treat it as a custom date
+            if (hashTimePeriod.end) {
+              try {
+                const date = new Date(hashTimePeriod.end);
+                setCustomDate(date);
+                setTimeRange('');
+              } catch (e) {
+                console.error('Error parsing custom date from hash:', e);
+                setTimeRange(newTimeRange || '5m');
+              }
+            } else {
+              // Otherwise just set the time range
+              setCustomDate(null);
+              setTimeRange(newTimeRange || '5m');
+            }
+          }
+        }
+      }
+    };
+    
+    // Add event listener for hash changes
+    window.addEventListener('hashchange', handleHashChange);
+    
+    // Clean up
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, [getUrlHash, state.urlObj.timePeriod]);
   
   return (
     <div className="space-y-6">

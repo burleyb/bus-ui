@@ -605,6 +605,13 @@ export function useStats() {
   
   // Helper function to format a date with timezone information
   function formatDateWithTimezone(date: Date): string {
+    // Add input validation to prevent NaN values
+    if (!date || isNaN(date.getTime())) {
+      console.error('Invalid date provided to formatDateWithTimezone:', date);
+      // Return current date as a fallback
+      date = new Date();
+    }
+    
     const pad = (num: number) => (num < 10 ? `0${num}` : `${num}`);
     
     const year = date.getFullYear();
@@ -758,7 +765,7 @@ export function useStats() {
   }
 
   // Get timestamp from URL hash using state.urlObj
-  let timestamp = null;
+  let timestamp: string | null = null;
   
   // Check if we have timePeriod data in the state
   if (state?.urlObj?.timePeriod && 'end' in state.urlObj.timePeriod) {
@@ -796,22 +803,43 @@ export function useStats() {
         // For week interval: find the end of the week containing the selected time
         // In this case, we use the end of the day as the timestamp
         // We need to find the Saturday of the week (end of week)
-        const dayOfWeek = selectedTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
-        let endOfWeek;
-        
-        if (dayOfWeek === 6) { // If it's already Saturday
-          endOfWeek = new Date(selectedTime);
-        } else {
-          // Calculate days until Saturday
-          const daysUntilSaturday = 6 - dayOfWeek;
-          endOfWeek = new Date(selectedTime);
-          endOfWeek.setDate(selectedTime.getDate() + daysUntilSaturday);
-        }
-        
-        // Set to end of the day
-        endTime = new Date(endOfWeek.getFullYear(), endOfWeek.getMonth(), endOfWeek.getDate(),
+        try {
+          console.log('Processing week interval with selectedTime:', selectedTime.toLocaleString());
+          
+          if (!selectedTime || isNaN(selectedTime.getTime())) {
+            console.error('Invalid selectedTime for week interval:', selectedTime);
+            selectedTime = new Date(); // Use current date as fallback
+          }
+          
+          const dayOfWeek = selectedTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
+          let endOfWeek;
+          
+          if (dayOfWeek === 6) { // If it's already Saturday
+            endOfWeek = new Date(selectedTime);
+          } else {
+            // Calculate days until Saturday
+            const daysUntilSaturday = 6 - dayOfWeek;
+            endOfWeek = new Date(selectedTime);
+            endOfWeek.setDate(selectedTime.getDate() + daysUntilSaturday);
+          }
+          
+          // Set to end of the day
+          endTime = new Date(endOfWeek.getFullYear(), endOfWeek.getMonth(), endOfWeek.getDate(),
                          23, 59, 59, 999);
-        console.log('Found week bucket ending at:', endTime.toLocaleString());
+          
+          console.log('Found week bucket ending at:', endTime.toLocaleString());
+          // Validate the result
+          if (!endTime || isNaN(endTime.getTime())) {
+            console.error('Generated invalid endTime for week interval:', endTime);
+            endTime = new Date(); // Use current date as fallback
+            endTime.setHours(23, 59, 59, 999);
+          }
+        } catch (error) {
+          console.error('Error processing week interval:', error);
+          // Fallback to current date
+          endTime = new Date();
+          endTime.setHours(23, 59, 59, 999);
+        }
         break;
         
       default:
@@ -857,22 +885,38 @@ export function useStats() {
         
       case 'week':
         // For week interval: find the end of the current week
-        const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
-        let endOfWeek;
-        
-        if (dayOfWeek === 6) { // If it's already Saturday
-          endOfWeek = new Date(now);
-        } else {
-          // Calculate days until Saturday
-          const daysUntilSaturday = 6 - dayOfWeek;
-          endOfWeek = new Date(now);
-          endOfWeek.setDate(now.getDate() + daysUntilSaturday);
-        }
-        
-        // Set to end of the day
-        endTime = new Date(endOfWeek.getFullYear(), endOfWeek.getMonth(), endOfWeek.getDate(),
+        try {
+          console.log('Processing week interval fallback with current time');
+          
+          const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, etc.
+          let endOfWeek;
+          
+          if (dayOfWeek === 6) { // If it's already Saturday
+            endOfWeek = new Date(now);
+          } else {
+            // Calculate days until Saturday
+            const daysUntilSaturday = 6 - dayOfWeek;
+            endOfWeek = new Date(now);
+            endOfWeek.setDate(now.getDate() + daysUntilSaturday);
+          }
+          
+          // Set to end of the day
+          endTime = new Date(endOfWeek.getFullYear(), endOfWeek.getMonth(), endOfWeek.getDate(),
                          23, 59, 59, 999);
-        console.log('Found current week bucket ending at:', endTime.toLocaleString());
+          
+          console.log('Found current week bucket ending at:', endTime.toLocaleString());
+          // Validate the result
+          if (!endTime || isNaN(endTime.getTime())) {
+            console.error('Generated invalid endTime for week interval fallback:', endTime);
+            endTime = new Date(); // Use current date as fallback
+            endTime.setHours(23, 59, 59, 999);
+          }
+        } catch (error) {
+          console.error('Error processing week interval fallback:', error);
+          // Fallback to current date
+          endTime = new Date();
+          endTime.setHours(23, 59, 59, 999);
+        }
         break;
         
       default:
@@ -937,6 +981,14 @@ export function useStats() {
         
         let url = `/api/stats_v2?range=${queryRange}&count=${queryCount}`;
         if (timestamp) {
+          // Validate timestamp doesn't contain NaN before adding to URL
+          if (timestamp.includes('NaN')) {
+            console.error('Invalid timestamp containing NaN:', timestamp);
+            // Use current time formatted properly as fallback
+            const now = new Date();
+            timestamp = formatDateWithTimezone(now);
+            console.log('Using fallback timestamp:', timestamp);
+          }
           url += `&timestamp=${encodeURIComponent(timestamp)}`;
         }
         
