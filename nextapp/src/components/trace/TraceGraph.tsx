@@ -115,6 +115,19 @@ export default function TraceGraph({
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [queuePayloads, setQueuePayloads] = useState<Record<string, any>>({});
   const { openNodeSettingsDialog } = useDialogs();
+  
+  // Add drag reference state to track drag start position
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    startOffset: [number, number];
+    dragging: boolean;
+  }>({
+    startX: 0,
+    startY: 0,
+    startOffset: [0, 0],
+    dragging: false
+  });
 
   // Vertical spacing is increased by 60% more
   const VERTICAL_SPACING = 260; // Increased from 160 to 260 
@@ -342,18 +355,39 @@ export default function TraceGraph({
     // Clear previous content
     svgElement.selectAll('*').remove();
     
-    // Create the D3 drag behavior
+    // Create the D3 drag behavior with improved event handling
     const dragBehavior = d3.drag()
-      .on('start', function() {
+      .on('start', function(event) {
+        // Store the initial drag position and current offset
+        dragRef.current = {
+          startX: event.sourceEvent.clientX,
+          startY: event.sourceEvent.clientY,
+          startOffset: [...offset] as [number, number],
+          dragging: true
+        };
+        
         // Set cursor to grabbing during drag
         d3.select(this).style('cursor', 'grabbing');
         setIsDragging(true);
       })
       .on('drag', function(event) {
-        // Update offset based on drag delta
-        onOffsetChange([offset[0] + event.dx, offset[1] + event.dy]);
+        if (!dragRef.current.dragging) return;
+        
+        // Calculate the new offset based on the distance from the drag start position
+        const dx = event.sourceEvent.clientX - dragRef.current.startX;
+        const dy = event.sourceEvent.clientY - dragRef.current.startY;
+        
+        // Apply the delta to the original offset
+        const newOffsetX = dragRef.current.startOffset[0] + dx;
+        const newOffsetY = dragRef.current.startOffset[1] + dy;
+        
+        // Update the offset with the calculated values
+        onOffsetChange([newOffsetX, newOffsetY]);
       })
       .on('end', function() {
+        // Reset drag state
+        dragRef.current.dragging = false;
+        
         // Reset cursor to grab when drag ends
         d3.select(this).style('cursor', 'grab');
         setIsDragging(false);
