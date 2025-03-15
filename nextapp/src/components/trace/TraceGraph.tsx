@@ -21,6 +21,8 @@ interface TraceNode {
   y?: number;
   // For duplicate detection
   uniqueId?: string;
+  // Add timestamp property that might be present
+  timestamp?: string;
 }
 
 interface TraceLink {
@@ -33,7 +35,7 @@ interface TraceLink {
 
 export interface TraceData {
   parents: TraceNode[];
-  event: TraceNode;
+  event: TraceNode & { timestamp?: string };
   children: Record<string, TraceNode>;
 }
 
@@ -116,7 +118,7 @@ export default function TraceGraph({
   // Using a consistent blue color for all nodes and processed links
   const NODE_STROKE_COLOR = '#3B82F6'; 
   // Thinner stroke weight
-  const STROKE_WEIGHT = 1;
+  const STROKE_WEIGHT = 2;
 
   // Define drag handlers at component level for better type safety
   const handleMouseMove = (event: MouseEvent) => {
@@ -192,7 +194,7 @@ export default function TraceGraph({
     });
   };
 
-  // Process children - modified to create unique instances for shared children
+  // Process children - modified to create unique instances for ALL nodes, not just shared children
   const processChildren = (
     children: Record<string, TraceNode>,
     parentX: number, 
@@ -209,17 +211,24 @@ export default function TraceGraph({
     // Calculate horizontal positioning (for horizontal layout)
     childKeys.forEach((key, index) => {
       const node = children[key];
-      const x = parentX + 200; // Fixed horizontal distance
+      const x = parentX + 400; // Doubled horizontal distance from 200 to 400
       
       // Distribute children vertically with more space, centered on the parent
       const y = parentY - (childKeys.length - 1) * VERTICAL_SPACING / 2 + index * VERTICAL_SPACING;
       
-      // Create a unique ID for this instance of the node
+      // Always create a unique ID for this instance of the node
       const uniqueId = `${node.id}_${parentId}_${index}`;
       
-      // Always add a new node instance (don't reuse)
+      // For queue nodes, try to find event timestamp if available
+      let timestamp = node.timestamp;
+      if (node.type === 'queue' && traceData.event && traceData.event.timestamp) {
+        timestamp = traceData.event.timestamp;
+      }
+      
+      // Always add a new node instance (don't reuse nodes)
       nodes.push({
         ...node,
+        timestamp,
         x,
         y,
         uniqueId
@@ -264,7 +273,7 @@ export default function TraceGraph({
     // Process parent nodes (placed to the left for horizontal layout)
     if (traceData.parents && traceData.parents.length > 0) {
       traceData.parents.forEach((parent, index, arr) => {
-        const x = -200; // Fixed horizontal position to the left
+        const x = -400; // Doubled horizontal position to the left (from -200 to -400)
         // Increased vertical spacing
         const y = -(arr.length - 1) * VERTICAL_SPACING / 2 + index * VERTICAL_SPACING; 
         
@@ -335,18 +344,22 @@ export default function TraceGraph({
       .attr('fill', '#f3f4f6') // Light grey background
       .style('cursor', 'grab')
       .style('touch-action', 'none') // Prevent default touch actions
+      .style('user-select', 'none') // Prevent selection during drag
       .on('mousedown', function(this: any, event: any) {
-        // Only start drag if clicking on background (not a node)
+        // Only start drag if clicking on background (not a node or control)
         if (event.target === this) {
           event.preventDefault();
           event.stopPropagation();
+          
+          // Set dragging state
           setIsDragging(true);
           setDragStart([event.clientX, event.clientY]);
           
           // Set a 'grabbing' cursor to indicate active dragging
           d3.select(this).style('cursor', 'grabbing');
           
-          // Add event listeners to document for better tracking
+          // Important: Add the mouse event listeners to document
+          // This ensures drag continues even if mouse moves outside SVG
           document.addEventListener('mousemove', handleMouseMove);
           document.addEventListener('mouseup', handleMouseUp);
         }
@@ -587,20 +600,27 @@ export default function TraceGraph({
       }
     });
       
-    // Node labels with text wrapping
+    // Node labels with consistent width between bots and queues (was too wide for queues, too narrow for bots)
     nodeGroups.append('text')
       .attr('text-anchor', 'middle')
       .attr('y', nodeSize + 15)
       .attr('fill', '#4B5563')
       .attr('class', 'text-xs font-medium node-label')
       .each(function(d) {
+        // Save the node reference in the DOM element for later access
+        // @ts-ignore - Add property for internal use
+        this.__data__ = d;
+        
         const text = d3.select(this);
         // Extract short label
         const parts = d.server_id ? d.server_id.split(':') : (d.id ? d.id.split(':') : []);
         const label = parts.length > 1 ? parts[1] : (d.label || d.id || '');
         
+        // Use consistent max width for all node types
+        const maxWidth = d.type === 'queue' ? 14 : 12; // Slightly wider for queues, narrower for bots
+        
         // Apply simplified text wrapping to avoid overlapping
-        if (label.length <= 12) {
+        if (label.length <= 10) {
           text.text(label);
         } else {
           // For longer labels, add line breaks
@@ -611,7 +631,7 @@ export default function TraceGraph({
           const words = label.split(/(?=[A-Z])|\s+/);
           
           words.forEach(word => {
-            if ((currentLine + word).length <= 12) {
+            if ((currentLine + word).length <= maxWidth) {
               currentLine += word;
             } else {
               if (currentLine) lines.push(currentLine);
@@ -631,48 +651,63 @@ export default function TraceGraph({
         }
       });
     
-    // Add processed/not processed labels BELOW node name for bot nodes
-    nodeGroups
-      .filter(d => d.type === 'bot')
-      .append('text')
-      .attr('text-anchor', 'middle')
-      .attr('y', nodeSize + 40) // Fixed position below the node label
-      .attr('fill', d => d.has_processed ? '#10B981' : '#EF4444')
-      .attr('class', 'text-xs font-medium status-label')
-      .text(d => d.has_processed ? 'Processed' : 'Not Processed');
-    
-    // Adjust the queue timestamp to be better positioned and formatted
-    nodeGroups
-      .filter(d => d.type === 'queue')
-      .append('text')
-      .attr('text-anchor', 'middle')
-      .attr('y', nodeSize + 45) // Position further down below the node label
-      .attr('fill', '#6B7280')
-      .attr('class', 'text-xs timestamp-label')
-      .each(function(d) {
-        const text = d3.select(this);
-        const payloadKey = `${d.id}:${traceData.event.id}`;
-        const queueData = queuePayloads[payloadKey];
+    // Calculate label height for proper positioning of status labels
+    nodeGroups.each(function(d) {
+      const node = d3.select(this);
+      const labelNode = node.select('.node-label').node();
+      if (!labelNode) return;
+      
+      // Get actual height of the label element
+      const labelHeight = (labelNode as SVGGraphicsElement).getBBox().height;
+      
+      // Position bot status labels properly below the node label
+      if (d.type === 'bot') {
+        node.append('text')
+          .attr('text-anchor', 'middle')
+          .attr('y', nodeSize + 20 + labelHeight) // Position below label with padding
+          .attr('fill', d.has_processed ? '#10B981' : '#EF4444')
+          .attr('class', 'text-xs font-medium status-label')
+          .text(d.has_processed ? 'Processed' : 'Not Processed');
+      }
+      
+      // Position queue timestamp labels properly below the node label
+      if (d.type === 'queue') {
+        const timestampLabel = node.append('text')
+          .attr('text-anchor', 'middle')
+          .attr('y', nodeSize + 20 + labelHeight) // Position below label with padding
+          .attr('fill', '#6B7280')
+          .attr('class', 'text-xs timestamp-label');
         
-        if (queueData && queueData.created_at) {
-          text.text(formatDate(queueData.created_at));
+        // Logic to determine timestamp text
+        if (d.timestamp) {
+          timestampLabel.text(formatDate(d.timestamp));
+        } else if (traceData.event && traceData.event.timestamp) {
+          timestampLabel.text(formatDate(traceData.event.timestamp));
         } else {
-          text.text('Loading time...');
+          const payloadKey = `${d.id}:${traceData.event.id}`;
+          const queueData = queuePayloads[payloadKey];
           
-          // Fetch the data if not available
-          if (d.type === 'queue' && traceData.event.id) {
-            fetchQueuePayload(d.id, traceData.event.id).then(() => {
-              // Update the text when data is available
-              const updatedData = queuePayloads[payloadKey];
-              if (updatedData && updatedData.created_at) {
-                text.text(formatDate(updatedData.created_at));
-              } else {
-                text.text('Time unavailable');
-              }
-            });
+          if (queueData && queueData.created_at) {
+            timestampLabel.text(formatDate(queueData.created_at));
+          } else {
+            timestampLabel.text('Loading time...');
+            
+            // Fetch the data if not available
+            if (traceData.event.id) {
+              fetchQueuePayload(d.id, traceData.event.id).then(() => {
+                // Update the text when data is available
+                const updatedData = queuePayloads[payloadKey];
+                if (updatedData && updatedData.created_at) {
+                  timestampLabel.text(formatDate(updatedData.created_at));
+                } else {
+                  timestampLabel.text('Time unavailable');
+                }
+              });
+            }
           }
         }
-      });
+      }
+    });
     
     // Add queue settings button
     nodeGroups
