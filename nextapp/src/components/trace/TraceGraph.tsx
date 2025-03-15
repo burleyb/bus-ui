@@ -19,6 +19,8 @@ interface TraceNode {
   checkpoint?: any;
   x?: number;
   y?: number;
+  // For duplicate detection
+  uniqueId?: string;
 }
 
 interface TraceLink {
@@ -44,6 +46,62 @@ interface TraceGraphProps {
   onTraceToChild: (path: string) => void;
 }
 
+// Function to wrap text similar to WorkflowGraph
+const wrapNodeLabel = (text: d3.Selection<any, any, any, any>, label: string) => {
+  // If text is very short, just add it directly
+  if (label.length <= 10) {
+    text.text(label);
+    return;
+  }
+
+  // Otherwise, split into multiple lines for longer text
+  const words = label.split(/(?=[A-Z])|\s+/); // Split on spaces or camelCase
+  const lineHeight = 1.1; // ems
+  let line: string[] = [];
+  let lineNumber = 0;
+  const y = text.attr('y') || '0';
+  const dy = parseFloat(text.attr('dy') || '0');
+  const maxWidth = 100; // Maximum width in pixels
+
+  // Clear any existing content
+  text.text(null);
+
+  let tspan = text.append('tspan')
+    .attr('x', 0)
+    .attr('y', y)
+    .attr('dy', dy + 'px');
+
+  let currentLine = '';
+  let currentWidth = 0;
+
+  words.forEach((word, i) => {
+    // Test adding this word to the line
+    const testLine = currentLine + (currentLine ? ' ' : '') + word;
+    const testWidth = (testLine.length * 5); // Approximate width based on character count
+
+    if (testWidth > maxWidth && currentLine) {
+      // Line would be too long, create a new line
+      tspan.text(currentLine);
+      tspan = text.append('tspan')
+        .attr('x', 0)
+        .attr('y', y)
+        .attr('dy', ++lineNumber * lineHeight + dy + 'px')
+        .text(word);
+      currentLine = word;
+      currentWidth = word.length * 5;
+    } else {
+      // Add to current line
+      currentLine = testLine;
+      currentWidth = testWidth;
+    }
+  });
+
+  // Add the last line
+  if (currentLine) {
+    tspan.text(currentLine);
+  }
+};
+
 export default function TraceGraph({
   traceData,
   zoom,
@@ -58,8 +116,38 @@ export default function TraceGraph({
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<[number, number]>([0, 0]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+  const [queuePayloads, setQueuePayloads] = useState<Record<string, any>>({});
   const { openNodeSettingsDialog } = useDialogs();
 
+  // Vertical spacing is doubled
+  const VERTICAL_SPACING = 160; 
+  // Using a consistent blue color for all nodes and processed links
+  const NODE_STROKE_COLOR = '#3B82F6'; 
+  // Thinner stroke weight
+  const STROKE_WEIGHT = 1;
+
+  // Function to fetch queue payload data
+  const fetchQueuePayload = async (queueId: string, eid: string) => {
+    try {
+      // Only fetch if we don't already have it cached
+      if (!queuePayloads[`${queueId}:${eid}`]) {
+        const response = await fetch(`/api/queues/${queueId}/events?eid=${eid}&limit=1`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.results && data.results.length > 0) {
+            setQueuePayloads(prev => ({
+              ...prev,
+              [`${queueId}:${eid}`]: data.results[0].payload
+            }));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching queue payload:', error);
+    }
+  };
+
+  // Process children - modified to create unique instances for shared children
   const processChildren = (
     children: Record<string, TraceNode>,
     parentX: number, 
@@ -68,29 +156,34 @@ export default function TraceGraph({
     nodes: TraceNode[],
     links: TraceLink[],
     parentId: string,
-    pathPrefix = ''
+    pathPrefix = '',
+    processedNodes: Set<string> = new Set()
   ): void => {
     const childKeys = Object.keys(children);
-    const spacing = 80; // Vertical spacing between siblings
     
     // Calculate horizontal positioning (for horizontal layout)
     childKeys.forEach((key, index) => {
       const node = children[key];
-      const x = parentX + 200; // Fixed horizontal distance, moving to the right
-      // Distribute children vertically, centered on the parent
-      const y = parentY - (childKeys.length - 1) * spacing / 2 + index * spacing;
+      const x = parentX + 200; // Fixed horizontal distance
       
-      // Add node with position
+      // Distribute children vertically with more space, centered on the parent
+      const y = parentY - (childKeys.length - 1) * VERTICAL_SPACING / 2 + index * VERTICAL_SPACING;
+      
+      // Create a unique ID for this instance of the node
+      const uniqueId = `${node.id}_${parentId}_${index}`;
+      
+      // Always add a new node instance (don't reuse)
       nodes.push({
         ...node,
         x,
-        y
+        y,
+        uniqueId
       });
       
       // Add link from parent to this node
       links.push({
         source: parentId,
-        target: node.id,
+        target: uniqueId, // Use unique ID for targeting
         processed: !!node.has_processed,
         type: 'child',
       });
@@ -105,8 +198,9 @@ export default function TraceGraph({
           depth + 1,
           nodes,
           links,
-          node.id,
-          newPathPrefix
+          uniqueId, // Use unique ID as parent
+          newPathPrefix,
+          processedNodes
         );
       }
     });
@@ -116,27 +210,33 @@ export default function TraceGraph({
   const processTraceData = () => {
     const nodes: TraceNode[] = [];
     const links: TraceLink[] = [];
+    const processedNodes = new Set<string>();
     
     // Start with the event node (center)
-    const eventNode = { ...traceData.event, x: 0, y: 0 };
+    const eventNode = { ...traceData.event, x: 0, y: 0, uniqueId: traceData.event.id };
     nodes.push(eventNode);
     
     // Process parent nodes (placed to the left for horizontal layout)
     if (traceData.parents && traceData.parents.length > 0) {
       traceData.parents.forEach((parent, index, arr) => {
         const x = -200; // Fixed horizontal position to the left
-        const y = -(arr.length - 1) * 80 / 2 + index * 80; // Distribute vertically
+        // Increased vertical spacing
+        const y = -(arr.length - 1) * VERTICAL_SPACING / 2 + index * VERTICAL_SPACING; 
+        
+        // Create a unique ID for this instance
+        const uniqueId = `${parent.id}_parent_${index}`;
         
         nodes.push({
           ...parent,
           x,
-          y
+          y,
+          uniqueId
         });
         
         // Add link to event
         links.push({
-          source: parent.id,
-          target: eventNode.id,
+          source: uniqueId,
+          target: eventNode.uniqueId!,
           processed: true, // Parents always processed the event
           type: 'parent',
         });
@@ -152,11 +252,27 @@ export default function TraceGraph({
         1, // Depth
         nodes,
         links,
-        eventNode.id
+        eventNode.uniqueId!,
+        "",
+        processedNodes
       );
     }
     
     return { nodes, links };
+  };
+
+  // Handle zoom via mouse wheel
+  const handleWheel = (event: WheelEvent) => {
+    if (!onZoomChange) return;
+    
+    event.preventDefault();
+    const delta = event.deltaY;
+    const zoomFactor = delta > 0 ? 0.9 : 1.1; // Zoom out if positive delta, in if negative
+    
+    // Limit zoom to reasonable bounds (0.25 to 3)
+    const newZoom = Math.max(0.25, Math.min(3, zoom * zoomFactor));
+    
+    onZoomChange(newZoom);
   };
 
   // Draw the graph
@@ -168,6 +284,9 @@ export default function TraceGraph({
     const svgElement = d3.select(svgRef.current);
     const width = svgRef.current.clientWidth;
     const height = svgRef.current.clientHeight;
+    
+    // Add wheel event listener for zooming
+    svgRef.current.addEventListener('wheel', handleWheel);
     
     // Clear previous content
     svgElement.selectAll('*').remove();
@@ -186,8 +305,8 @@ export default function TraceGraph({
     // Draw link paths with curves
     link.append('path')
       .attr('d', d => {
-        const source = nodes.find(n => n.id === d.source);
-        const target = nodes.find(n => n.id === d.target);
+        const source = nodes.find(n => n.uniqueId === d.source);
+        const target = nodes.find(n => n.uniqueId === d.target);
         
         if (!source || !target) return '';
         
@@ -209,46 +328,72 @@ export default function TraceGraph({
                   ${target.x},${target.y}`;
       })
       .attr('fill', 'none')
-      .attr('stroke', d => d.tracing ? '#3B82F6' : (d.processed ? '#10B981' : '#D1D5DB'))
-      .attr('stroke-width', 2)
+      .attr('stroke', d => {
+        if (d.tracing) return NODE_STROKE_COLOR; // Blue for tracing
+        return d.processed ? NODE_STROKE_COLOR : '#D1D5DB'; // Blue for processed, grey for unprocessed
+      })
+      .attr('stroke-width', STROKE_WEIGHT)
       .attr('stroke-dasharray', d => d.tracing ? '5,5' : 'none');
     
-    // Add link labels (for trace links)
+    // Add link labels (for trace links) with styled background
     link.filter(d => d.processed && d.type === 'child')
-      .append('text')
+      .append('g')
       .attr('transform', d => {
-        const source = nodes.find(n => n.id === d.source);
-        const target = nodes.find(n => n.id === d.target);
+        const source = nodes.find(n => n.uniqueId === d.source);
+        const target = nodes.find(n => n.uniqueId === d.target);
         if (!source || !target) return '';
         
         const x = (source.x! + target.x!) / 2;
         const y = (source.y! + target.y!) / 2 - 10;
         return `translate(${x}, ${y})`;
       })
-      .attr('text-anchor', 'middle')
-      .attr('class', 'text-xs cursor-pointer')
-      .attr('fill', d => d.tracing ? '#3B82F6' : '#6B7280')
-      .text(d => d.tracing ? 'tracing...' : 'click to trace')
-      .on('click', (event, d) => {
-        event.stopPropagation();
-        // Mark as tracing
-        d.tracing = true;
-        d3.select(event.currentTarget.parentNode)
-          .select('path')
-          .attr('stroke', '#3B82F6')
-          .attr('stroke-dasharray', '5,5');
+      .attr('class', 'trace-label')
+      .each(function(this: any, d: any) {
+        const g = d3.select(this);
         
-        d3.select(event.currentTarget)
-          .text('tracing...')
-          .attr('fill', '#3B82F6');
+        // Add background pill
+        g.append('rect')
+          .attr('x', -40)
+          .attr('y', -10)
+          .attr('width', 80)
+          .attr('height', 20)
+          .attr('rx', 10)
+          .attr('ry', 10)
+          .attr('fill', 'white')
+          .attr('stroke', NODE_STROKE_COLOR)
+          .attr('stroke-width', 1);
         
-        // Build the children path
-        const sourceNode = nodes.find(n => n.id === d.source);
-        const targetNode = nodes.find(n => n.id === d.target);
-        
-        if (sourceNode && targetNode) {
-          onTraceToChild([sourceNode.id, targetNode.id].join(','));
-        }
+        // Add text
+        g.append('text')
+          .attr('text-anchor', 'middle')
+          .attr('dominant-baseline', 'middle')
+          .attr('fill', NODE_STROKE_COLOR)
+          .attr('class', 'text-xs cursor-pointer')
+          .attr('pointer-events', 'all')
+          .text(d.tracing ? 'tracing...' : 'click to trace')
+          .on('click', function(this: any, event: any, d: any) {
+            event.stopPropagation();
+            // Mark as tracing
+            d.tracing = true;
+            
+            // Update path style
+            d3.select(event.currentTarget.parentNode.parentNode)
+              .select('path')
+              .attr('stroke', NODE_STROKE_COLOR)
+              .attr('stroke-dasharray', '5,5');
+            
+            // Update label
+            d3.select(event.currentTarget)
+              .text('tracing...');
+            
+            // Build the children path
+            const sourceNode = nodes.find(n => n.uniqueId === d.source);
+            const targetNode = nodes.find(n => n.uniqueId === d.target);
+            
+            if (sourceNode && targetNode) {
+              onTraceToChild([sourceNode.id, targetNode.id].join(','));
+            }
+          });
       });
     
     // Draw nodes
@@ -258,14 +403,23 @@ export default function TraceGraph({
       .append('g')
       .attr('class', 'node')
       .attr('transform', d => `translate(${d.x || 0}, ${d.y || 0})`)
+      .attr('data-id', d => d.id)
+      .attr('data-unique-id', d => d.uniqueId || '')
       .style('cursor', 'pointer')
       .on('mouseenter', (event, d) => {
         setHoveredNode(d.id);
+        
+        // For queue nodes that have been traced, fetch their payload
+        if (d.type === 'queue' && traceData.event.id) {
+          fetchQueuePayload(d.id, traceData.event.id);
+        }
+        
         // Add highlight effect
         d3.select(event.currentTarget)
           .select('circle:first-child')
-          .attr('stroke', '#3B82F6')
-          .attr('stroke-width', 2);
+          .attr('stroke', NODE_STROKE_COLOR)
+          .attr('stroke-width', STROKE_WEIGHT * 2);
+          
         showTooltip(d, event);
       })
       .on('mouseleave', (event) => {
@@ -273,8 +427,9 @@ export default function TraceGraph({
         // Remove highlight effect
         d3.select(event.currentTarget)
           .select('circle:first-child')
-          .attr('stroke', '#FFFFFF')
-          .attr('stroke-width', 2);
+          .attr('stroke', NODE_STROKE_COLOR)
+          .attr('stroke-width', STROKE_WEIGHT);
+          
         hideTooltip();
       })
       .on('click', (event, d) => {
@@ -301,8 +456,8 @@ export default function TraceGraph({
         }
         return '#F59E0B'; // Queue nodes are orange
       })
-      .attr('stroke', '#FFFFFF')
-      .attr('stroke-width', 2);
+      .attr('stroke', NODE_STROKE_COLOR) // Use consistent blue stroke
+      .attr('stroke-width', STROKE_WEIGHT);
     
     // Add node icons using proper icon paths
     nodeGroups.each(function(d) {
@@ -315,12 +470,14 @@ export default function TraceGraph({
           .attr('r', nodeSize * 0.7)
           .attr('fill', 'white');
         
-        // Get image path for the node type
-        const imgPath = getNodeImagePath({ 
-          type: d.type, 
-          has_processed: d.has_processed,
-          status: d.has_processed ? 'running' : 'blocked'
-        });
+        // For bots, always use bot.png
+        const imgPath = d.type === 'bot' 
+          ? '/images/nodes/bot.png' 
+          : getNodeImagePath({ 
+              type: d.type, 
+              has_processed: d.has_processed,
+              status: d.has_processed ? 'running' : 'blocked'
+            });
         
         // Add image directly using SVG image element with proper centering
         node.append('image')
@@ -346,16 +503,19 @@ export default function TraceGraph({
       }
     });
       
-    // Node labels
+    // Node labels with text wrapping
     nodeGroups.append('text')
       .attr('text-anchor', 'middle')
       .attr('dy', nodeSize + 15)
       .attr('fill', '#4B5563')
       .attr('class', 'text-xs font-medium')
-      .text(d => {
+      .each(function(d) {
         // Extract short label from server_id
         const parts = d.server_id ? d.server_id.split(':') : (d.id ? d.id.split(':') : []);
-        return parts.length > 1 ? parts[1] : (d.label || d.id || '');
+        const label = parts.length > 1 ? parts[1] : (d.label || d.id || '');
+        
+        // Apply text wrapping
+        wrapNodeLabel(d3.select(this), label);
       });
     
     // Add queue settings button
@@ -410,11 +570,12 @@ export default function TraceGraph({
       .attr('class', 'text-xs font-medium')
       .text(d => d.has_processed ? 'Processed' : 'Not Processed');
     
-    // Add drag behavior
+    // Add drag behavior for panning
     svgElement.call(
       d3.drag<SVGSVGElement, unknown, unknown>()
         .on('start', (event) => {
-          if (event.sourceEvent.target.closest('.settings-button')) return;
+          if (event.sourceEvent.target.closest('.settings-button') || 
+              event.sourceEvent.target.closest('.trace-label')) return;
           setIsDragging(true);
           setDragStart([event.x, event.y]);
         })
@@ -430,7 +591,13 @@ export default function TraceGraph({
         })
     );
     
-  }, [traceData, zoom, offset, onOffsetChange, onTraceToChild, openNodeSettingsDialog]);
+    // Cleanup event listener
+    return () => {
+      if (svgRef.current) {
+        svgRef.current.removeEventListener('wheel', handleWheel);
+      }
+    };
+  }, [traceData, zoom, offset, onOffsetChange, onZoomChange, onTraceToChild, openNodeSettingsDialog]);
 
   // Handle tooltip positioning and content
   const showTooltip = (node: TraceNode, event: any) => {
@@ -444,11 +611,23 @@ export default function TraceGraph({
     let content = '';
     
     if (node.type === 'queue') {
+      const payloadKey = `${node.id}:${traceData.event.id}`;
+      const hasPayload = queuePayloads[payloadKey];
+      
       content = `
         <div class="text-sm">
           <div class="font-semibold mb-1">${node.label || node.id}</div>
           <div class="text-gray-500">Type: Queue</div>
           ${node.lag !== undefined && node.lag !== null ? `<div class="text-gray-500">Lag: ${node.lag}ms</div>` : ''}
+          
+          ${hasPayload ? `
+            <div class="mt-2 border-t border-gray-200 pt-2">
+              <div class="font-medium text-gray-700 mb-1">Event Payload:</div>
+              <div class="bg-gray-100 p-2 rounded text-xs overflow-auto max-h-60">
+                <pre>${JSON.stringify(hasPayload, null, 2)}</pre>
+              </div>
+            </div>
+          ` : ''}
         </div>
       `;
     } else if (node.type === 'bot') {
@@ -484,8 +663,8 @@ export default function TraceGraph({
 
   // Handle zoom changes
   const handleZoomChange = (zoomFactor: number) => {
-    // Limit zoom to reasonable bounds (0.5 to 2)
-    const newZoom = Math.max(0.5, Math.min(2, zoom * zoomFactor));
+    // Limit zoom to reasonable bounds (0.25 to 3)
+    const newZoom = Math.max(0.25, Math.min(3, zoom * zoomFactor));
     
     // Use the onZoomChange handler if provided
     if (onZoomChange) {
@@ -497,7 +676,7 @@ export default function TraceGraph({
     <div className="relative w-full h-full">
       <svg
         ref={svgRef}
-        className="w-full h-full bg-gray-50 dark:bg-gray-900"
+        className="w-full h-full bg-gray-100 dark:bg-gray-800"
         width="100%"
         height="100%"
       />
