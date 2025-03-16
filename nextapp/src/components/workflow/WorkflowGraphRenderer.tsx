@@ -434,7 +434,7 @@ export function WorkflowGraphRenderer({
     svg.append('defs').append('marker')
       .attr('id', 'arrowhead')
       .attr('viewBox', '0 -5 10 10')
-      .attr('refX', 26) // Offset slightly to prevent overlap with node
+      .attr('refX', 28) // Increased from 26 to match the new spacing and prevent overlap with nodes
       .attr('markerWidth', 6)
       .attr('markerHeight', 6)
       .attr('orient', 'auto')
@@ -487,8 +487,24 @@ export function WorkflowGraphRenderer({
       // Store relationship type on the link data for later use
       d.relationType = relationType;
       
-      // Create a straight line with slight curve for aesthetics
-      return `M${sourceX},${sourceY} C${(sourceX + targetX) / 2},${sourceY} ${(sourceX + targetX) / 2},${targetY} ${targetX},${targetY}`;
+      // Calculate the difference in x and y coordinates
+      const dx = targetX - sourceX;
+      const dy = targetY - sourceY;
+      
+      // If nodes are horizontally aligned (within a small threshold), use a straight line
+      if (Math.abs(dy) < 5) {
+        return `M${sourceX},${sourceY} L${targetX},${targetY}`;
+      }
+      
+      // Otherwise use a curved path with control points at midpoint
+      // Calculate control points for smooth curve
+      const midX = (sourceX + targetX) / 2;
+      
+      // Use curved path with control points for better aesthetics
+      return `M${sourceX},${sourceY} 
+              C${sourceX + dx/3},${sourceY},
+                ${targetX - dx/3},${targetY},
+                ${targetX},${targetY}`;
     });
     
     // Add link stats if enabled

@@ -806,8 +806,8 @@ export function WorkflowGraphData({
     
     // STEP 1: Define constants for spacing and dimensions
     const NODE_RADIUS = 24;
-    const MIN_NODE_SPACING = 130; // Vertical spacing between sibling nodes
-    const GENERATION_SPACING = 220; // Horizontal spacing between generations
+    const MIN_NODE_SPACING = 130; // Increased from 130 to 260 to match TraceGraph
+    const GENERATION_SPACING = 220; // Increased from 220 to 400 to match TraceGraph
     
     // STEP 2: Build hierarchical tree structure with branch heights
     const nodeMap = new Map<string, {
@@ -1168,8 +1168,35 @@ export function WorkflowGraphData({
     let minY = Infinity;
     let maxY = -Infinity;
     
+    // First, create a map to track occupied positions and prevent overlap
+    const occupiedPositions = new Map<number, Set<number>>();
+    
+    // Initialize occupied positions for each x-coordinate
     data.nodes.forEach(node => {
-      if (node.y !== undefined) {
+      if (node.x !== undefined) {
+        if (!occupiedPositions.has(node.x)) {
+          occupiedPositions.set(node.x, new Set<number>());
+        }
+      }
+    });
+    
+    // Check for node overlap and adjust positions
+    data.nodes.forEach(node => {
+      if (node.x !== undefined && node.y !== undefined) {
+        const occupiedYs = occupiedPositions.get(node.x)!;
+        
+        // Check if this position is already occupied
+        let attempts = 0;
+        const originalY = node.y;
+        while (occupiedYs.has(node.y) && attempts < 20) { // Limit attempts to avoid infinite loops
+          node.y = originalY + (MIN_NODE_SPACING / 2) * (attempts + 1);
+          attempts++;
+        }
+        
+        // Mark this position as occupied
+        occupiedYs.add(node.y);
+        
+        // Update min/max Y values
         minY = Math.min(minY, node.y);
         maxY = Math.max(maxY, node.y);
       }
