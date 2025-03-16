@@ -31,6 +31,7 @@ import JSONEditorComponent, { JSONEditorHandle } from '@/components/json/JSONEdi
 import { useToast } from '@/components/ui/toast';
 import EventReplayDialog from '@/components/dialogs/EventReplayDialog';
 import EventResubmitDialog from '@/components/dialogs/EventResubmitDialog';
+import TraceDialog from '@/components/dialogs/TraceDialog';
 
 interface QueueEventsTabProps {
   nodeData: any;
@@ -70,7 +71,9 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   // Dialog state
   const [showReplayDialog, setShowReplayDialog] = useState(false);
   const [showResubmitDialog, setShowResubmitDialog] = useState(false);
+  const [showTraceDialog, setShowTraceDialog] = useState(false);
   const [dialogEventId, setDialogEventId] = useState<string>('');
+  const [traceEventId, setTraceEventId] = useState<string>('');
   const [botOptions, setBotOptions] = useState<Array<{id: string, name: string}>>([]);
   const [jsonEditorMode, setJsonEditorMode] = useState<'tree' | 'code' | 'view'>('code');
   const editorRef = useRef<JSONEditorHandle>(null);
@@ -241,8 +244,10 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   // Handle Trace Event
   const handleTraceEvent = (eventId: string) => {
     console.log(`Trace event: ${eventId}`);
-    // Implementation would navigate to trace page with this event
-    window.open(`/trace?queue=${queueId}&event=${eventId}`, '_blank');
+    // Set the event ID for the trace dialog
+    setTraceEventId(eventId);
+    // Show the trace dialog
+    setShowTraceDialog(true);
   };
   
   // Handle Replay Event
@@ -696,6 +701,14 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
         queueId={queueId}
         eventId={dialogEventId}
         event={selectedEvent}
+      />
+      
+      {/* Trace Dialog */}
+      <TraceDialog
+        open={showTraceDialog}
+        onClose={() => setShowTraceDialog(false)}
+        queueId={queueId}
+        eventId={traceEventId}
       />
     </div>
   );
