@@ -253,6 +253,10 @@ const CatalogGrid: React.FC<CatalogGridProps> = ({
     return {
       rowSelection: 'multiple' as const,
       rowMultiSelectWithClick: true,
+      maintainScrollPosition: true,
+      getRowId: (params: any) => {
+        return params.data.id;
+      }
     };
   }, []);
 
