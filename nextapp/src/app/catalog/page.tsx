@@ -36,42 +36,75 @@ const CatalogPage = () => {
   
   // Load filter state from URL hash on component mount
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hash && window.location.hash.length > 1) {
-      try {
-        // Get hash and remove the # character
-        let hashStr = window.location.hash.substring(1);
-        
-        // Decode the URL-encoded hash
+    // Function to parse hash and update state
+    const parseHashAndUpdateState = () => {
+      console.log('Parsing hash and updating state');
+      if (typeof window !== 'undefined' && window.location.hash && window.location.hash.length > 1) {
         try {
-          hashStr = decodeURIComponent(hashStr);
-        } catch (decodeError) {
-          console.error('Error decoding hash:', decodeError);
-          return;
-        }
-        
-        // Parse the hash as JSON
-        if (hashStr && hashStr.trim().startsWith('{') && hashStr.trim().endsWith('}')) {
-          const hashData = JSON.parse(hashStr);
+          // Get hash and remove the # character
+          let hashStr = window.location.hash.substring(1);
+          console.log('Raw hash value:', hashStr);
           
-          // Load filters if they exist
-          if (hashData.filters) {
-            setShowQueues(hashData.filters.showQueues !== undefined ? hashData.filters.showQueues : true);
-            setShowBots(hashData.filters.showBots !== undefined ? hashData.filters.showBots : true);
-            setShowSystems(hashData.filters.showSystems !== undefined ? hashData.filters.showSystems : true);
-            setShowArchived(hashData.filters.showArchived !== undefined ? hashData.filters.showArchived : false);
-            setPauseFilter(hashData.filters.pauseFilter || 'all');
-            setSearchText(hashData.filters.searchText || '');
-            setSelectedTags(hashData.filters.selectedTags || []);
+          // Decode the URL-encoded hash
+          try {
+            hashStr = decodeURIComponent(hashStr);
+            console.log('Decoded hash value:', hashStr);
+          } catch (decodeError) {
+            console.error('Error decoding hash:', decodeError);
+            return;
           }
           
-          // Load time period if it exists
-          if (hashData.timePeriod) {
-            setTimePeriod(hashData.timePeriod);
+          // Parse the hash as JSON
+          if (hashStr && hashStr.trim().startsWith('{') && hashStr.trim().endsWith('}')) {
+            const hashData = JSON.parse(hashStr);
+            console.log('Parsed hash data:', hashData);
+            
+            // Load filters if they exist
+            if (hashData.filters) {
+              console.log('Setting filter state from hash data:', hashData.filters);
+              setShowQueues(hashData.filters.showQueues !== undefined ? hashData.filters.showQueues : true);
+              setShowBots(hashData.filters.showBots !== undefined ? hashData.filters.showBots : true);
+              setShowSystems(hashData.filters.showSystems !== undefined ? hashData.filters.showSystems : true);
+              setShowArchived(hashData.filters.showArchived !== undefined ? hashData.filters.showArchived : false);
+              setPauseFilter(hashData.filters.pauseFilter || 'all');
+              setSearchText(hashData.filters.searchText || '');
+              setSelectedTags(hashData.filters.selectedTags || []);
+            }
+            
+            // Load time period if it exists
+            if (hashData.timePeriod) {
+              console.log('Setting time period from hash data:', hashData.timePeriod);
+              setTimePeriod(hashData.timePeriod);
+            }
+          } else {
+            console.warn('Hash string does not appear to be valid JSON:', hashStr);
           }
+        } catch (error) {
+          console.error('Error parsing hash:', error);
         }
-      } catch (error) {
-        console.error('Error parsing hash:', error);
+      } else {
+        console.log('No hash found or hash is too short');
       }
+    };
+
+    // Parse hash initially
+    parseHashAndUpdateState();
+    
+    // Add hash change listener for bookmark loading
+    const handleHashChange = () => {
+      console.log('Hash changed event detected, current hash:', window.location.hash);
+      parseHashAndUpdateState();
+    };
+    
+    if (typeof window !== 'undefined') {
+      console.log('Adding hashchange event listener');
+      window.addEventListener('hashchange', handleHashChange);
+      
+      // Clean up event listener
+      return () => {
+        console.log('Removing hashchange event listener');
+        window.removeEventListener('hashchange', handleHashChange);
+      };
     }
   }, []);
   

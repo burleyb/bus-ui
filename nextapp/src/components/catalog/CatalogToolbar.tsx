@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useAppContext } from '@/context/AppContext';
 import { 
@@ -22,6 +22,7 @@ import CatalogSearch from './CatalogSearch';
 import { SavedBookmark, TimePeriod, Interval } from '@/types/catalog';
 import { format, parseISO } from 'date-fns';
 import DatePicker from 'react-datepicker';
+import type { DatePickerProps } from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
 // Icons for the filter buttons
@@ -123,17 +124,28 @@ export default function CatalogToolbar({
   const router = useRouter();
   const pathname = usePathname();
   
-  // Load bookmarks from localStorage
+  // Add this function to handle opening the bookmark dialog
+  const openBookmarkDialog = () => {
+    console.log('Opening bookmark dialog');
+    setBookmarkName(''); // Ensure the input is clear
+    setIsBookmarkDialogOpen(true);
+    setIsBookmarkDropdownOpen(false);
+  };
+  
+  // Load bookmarks from localStorage on component mount
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedBookmarks = localStorage.getItem('catalogBookmarks');
-        if (savedBookmarks) {
-          setBookmarks(JSON.parse(savedBookmarks));
-        }
-      } catch (error) {
-        console.error('Error loading bookmarks:', error);
+    try {
+      console.log('Loading bookmarks from localStorage');
+      const savedBookmarks = localStorage.getItem('catalogBookmarks');
+      if (savedBookmarks) {
+        const parsedBookmarks = JSON.parse(savedBookmarks);
+        console.log('Loaded bookmarks:', parsedBookmarks);
+        setBookmarks(parsedBookmarks);
+      } else {
+        console.log('No saved bookmarks found in localStorage');
       }
+    } catch (error) {
+      console.error('Error loading bookmarks:', error);
     }
   }, []);
   
@@ -208,42 +220,80 @@ export default function CatalogToolbar({
   
   // Save bookmark
   const saveBookmark = () => {
-    if (!bookmarkName.trim()) return;
+    if (!bookmarkName.trim()) {
+      console.log('Bookmark name is empty, not saving');
+      return;
+    }
     
-    const newBookmark: SavedBookmark = {
-      name: bookmarkName.trim(),
-      url: window.location.hash
-    };
-    
-    const updatedBookmarks = [...bookmarks, newBookmark];
-    setBookmarks(updatedBookmarks);
-    
-    // Save to localStorage
-    localStorage.setItem('catalogBookmarks', JSON.stringify(updatedBookmarks));
-    
-    // Reset state and close dialog
-    setBookmarkName('');
-    setIsBookmarkDialogOpen(false);
+    try {
+      console.log('Saving bookmark with name:', bookmarkName.trim());
+      
+      const newBookmark: SavedBookmark = {
+        name: bookmarkName.trim(),
+        url: window.location.hash
+      };
+      
+      console.log('Bookmark details:', newBookmark);
+      
+      const updatedBookmarks = [...bookmarks, newBookmark];
+      setBookmarks(updatedBookmarks);
+      
+      // Save to localStorage
+      try {
+        localStorage.setItem('catalogBookmarks', JSON.stringify(updatedBookmarks));
+        console.log('Bookmarks saved to localStorage', updatedBookmarks);
+      } catch (storageError) {
+        console.error('Error saving to localStorage:', storageError);
+      }
+      
+      // Reset state and close dialog
+      setBookmarkName('');
+      setIsBookmarkDialogOpen(false);
+      
+      // Show feedback that bookmark was saved successfully
+      console.log('Bookmark saved successfully');
+    } catch (error) {
+      console.error('Error in saveBookmark function:', error);
+    }
   };
   
   // Load bookmark
   const loadBookmark = (bookmark: SavedBookmark) => {
-    if (typeof window !== 'undefined') {
-      window.location.hash = bookmark.url;
-      setIsBookmarkDropdownOpen(false);
+    try {
+      console.log('Loading bookmark:', bookmark);
+      if (typeof window !== 'undefined') {
+        // Check if bookmark URL is valid
+        if (!bookmark.url) {
+          console.error('Bookmark URL is empty or invalid');
+          return;
+        }
+        
+        window.location.hash = bookmark.url;
+        console.log('Hash updated to:', bookmark.url);
+        setIsBookmarkDropdownOpen(false);
+      }
+    } catch (error) {
+      console.error('Error loading bookmark:', error);
     }
   };
+
+  // Delete bookmark
+  const deleteBookmark = (bookmarkIndex: number) => {
+    const updatedBookmarks = bookmarks.filter((_, index) => index !== bookmarkIndex);
+    setBookmarks(updatedBookmarks);
+    localStorage.setItem('catalogBookmarks', JSON.stringify(updatedBookmarks));
+  };
   
-  // Copy URL to clipboard
+  // Copy current URL to clipboard
   const copyToClipboard = () => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(window.location.href)
         .then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 2000);
         })
         .catch(err => {
-          console.error('Failed to copy: ', err);
+          console.error('Failed to copy URL: ', err);
         });
     }
   };
@@ -410,8 +460,8 @@ export default function CatalogToolbar({
                       size="sm"
                       className="justify-start"
                       onClick={() => {
-                        setIsBookmarkDialogOpen(true);
-                        setIsBookmarkDropdownOpen(false);
+                        console.log('Save Current View button clicked');
+                        openBookmarkDialog();
                       }}
                     >
                       Save Current View
@@ -436,19 +486,50 @@ export default function CatalogToolbar({
                       )}
                     </Button>
                     
-                    {bookmarks.length > 0 && <hr className="my-1 border-gray-200 dark:border-gray-700" />}
-                    
-                    {bookmarks.map((bookmark, index) => (
-                      <Button
-                        key={index}
-                        variant="ghost"
-                        size="sm"
-                        className="justify-start"
-                        onClick={() => loadBookmark(bookmark)}
-                      >
-                        {bookmark.name}
-                      </Button>
-                    ))}
+                    {bookmarks.length > 0 ? (
+                      <>
+                        <hr className="my-1 border-gray-200 dark:border-gray-700" />
+                        
+                        <div className="text-xs text-muted-foreground px-2 py-1">
+                          Saved Bookmarks ({bookmarks.length})
+                        </div>
+                        
+                        {bookmarks.map((bookmark, index) => (
+                          <div 
+                            key={index} 
+                            className="flex items-center justify-between px-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
+                          >
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="justify-start w-[85%] text-left overflow-hidden whitespace-nowrap overflow-ellipsis"
+                              onClick={() => loadBookmark(bookmark)}
+                              title={bookmark.name}
+                            >
+                              {bookmark.name}
+                            </Button>
+                            <button 
+                              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 p-1"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                deleteBookmark(index);
+                              }}
+                              title="Delete bookmark"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <hr className="my-1 border-gray-200 dark:border-gray-700" />
+                        <div className="text-xs text-muted-foreground p-2 text-center italic">
+                          No saved bookmarks yet
+                        </div>
+                      </>
+                    )}
                   </div>
                 </PopoverContent>
               </Popover>
@@ -545,15 +626,15 @@ export default function CatalogToolbar({
             <DialogContent className="p-0 max-w-[370px]">
               <div className="p-4 space-y-4">
                 <div className="flex flex-col">
-                  <DatePicker
-                    selected={selectedDate}
-                    onChange={(date) => setSelectedDate(date)}
-                    showTimeSelect
-                    timeFormat="h:mm aa"
-                    timeIntervals={15}
-                    dateFormat="MMMM d, yyyy h:mm aa"
-                    inline
-                  />
+                  {React.createElement(DatePicker as any, {
+                    selected: selectedDate,
+                    onChange: (date: Date | null) => setSelectedDate(date),
+                    showTimeSelect: true,
+                    timeFormat: "h:mm aa",
+                    timeIntervals: 15,
+                    dateFormat: "MMMM d, yyyy h:mm aa",
+                    inline: true
+                  })}
                 </div>
                 
                 <div className="flex flex-wrap gap-2">
@@ -764,7 +845,16 @@ export default function CatalogToolbar({
       </div>
       
       {/* Bookmark Dialog */}
-      <Dialog open={isBookmarkDialogOpen} onOpenChange={setIsBookmarkDialogOpen}>
+      <Dialog 
+        open={isBookmarkDialogOpen} 
+        onOpenChange={(open) => {
+          console.log('Dialog open state changing to:', open);
+          setIsBookmarkDialogOpen(open);
+          if (!open) {
+            setBookmarkName(''); // Clear input when dialog closes
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Save Bookmark</DialogTitle>
@@ -778,19 +868,36 @@ export default function CatalogToolbar({
               id="bookmarkName"
               className="w-full px-3 py-2 border border-input rounded-md"
               value={bookmarkName}
-              onChange={(e) => setBookmarkName(e.target.value)}
+              onChange={(e) => {
+                console.log('Bookmark name changed:', e.target.value);
+                setBookmarkName(e.target.value);
+              }}
               placeholder="My Catalog View"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && bookmarkName.trim()) {
+                  console.log('Enter key pressed, saving bookmark');
+                  saveBookmark();
+                }
+              }}
             />
           </div>
           <DialogFooter className="flex justify-end space-x-2">
             <Button
               variant="outline"
-              onClick={() => setIsBookmarkDialogOpen(false)}
+              onClick={() => {
+                console.log('Cancel button clicked');
+                setIsBookmarkDialogOpen(false);
+              }}
             >
               Cancel
             </Button>
             <Button
-              onClick={saveBookmark}
+              onClick={() => {
+                console.log('Save button clicked');
+                saveBookmark();
+              }}
+              disabled={!bookmarkName.trim()}
             >
               Save
             </Button>
