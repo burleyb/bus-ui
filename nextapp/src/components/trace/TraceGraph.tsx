@@ -116,6 +116,9 @@ export default function TraceGraph({
   const [queuePayloads, setQueuePayloads] = useState<Record<string, any>>({});
   const { openNodeSettingsDialog } = useDialogs();
   
+  // Add a ref to store active AbortControllers
+  const activeRequestsRef = useRef<Map<string, AbortController>>(new Map());
+  
   // Add drag reference state to track drag start position
   const dragRef = useRef<{
     startX: number;
@@ -136,24 +139,61 @@ export default function TraceGraph({
   // Thinner stroke weight
   const STROKE_WEIGHT = 2;
 
-  // Function to fetch queue payload data and event timestamps
+  // Function to abort all pending requests
+  const abortAllRequests = useCallback(() => {
+    activeRequestsRef.current.forEach((controller, key) => {
+      controller.abort();
+      activeRequestsRef.current.delete(key);
+    });
+  }, []);
+
+  // Cleanup all requests when component unmounts or trace data changes
+  useEffect(() => {
+    return () => {
+      abortAllRequests();
+    };
+  }, [abortAllRequests, traceData]);
+
+  // Function to fetch queue payload data and event timestamps with AbortController
   const fetchQueuePayload = async (queueId: string, eid: string) => {
     try {
+      const requestKey = `${queueId}:${eid}`;
+      
       // Only fetch if we don't already have it cached
-      if (!queuePayloads[`${queueId}:${eid}`]) {
-        // This API call isn't needed as specified by the user
-        // Don't make calls to /api/queues endpoint
+      if (!queuePayloads[requestKey]) {
+        // Abort any existing request for this queue/eid
+        if (activeRequestsRef.current.has(requestKey)) {
+          activeRequestsRef.current.get(requestKey)?.abort();
+          activeRequestsRef.current.delete(requestKey);
+        }
         
-        // Just set a placeholder timestamp if needed
+        // Create a new AbortController for this request
+        const controller = new AbortController();
+        activeRequestsRef.current.set(requestKey, controller);
+        
+        // This is where the actual API call would happen
+        // For now, we're just setting a placeholder timestamp as per requirements
         setQueuePayloads(prev => ({
           ...prev,
-          [`${queueId}:${eid}`]: {
+          [requestKey]: {
             created_at: traceData.event?.timestamp || new Date().toISOString()
           }
         }));
+        
+        // If this was an actual API call, we'd use controller.signal
+        // Example:
+        // const response = await fetch(`/api/queues/${queueId}/events/${eid}`, {
+        //   signal: controller.signal
+        // });
+        
+        // After request completes, remove the controller
+        activeRequestsRef.current.delete(requestKey);
       }
     } catch (error) {
-      console.error('Error handling queue data:', error);
+      // Only log non-abort errors
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        console.error('Error handling queue data:', error);
+      }
     }
   };
 
@@ -745,7 +785,7 @@ export default function TraceGraph({
     };
   }, [traceData, zoom, offset, onOffsetChange, onZoomChange, onTraceToChild, openNodeSettingsDialog, isDragging, queuePayloads]);
 
-  // Handle tooltip positioning and content
+  // Show tooltip + handle AbortController cleanup for tooltip events
   const showTooltip = (node: TraceNode, event: any) => {
     if (!tooltipRef.current) return;
     
@@ -813,6 +853,13 @@ export default function TraceGraph({
       tooltipRef.current.style.display = 'none';
     }
   };
+
+  // Ensure cleanup on unmount
+  useEffect(() => {
+    return () => {
+      abortAllRequests();
+    };
+  }, [abortAllRequests]);
 
   return (
     <div 

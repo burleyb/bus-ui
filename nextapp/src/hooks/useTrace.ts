@@ -5,7 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { awsNativeFetch } from '@/lib/authUtils';
 
 // API function for getting trace data
-const getTrace = async (queueId: string, eventId: string, children?: string) => {
+const getTrace = async (queueId: string, eventId: string, children?: string, signal?: AbortSignal) => {
   try {
     let url = `/api/trace/${encodeURIComponent(queueId)}/${encodeURIComponent(eventId)}`;
     
@@ -23,6 +23,7 @@ const getTrace = async (queueId: string, eventId: string, children?: string) => 
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
+      signal, // Use the AbortSignal
     });
     
     if (!response.ok) {
@@ -31,7 +32,10 @@ const getTrace = async (queueId: string, eventId: string, children?: string) => 
     
     return response.json();
   } catch (error) {
-    console.error('Error fetching trace data:', error);
+    // Only log non-abort errors
+    if (!(error instanceof DOMException && error.name === 'AbortError')) {
+      console.error('Error fetching trace data:', error);
+    }
     throw error;
   }
 };
@@ -45,9 +49,11 @@ const getTrace = async (queueId: string, eventId: string, children?: string) => 
 export function useTrace(queueId: string, eventId: string, children?: string) {
   return useQuery({
     queryKey: ['trace', queueId, eventId, children],
-    queryFn: () => getTrace(queueId, eventId, children),
+    queryFn: async ({ signal }) => getTrace(queueId, eventId, children, signal),
     enabled: !!(queueId && eventId),
     refetchOnWindowFocus: false,
-    staleTime: Infinity // Don't auto-refetch as trace data is static for a specific event
+    staleTime: Infinity, // Don't auto-refetch as trace data is static for a specific event
+    gcTime: 0, // Immediately clean up when the component unmounts
+    refetchOnReconnect: false, // Don't refetch on reconnect
   });
 } 

@@ -1,7 +1,7 @@
 /**
  * Hooks for trace-related actions
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { 
   formatDateToEid, 
@@ -28,6 +28,9 @@ export function useTraceSearch(
   const [searchText, setSearchText] = useState(initialSearchText);
   const [debouncedSearch, setDebouncedSearch] = useState(initialSearchText);
   const [isSearching, setIsSearching] = useState(false);
+  // Add refs to track timeouts
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const refetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Calculate the EID based on selected time range or custom date
   const eid = useMemo(() => {
@@ -85,16 +88,35 @@ export function useTraceSearch(
     };
   });
 
+  // Clean up timeouts on unmount or when dependencies change
+  useEffect(() => {
+    return () => {
+      // Clear any pending timeouts
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+      if (refetchTimeoutRef.current) {
+        clearTimeout(refetchTimeoutRef.current);
+      }
+    };
+  }, [queueId, eid]);
+
   // Handle time range change
   const handleTimeRangeChange = useCallback((range: string) => {
     setTimeRange(range);
     setCustomDate(null);
     setIsSearching(true);
     
+    // Clean up any previous timeout
+    if (refetchTimeoutRef.current) {
+      clearTimeout(refetchTimeoutRef.current);
+    }
+    
     // Trigger a refetch after a short delay to ensure state updates
-    setTimeout(() => {
+    refetchTimeoutRef.current = setTimeout(() => {
       refetch().finally(() => {
         setIsSearching(false);
+        refetchTimeoutRef.current = null;
       });
     }, 10);
   }, [refetch]);
@@ -105,10 +127,16 @@ export function useTraceSearch(
     setTimeRange('');
     setIsSearching(true);
     
+    // Clean up any previous timeout
+    if (refetchTimeoutRef.current) {
+      clearTimeout(refetchTimeoutRef.current);
+    }
+    
     // Trigger a refetch after a short delay to ensure state updates
-    setTimeout(() => {
+    refetchTimeoutRef.current = setTimeout(() => {
       refetch().finally(() => {
         setIsSearching(false);
+        refetchTimeoutRef.current = null;
       });
     }, 10);
   }, [refetch]);
@@ -117,17 +145,21 @@ export function useTraceSearch(
   const handleSearchChange = useCallback((text: string) => {
     setSearchText(text);
     
+    // Clean up any previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
     // Debounce search
-    const timer = setTimeout(() => {
+    searchTimeoutRef.current = setTimeout(() => {
       setDebouncedSearch(text);
       setIsSearching(true);
       
       refetch().finally(() => {
         setIsSearching(false);
+        searchTimeoutRef.current = null;
       });
     }, 300);
-    
-    return () => clearTimeout(timer);
   }, [refetch]);
 
   // Manually trigger refresh

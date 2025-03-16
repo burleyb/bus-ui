@@ -172,7 +172,7 @@ const API = {
   },
   
   // Search Queue Events - new function to search for events in a queue
-  searchQueueEvents: async (queueId: string, eid?: string, searchText?: string, count?: number) => {
+  searchQueueEvents: async (queueId: string, eid?: string, searchText?: string, count?: number, signal?: AbortSignal) => {
     try {
       // Format the URL with the required parameters
       let url = `/api/search/${encodeURIComponent(queueId)}`;
@@ -209,6 +209,7 @@ const API = {
           'Accept': 'application/json',
           'Content-Type': 'application/json',
         },
+        signal, // Pass the abort signal to the fetch call
       });
       
       if (!response.ok) {
@@ -217,7 +218,10 @@ const API = {
       
       return response.json();
     } catch (error) {
-      console.error('Error searching queue events:', error);
+      // Don't log if it's an AbortError
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        console.error('Error searching queue events:', error);
+      }
       throw error;
     }
   },
@@ -1659,7 +1663,7 @@ export function useSearchQueueEvents(
   
   return useQuery({
     queryKey,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       if (!queueId) {
         console.warn('[HOOK] No queue ID provided for useSearchQueueEvents');
         return { results: [], resumptionToken: null };
@@ -1667,7 +1671,8 @@ export function useSearchQueueEvents(
       
       try {
         console.log(`[HOOK] Searching queue events:`, { queueId, eid, searchText, count });
-        const response = await API.searchQueueEvents(queueId, eid, searchText, count);
+        // Pass the abort signal to the API call
+        const response = await API.searchQueueEvents(queueId, eid, searchText, count, signal);
         
         if (!response) {
           console.warn('[HOOK] No data returned from searchQueueEvents');
@@ -1688,7 +1693,10 @@ export function useSearchQueueEvents(
         console.log(`[HOOK] Found ${response.results.length} queue events, resumptionToken: ${response.resumptionToken || 'none'}`);
         return response;
       } catch (error) {
-        console.error('[HOOK] Error searching queue events:', error);
+        // Don't log if it's an AbortError
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          console.error('[HOOK] Error searching queue events:', error);
+        }
         throw error; // Let React Query handle the error state
       }
     },
@@ -1696,6 +1704,9 @@ export function useSearchQueueEvents(
     staleTime: 1000 * 60, // 1 minute
     refetchOnMount: true,
     retry: 1,            // Retry failed requests once
+    refetchOnWindowFocus: false, // Prevent refetching on window focus
+    refetchOnReconnect: false,  // Prevent refetching on reconnection
+    gcTime: 0,           // Don't keep data in cache when inactive - immediately clean up
   });
 } 
 
