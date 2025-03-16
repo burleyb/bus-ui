@@ -244,6 +244,20 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
   // Handle Trace Event
   const handleTraceEvent = (eventId: string) => {
     console.log(`Trace event: ${eventId}`);
+    
+    // Find the event
+    const event = events.find((e: any) => e.eventId === eventId || e.eid === eventId);
+    if (!event) {
+      console.error('Event not found:', eventId);
+      return;
+    }
+    
+    // Check if event payload has correlation_id
+    if (!event.payload || !event.payload.correlation_id) {
+      console.warn('Event has no correlation_id, cannot trace:', eventId);
+      return;
+    }
+    
     // Set the event ID for the trace dialog
     setTraceEventId(eventId);
     // Show the trace dialog
@@ -501,13 +515,16 @@ const QueueEventsTab: React.FC<QueueEventsTabProps> = ({ nodeData }) => {
                       </td>
                       <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400 text-right w-[100px]">
                         <div className="flex space-x-2 justify-end" onClick={(e) => e.stopPropagation()}>
-                          <button 
-                            title="Trace this event" 
-                            className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
-                            onClick={() => handleTraceEvent(eventId)}
-                          >
-                            <Zap size={16} />
-                          </button>
+                          {/* Only show the Trace button if event has correlation_id */}
+                          {event.payload && event.payload.correlation_id && (
+                            <button 
+                              title="Trace this event" 
+                              className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                              onClick={() => handleTraceEvent(eventId)}
+                            >
+                              <Zap size={16} />
+                            </button>
+                          )}
                           <button
                             title="Replay from this event" 
                             className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"

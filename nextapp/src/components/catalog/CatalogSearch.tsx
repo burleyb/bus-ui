@@ -29,18 +29,20 @@ export default function CatalogSearch({
   useEffect(() => {
     if (state.nodes && Object.keys(state.nodes).length > 0) {
       const options = Object.values(state.nodes)
+        .filter((node: NodeData) => {
+          // Only include queues, filter out bots and other node types
+          const idParts = node.id.split(':');
+          return idParts[0] === 'queue';
+        })
         .map((node: NodeData) => {
           // Extract the name part (everything after the colon)
           const idParts = node.id.split(':');
           const name = idParts.length > 1 ? idParts.slice(1).join(':') : node.id;
-          const type = idParts[0] === 'bot' || idParts[0] === 'queue' || idParts[0] === 'system' 
-            ? idParts[0] 
-            : 'bot';
-
+          
           return {
             value: node.id,
             label: name,
-            type
+            type: 'queue'
           };
         })
         .sort((a, b) => a.label.localeCompare(b.label));
@@ -51,7 +53,11 @@ export default function CatalogSearch({
   
   // Filter options based on search text
   useEffect(() => {
-    if (!searchText.trim()) {
+    // Show all queue options when the field is clicked, even if no search text
+    if (!searchText.trim() && isOpen) {
+      setFilteredOptions([...nodeOptions]);
+      return;
+    } else if (!searchText.trim()) {
       setFilteredOptions([]);
       return;
     }
@@ -65,7 +71,7 @@ export default function CatalogSearch({
     
     // Reset highlighted index
     setHighlightedIndex(-1);
-  }, [searchText, nodeOptions]);
+  }, [searchText, nodeOptions, isOpen]);
   
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -86,6 +92,13 @@ export default function CatalogSearch({
     const value = e.target.value;
     setSearchText(value);
     setIsOpen(true);
+  };
+  
+  // Handle focus on the input field
+  const handleInputFocus = () => {
+    setIsOpen(true);
+    // When focused, show all options immediately
+    setFilteredOptions([...nodeOptions]);
   };
   
   // Handle option selection
@@ -146,10 +159,10 @@ export default function CatalogSearch({
           ref={searchInputRef}
           type="text"
           className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="Search nodes..."
+          placeholder="Search queues..."
           value={searchText}
           onChange={handleInputChange}
-          onFocus={() => setIsOpen(true)}
+          onFocus={handleInputFocus}
           onKeyDown={handleKeyDown}
           autoComplete="off"
         />
@@ -184,9 +197,6 @@ export default function CatalogSearch({
                   />
                 </div>
                 <span>{option.label}</span>
-                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-                  {option.type}
-                </span>
               </li>
             ))}
           </ul>

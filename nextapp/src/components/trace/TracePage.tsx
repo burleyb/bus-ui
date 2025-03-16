@@ -51,6 +51,8 @@ export default function TracePage() {
   
   // Ref to track if we're manually updating the hash
   const isUpdatingHashRef = useRef(false);
+  // Ref to track if we're updating URL parameters to prevent loops
+  const isUpdatingUrlRef = useRef(false);
   
   // Helper function to get URL hash parameters
   const getUrlHash = useCallback((): Record<string, any> => {
@@ -190,30 +192,48 @@ export default function TracePage() {
   
   // Handle queue search change
   const handleQueueSearchChange = (search: string) => {
+    // Avoid multiple overlapping URL updates
+    if (isUpdatingUrlRef.current) return;
+    isUpdatingUrlRef.current = true;
+    
     // Extract queue ID from search
     const queuePrefix = 'queue:';
     const queueIdValue = search.startsWith(queuePrefix) 
       ? search 
       : `${queuePrefix}${search}`;
     
+    // First update local state
     setQueueId(queueIdValue);
     setSelectedEventId(null);
     
-    // Update URL
+    // Then update URL - explicitly clear the event parameter to avoid loops
     const params = new URLSearchParams(searchParams?.toString() || '');
     params.set('queue', queueIdValue);
-    params.delete('event');
-    router.push(`/trace?${params.toString()}`);
+    params.delete('event'); // Make sure this is called to remove any event ID
+    
+    // Use replace instead of push to avoid adding to browser history for just changing parameters
+    router.replace(`/trace?${params.toString()}`);
+    
+    // Reset the flag after a delay
+    setTimeout(() => {
+      isUpdatingUrlRef.current = false;
+    }, 50);
   };
   
   // Select an event to view details
   const handleSelectEvent = useCallback((eventId: string) => {
+    // Avoid multiple overlapping URL updates
+    if (isUpdatingUrlRef.current) return;
+    isUpdatingUrlRef.current = true;
+    
     setSelectedEventId(prevId => eventId === prevId ? null : eventId);
     
     // Update URL
     const params = new URLSearchParams(searchParams?.toString() || '');
     params.set('event', eventId);
-    router.push(`/trace?${params.toString()}`);
+    
+    // Use replace instead of push to avoid adding to browser history
+    router.replace(`/trace?${params.toString()}`);
     
     // Focus the selected row and scroll it into view
     setTimeout(() => {
@@ -222,6 +242,9 @@ export default function TracePage() {
         row.focus();
         row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       }
+      
+      // Reset the flag
+      isUpdatingUrlRef.current = false;
     }, 100);
   }, [router, searchParams]);
   
@@ -264,6 +287,67 @@ export default function TracePage() {
     }
   }, [events, selectedEventId, handleSelectEvent]);
   
+  // Extract the time calculation logic to a reusable function
+  const calculateTimeRange = (interval: string): { begin: Date, end: Date } => {
+    const end = new Date();
+    
+    // Parse the interval to extract type and count
+    const [intervalType, countStr] = interval.split('_');
+    const count = parseInt(countStr, 10);
+    
+    if (isNaN(count)) {
+      console.error(`Invalid count in interval: ${interval}`);
+      return { begin: new Date(end.getTime() - 15 * 60 * 1000), end }; // Default to 15 minutes
+    }
+    
+    // Calculate milliseconds for the time interval
+    let milliseconds: number;
+    switch(intervalType) {
+      case 'minute':
+        milliseconds = count * 60 * 1000;
+        break;
+      case 'hour':
+        milliseconds = count * 60 * 60 * 1000;
+        break;
+      case 'day':
+        milliseconds = count * 24 * 60 * 60 * 1000;
+        break;
+      case 'week':
+        milliseconds = count * 7 * 24 * 60 * 60 * 1000;
+        break;
+      default:
+        console.error(`Unknown interval type: ${intervalType}`);
+        milliseconds = 15 * 60 * 1000; // Default to 15 minutes
+    }
+    
+    // Calculate begin time by subtracting the interval from end time
+    const begin = new Date(end.getTime() - milliseconds);
+    
+    return { begin, end };
+  };
+  
+  // Create a reusable function to build the selectedTime object
+  const buildSelectedTimeObject = (begin: Date, end: Date): Record<string, { begin: string, end: string }> => {
+    const selectedTime: Record<string, { begin: string, end: string }> = {};
+    
+    // Define all possible intervals that might be needed by the system
+    const allIntervals = [
+      'minute_1', 'minute_5', 'minute_15', 
+      'hour_1', 'hour_6', 
+      'day_1', 'week_1'
+    ];
+    
+    // Add entries for all intervals
+    allIntervals.forEach(interval => {
+      selectedTime[interval] = {
+        begin: begin.toISOString(),
+        end: end.toISOString()
+      };
+    });
+    
+    return selectedTime;
+  };
+
   // Handle time range change with URL hash update
   const handleTimeRangeChange = (range: string) => {
     console.log(`Time range selected: ${range}`);
@@ -274,42 +358,51 @@ export default function TracePage() {
     // Update URL hash - convert our time ranges to format used in the rest of the app
     let interval = 'minute_15'; // Default
     
-    switch(range) {
-      case '30s':
-        interval = 'minute_1'; // Approximate equivalent
-        break;
-      case '1m':
-        interval = 'minute_1';
-        break;
-      case '5m':
-        interval = 'minute_5';
-        break;
-      case '15m':
-        interval = 'minute_15';
-        break;
-      case '1h':
-        interval = 'hour_1';
-        break;
-      case '6h':
-        interval = 'hour_6';
-        break;
-      case '1d':
-        interval = 'day_1';
-        break;
-      case '1w':
-        // Use week_1 instead of day_7 for consistency with other parts of the app
-        interval = 'week_1';
-        break;
+    // Generic conversion from time range format to interval format
+    if (range) {
+      // Handle special case for seconds
+      if (range.endsWith('s')) {
+        const seconds = parseInt(range.replace('s', ''), 10);
+        // Convert seconds to minutes (approximation)
+        interval = `minute_${Math.max(1, Math.ceil(seconds / 60))}`;
+      } else {
+        // Parse the numeric value and unit from the time range
+        const match = range.match(/^(\d+)([mhdw])$/);
+        
+        if (match) {
+          const [, value, unit] = match;
+          
+          // Map units to their full names
+          const unitMap: Record<string, string> = {
+            'm': 'minute',
+            'h': 'hour',
+            'd': 'day',
+            'w': 'week'
+          };
+          
+          // Create the interval string in the format 'unit_value'
+          interval = `${unitMap[unit]}_${value}`;
+        } else {
+          console.warn(`Unrecognized time range format: ${range}, using default`);
+        }
+      }
     }
     
     console.log(`Converting ${range} to interval format: ${interval}`);
+    
+    // Calculate appropriate begin and end times based on the interval
+    const { begin, end } = calculateTimeRange(interval);
+    
+    // Create selectedTime object with all supported interval formats
+    const selectedTime = buildSelectedTimeObject(begin, end);
     
     // Update URL hash for persistence (this will also update AppContext via our updateUrlHash function)
     updateUrlHash({ 
       timePeriod: { 
         interval,
-        begin: undefined,
-        end: undefined
+        begin: begin.toISOString(),
+        end: end.toISOString(),
+        selectedTime: selectedTime
       } 
     });
   };
@@ -326,12 +419,16 @@ export default function TracePage() {
       const begin = new Date(date.getTime() - 7.5 * 60 * 1000); // 7.5 minutes before
       const end = new Date(date.getTime() + 7.5 * 60 * 1000);   // 7.5 minutes after
       
+      // Create selectedTime object with consistent format
+      const selectedTime = buildSelectedTimeObject(begin, end);
+      
       // Update URL hash (this will also update AppContext via our updateUrlHash function)
       updateUrlHash({ 
         timePeriod: { 
           interval: 'minute_15',
           begin: begin.toISOString(),
-          end: end.toISOString()
+          end: end.toISOString(),
+          selectedTime: selectedTime
         } 
       });
     } else {
@@ -357,15 +454,32 @@ export default function TracePage() {
   
   // Auto-select first event when events load
   useEffect(() => {
+    // Avoid URL updates if we're already updating the URL
+    if (isUpdatingUrlRef.current) return;
+    
     // Only if we don't already have a selection and we're not searching
     if (events.length > 0 && !selectedEventId && !isLoading) {
       const firstEventId = events[0].eventId || events[0].eid;
+      
+      // Set flag to prevent loops
+      isUpdatingUrlRef.current = true;
+      
       setSelectedEventId(firstEventId);
       
-      // Update URL
-      const params = new URLSearchParams(searchParams?.toString() || '');
-      params.set('event', firstEventId);
-      router.push(`/trace?${params.toString()}`);
+      // Update URL - but ONLY if we're not already in a navigation cycle
+      // Use the current URL parameters to check if we just navigated
+      const currentParams = new URLSearchParams(searchParams?.toString() || '');
+      const justChangedQueue = currentParams.has('queue') && !currentParams.has('event');
+      
+      if (justChangedQueue) {
+        // If we just changed the queue (has queue param but no event param),
+        // update the URL with the selected event
+        const params = new URLSearchParams(currentParams);
+        params.set('event', firstEventId);
+        
+        // Use replace instead of push to avoid adding to history stack
+        router.replace(`/trace?${params.toString()}`);
+      }
       
       // Focus and scroll to the first row
       setTimeout(() => {
@@ -374,9 +488,12 @@ export default function TracePage() {
           firstRow.focus();
           firstRow.scrollIntoView({ behavior: 'auto', block: 'nearest' });
         }
+        
+        // Reset the flag
+        isUpdatingUrlRef.current = false;
       }, 100);
     }
-  }, [events, selectedEventId, isLoading, router, searchParams]);
+  }, [events, selectedEventId, isLoading, router, searchParams, queueId]);
   
   // Update state based on events data
   useEffect(() => {
@@ -452,6 +569,15 @@ export default function TracePage() {
     };
   }, [getUrlHash, state.urlObj.timePeriod]);
   
+  // Initialize time range state if needed on component mount
+  useEffect(() => {
+    // If no time range is set from URL, initialize with default
+    if (!timeRange && !customDate) {
+      // This will set up all the necessary state in the URL hash
+      handleTimeRangeChange('5m');
+    }
+  }, [timeRange, customDate, handleTimeRangeChange]);
+  
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap">
@@ -462,7 +588,7 @@ export default function TracePage() {
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4">
         <div className="mb-4">
           <label htmlFor="queue-search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            Queue
+            Select Queue
           </label>
           <CatalogSearch 
             initialSearch={queueId.replace('queue:', '')} 

@@ -20,6 +20,7 @@ interface TraceEvent {
   timestamp: string;
   status: string;
   type: string;
+  correlation_id?: string;
 }
 
 export default function TraceList({
@@ -50,6 +51,13 @@ export default function TraceList({
   };
   
   const handleEventSelect = (event: TraceEvent) => {
+    // Check if the event has a correlation_id (assuming it's in the event object)
+    // Note: We might need to modify this based on the actual data structure
+    if (!event.correlation_id) {
+      console.warn('Event has no correlation_id, cannot trace:', event.id);
+      return;
+    }
+    
     setSelectedEvent(event.id);
     
     // Navigate to the same page but with event ID in the URL
@@ -106,11 +114,14 @@ export default function TraceList({
             selectedEvent === event.id 
               ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800' 
               : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700'
-          }`}
+          } ${!event.correlation_id ? 'opacity-60' : ''}`}
         >
           <div className="flex justify-between items-start mb-2">
             <div className="font-medium text-gray-900 dark:text-white truncate flex-1">
               {event.id}
+              {!event.correlation_id && (
+                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">(Not traceable)</span>
+              )}
             </div>
             {selectedEvent === event.id && (
               <ChevronRightIcon className="h-5 w-5 text-blue-500" />

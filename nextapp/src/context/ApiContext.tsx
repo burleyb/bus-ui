@@ -810,9 +810,19 @@ export function useStats() {
         try {
           console.log('Processing week interval with selectedTime:', selectedTime.toLocaleString());
           
+          // Check if we have a valid date object
           if (!selectedTime || isNaN(selectedTime.getTime())) {
             console.error('Invalid selectedTime for week interval:', selectedTime);
-            selectedTime = new Date(); // Use current date as fallback
+            
+            // Try to get selectedTime from the week_1 property in state if available
+            const timePeriod = state?.urlObj?.timePeriod as any; // Use any to avoid type issues
+            if (timePeriod?.selectedTime?.week_1?.end) {
+              console.log('Attempting to use selectedTime from week_1 property');
+              selectedTime = new Date(timePeriod.selectedTime.week_1.end);
+            } else {
+              console.log('Using current date as fallback for selectedTime');
+              selectedTime = new Date(); // Use current date as fallback
+            }
           }
           
           const dayOfWeek = selectedTime.getDay(); // 0 = Sunday, 1 = Monday, etc.
