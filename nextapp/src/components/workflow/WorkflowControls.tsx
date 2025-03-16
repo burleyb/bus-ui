@@ -132,7 +132,11 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
   React.useEffect(() => {
     const updateStatsStatus = () => {
       const currentParams = getUrlParams();
-      setStatsEnabled(Boolean(currentParams.stats));
+      // Update to handle the default case when stats isn't in the URL
+      setStatsEnabled(currentParams.stats !== undefined ? Boolean(currentParams.stats) : true);
+      
+      // Add debug log inside the function to show the actual value
+      console.log('Stats enabled:', currentParams.stats !== undefined ? Boolean(currentParams.stats) : true);
       
       // Also check for polling state in URL hash
       const pollingParam = currentParams.statsPolling;
@@ -143,6 +147,9 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
     
     // Update initially
     updateStatsStatus();
+    
+    // Add debug log to confirm the stats state
+    console.log('Initial stats state:', statsEnabled);
     
     // Listen for hash changes
     window.addEventListener('hashchange', updateStatsStatus);
@@ -192,8 +199,12 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
   
   // Handle stats toggle
   const handleStatsToggle = () => {
+    // Toggle based on current state in component, for immediate feedback
+    const newStatsEnabled = !statsEnabled;
+    setStatsEnabled(newStatsEnabled);
+    
+    // Get current params to preserve other values
     const currentParams = getUrlParams();
-    const currentStats = currentParams.stats || false;
     
     // Preserve collapsed and expanded state
     const collapsed = currentParams.collapsed || { left: [], right: [] };
@@ -201,7 +212,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
     
     // Update with new stats value while preserving other state
     updateUrlHash({ 
-      stats: !currentStats,
+      stats: newStatsEnabled,
       collapsed,
       expanded
     });

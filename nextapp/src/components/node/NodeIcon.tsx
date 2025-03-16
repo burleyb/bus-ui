@@ -106,7 +106,7 @@ export function getNodeImagesSvgString(node: NodeProps, nodes?: any, baseUrl: st
   return `<image href="${imgPath}" width="80%" height="80%" x="10%" y="10%" preserveAspectRatio="xMidYMid meet" />`;
 }
 
-export default function NodeIcon({ node, size = 32, className = '' }: NodeIconProps) {
+export default function NodeIcon({ node, size = 48, className = '' }: NodeIconProps) {
   if (!node) return null;
   
   const { state } = useAppContext();
