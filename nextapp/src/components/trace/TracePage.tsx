@@ -593,6 +593,7 @@ export default function TracePage() {
           <CatalogSearch 
             initialSearch={queueId.replace('queue:', '')} 
             onSearchChange={handleQueueSearchChange}
+            nodeTypes={['queue']}
           />
         </div>
         

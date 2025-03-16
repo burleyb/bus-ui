@@ -9,11 +9,13 @@ import NodeIcon from '@/components/node/NodeIcon';
 interface CatalogSearchProps {
   initialSearch: string;
   onSearchChange: (search: string) => void;
+  nodeTypes?: string[]; // Optional array of node types to display (e.g., ['queue', 'bot', 'system'])
 }
 
 export default function CatalogSearch({ 
   initialSearch = '',
-  onSearchChange
+  onSearchChange,
+  nodeTypes = ['queue'] // Default to only queues for backward compatibility
 }: CatalogSearchProps) {
   const { state } = useAppContext();
   const [searchText, setSearchText] = useState(initialSearch);
@@ -30,26 +32,27 @@ export default function CatalogSearch({
     if (state.nodes && Object.keys(state.nodes).length > 0) {
       const options = Object.values(state.nodes)
         .filter((node: NodeData) => {
-          // Only include queues, filter out bots and other node types
+          // Filter based on the nodeTypes prop
           const idParts = node.id.split(':');
-          return idParts[0] === 'queue';
+          return nodeTypes.includes(idParts[0]);
         })
         .map((node: NodeData) => {
           // Extract the name part (everything after the colon)
           const idParts = node.id.split(':');
           const name = idParts.length > 1 ? idParts.slice(1).join(':') : node.id;
+          const type = idParts[0]; // Use the first part of the ID as the node type
           
           return {
             value: node.id,
             label: name,
-            type: 'queue'
+            type: type
           };
         })
         .sort((a, b) => a.label.localeCompare(b.label));
       
       setNodeOptions(options);
     }
-  }, [state.nodes]);
+  }, [state.nodes, nodeTypes]);
   
   // Filter options based on search text
   useEffect(() => {
@@ -159,7 +162,7 @@ export default function CatalogSearch({
           ref={searchInputRef}
           type="text"
           className="pl-10 pr-4 py-2 w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          placeholder="Search queues..."
+          placeholder="Search nodes..."
           value={searchText}
           onChange={handleInputChange}
           onFocus={handleInputFocus}

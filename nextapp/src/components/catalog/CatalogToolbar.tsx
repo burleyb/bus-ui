@@ -329,7 +329,15 @@ export default function CatalogToolbar({
         {/* Search and filters on the same line */}
         <div className="flex flex-1 flex-wrap items-center gap-2">
           <div className="min-w-64 w-full sm:w-auto">
-            <CatalogSearch initialSearch={searchText} onSearchChange={onSearchChange} />
+            <CatalogSearch 
+              initialSearch={searchText} 
+              onSearchChange={onSearchChange} 
+              nodeTypes={[
+                ...(showQueues ? ['queue'] : []),
+                ...(showBots ? ['bot'] : []),
+                ...(showSystems ? ['system'] : [])
+              ]}
+            />
           </div>
           
           <div className="flex items-center space-x-1">
