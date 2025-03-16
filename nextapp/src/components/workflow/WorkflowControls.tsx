@@ -413,12 +413,17 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
                 id="bookmark-name"
                 value={bookmarkName}
                 onChange={(e) => setBookmarkName(e.target.value)}
-                className="col-span-3"
+                className="col-span-3 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
               />
             </div>
           </div>
           <DialogFooter>
-            <DialogClose>Cancel</DialogClose>
+            <button
+              className="px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+              onClick={() => setIsBookmarkDialogOpen(false)}
+            >
+              Cancel
+            </button>
             <button
               className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
               onClick={saveBookmark}
@@ -432,7 +437,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
       
       {/* Share URL Dialog */}
       <Dialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-[700px]">
           <DialogHeader>
             <DialogTitle>Share Workflow</DialogTitle>
           </DialogHeader>
@@ -446,7 +451,7 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
                   <textarea
                     id="share-url"
                     readOnly
-                    className="w-full h-24 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
+                    className="w-full h-32 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white font-mono text-sm"
                     value={typeof window !== 'undefined' ? window.location.href : ''}
                   />
                   <button 
@@ -461,7 +466,12 @@ export default function WorkflowControls({ selectedNode }: WorkflowControlsProps
             </div>
           </div>
           <DialogFooter>
-            <DialogClose>Close</DialogClose>
+            <button
+              className="px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white rounded-md hover:bg-gray-300 dark:hover:bg-gray-600"
+              onClick={() => setIsShareDialogOpen(false)}
+            >
+              Close
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

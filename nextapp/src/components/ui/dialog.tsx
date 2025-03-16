@@ -4,6 +4,17 @@ import * as React from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// Create a context for the dialog
+interface DialogContextType {
+  open: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+const DialogContext = React.createContext<DialogContextType>({
+  open: false,
+  onOpenChange: undefined,
+});
+
 // React Dialog components that use standard HTML elements
 // This avoids TypeScript compatibility issues with the Radix UI components
 
@@ -53,9 +64,11 @@ export const Dialog: React.FC<DialogProps> = ({
   // Render children wrapped in a context provider even when closed
   // But make sure the UI elements are hidden
   return (
-    <div className={open ? '' : 'hidden'}>
-      {children}
-    </div>
+    <DialogContext.Provider value={{ open, onOpenChange }}>
+      <div className={open ? '' : 'hidden'}>
+        {children}
+      </div>
+    </DialogContext.Provider>
   );
 };
 
@@ -84,8 +97,21 @@ export const DialogClose: React.FC<{
   asChild?: boolean;
   onClick?: () => void;
 }> = ({ children, onClick }) => {
+  // Use the dialog context
+  const { onOpenChange } = React.useContext(DialogContext);
+  
   return (
-    <button type="button" onClick={onClick}>
+    <button 
+      type="button" 
+      onClick={(e) => {
+        if (onClick) onClick();
+        // Also call the dialog's onOpenChange
+        if (onOpenChange) {
+          onOpenChange(false);
+        }
+      }}
+      className="inline-flex h-10 items-center justify-center rounded-md px-4 py-2 text-sm font-medium bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600"
+    >
       {children}
     </button>
   );
@@ -114,11 +140,18 @@ export const DialogContent: React.FC<{
   // Create a ref to detect clicks outside the content
   const contentRef = React.useRef<HTMLDivElement>(null);
   
+  // Use the dialog context
+  const { onOpenChange } = React.useContext(DialogContext);
+  
   // Handle clicking outside the content
   React.useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
-      if (contentRef.current && !contentRef.current.contains(e.target as Node) && onInteractOutside) {
-        onInteractOutside(e as unknown as React.MouseEvent);
+      if (contentRef.current && !contentRef.current.contains(e.target as Node)) {
+        if (onInteractOutside) {
+          onInteractOutside(e as unknown as React.MouseEvent);
+        } else if (onOpenChange) {
+          onOpenChange(false);
+        }
       }
     };
     
@@ -126,7 +159,7 @@ export const DialogContent: React.FC<{
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
     };
-  }, [onInteractOutside]);
+  }, [onInteractOutside, onOpenChange]);
   
   return (
     <DialogPortal>
@@ -146,8 +179,11 @@ export const DialogContent: React.FC<{
             e.stopPropagation();
             if (onInteractOutside) {
               onInteractOutside(e);
+            } else if (onOpenChange) {
+              onOpenChange(false);
             }
           }}
+          aria-label="Close dialog"
         >
           <X className="h-4 w-4" />
           <span className="sr-only">Close</span>
