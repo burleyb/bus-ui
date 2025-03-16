@@ -30,6 +30,7 @@ export interface CatalogFilters {
   showBots: boolean;
   showSystems: boolean;
   showArchived: boolean;
+  pauseFilter: 'all' | 'paused' | 'unpaused';
   searchText: string;
   selectedTags: string[];
   timePeriod?: TimePeriod;

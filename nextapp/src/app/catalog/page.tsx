@@ -5,10 +5,11 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useStats, useBots } from '@/context/ApiContext';
 import { useAppContext } from '@/context/AppContext';
 import { CatalogNodeItem, BulkAction, TimePeriod } from '@/types/catalog';
-import CatalogGrid from '@/components/catalog/CatalogGrid';
+import CatalogTable from '@/components/catalog/CatalogTable';
 import CatalogToolbar from '@/components/catalog/CatalogToolbar';
 import BulkTagDialog from '@/components/catalog/BulkTagDialog';
 import { useDialogs } from '@/hooks/useDialogs';
+import CatalogGrid from '@/components/catalog/CatalogGrid';
 
 const CatalogPage = () => {
   // Get state and API hooks
@@ -22,6 +23,7 @@ const CatalogPage = () => {
   const [showBots, setShowBots] = useState(true);
   const [showSystems, setShowSystems] = useState(true);
   const [showArchived, setShowArchived] = useState(false);
+  const [pauseFilter, setPauseFilter] = useState<'all' | 'paused' | 'unpaused'>('all');
   const [searchText, setSearchText] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedNodes, setSelectedNodes] = useState<CatalogNodeItem[]>([]);
@@ -57,6 +59,7 @@ const CatalogPage = () => {
             setShowBots(hashData.filters.showBots !== undefined ? hashData.filters.showBots : true);
             setShowSystems(hashData.filters.showSystems !== undefined ? hashData.filters.showSystems : true);
             setShowArchived(hashData.filters.showArchived !== undefined ? hashData.filters.showArchived : false);
+            setPauseFilter(hashData.filters.pauseFilter || 'all');
             setSearchText(hashData.filters.searchText || '');
             setSelectedTags(hashData.filters.selectedTags || []);
           }
@@ -82,6 +85,7 @@ const CatalogPage = () => {
           showBots,
           showSystems,
           showArchived,
+          pauseFilter,
           searchText,
           selectedTags
         },
@@ -92,7 +96,7 @@ const CatalogPage = () => {
       const hashStr = JSON.stringify(hashData);
       window.location.hash = encodeURIComponent(hashStr);
     }
-  }, [showQueues, showBots, showSystems, showArchived, searchText, selectedTags, timePeriod]);
+  }, [showQueues, showBots, showSystems, showArchived, pauseFilter, searchText, selectedTags, timePeriod]);
   
   // Handle bulk actions
   const handleBulkAction = async (action: BulkAction, selectedNodes: CatalogNodeItem[]) => {
@@ -322,23 +326,26 @@ const CatalogPage = () => {
           showBots={showBots}
           showSystems={showSystems}
           showArchived={showArchived}
+          pauseFilter={pauseFilter}
           timePeriod={timePeriod}
           onSearchChange={setSearchText}
           onShowQueuesChange={setShowQueues}
           onShowBotsChange={setShowBots}
           onShowSystemsChange={setShowSystems}
           onShowArchivedChange={setShowArchived}
+          onPauseFilterChange={setPauseFilter}
           onTimePeriodChange={setTimePeriod}
         />
       </div>
       
-      {/* AG Grid component */}
+      {/* TanStack Table component */}
       <div className="flex-grow min-h-0">
-        <CatalogGrid
+        <CatalogTable
           showQueues={showQueues}
           showBots={showBots}
           showSystems={showSystems}
           showArchived={showArchived}
+          pauseFilter={pauseFilter}
           searchText={searchText}
           selectedTags={selectedTags}
           onSelectionChanged={setSelectedNodes}

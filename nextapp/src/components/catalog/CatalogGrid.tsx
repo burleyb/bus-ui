@@ -135,6 +135,7 @@ interface CatalogGridProps {
   showBots: boolean;
   showSystems: boolean; 
   showArchived: boolean;
+  pauseFilter: 'all' | 'paused' | 'unpaused';
   searchText: string;
   selectedTags: string[];
   onSelectionChanged?: (selectedNodes: CatalogNodeItem[]) => void;
@@ -146,6 +147,7 @@ const CatalogGrid: React.FC<CatalogGridProps> = ({
   showBots = true,
   showSystems = true,
   showArchived = false,
+  pauseFilter = 'all',
   searchText = '',
   selectedTags = [],
   onSelectionChanged,
@@ -310,6 +312,12 @@ const CatalogGrid: React.FC<CatalogGridProps> = ({
       // Filter archived nodes
       if (node.isArchived && !showArchived) return false;
       
+      // Filter based on pause status
+      if (pauseFilter !== 'all' && node.type === 'bot') {
+        if (pauseFilter === 'paused' && !node.isPaused) return false;
+        if (pauseFilter === 'unpaused' && node.isPaused) return false;
+      }
+      
       // Search filter - check both name and tags
       if (searchText) {
         const searchLower = searchText.toLowerCase();
@@ -338,7 +346,7 @@ const CatalogGrid: React.FC<CatalogGridProps> = ({
       queue: filtered.filter(node => node.type === 'queue').length,
       system: filtered.filter(node => node.type === 'system').length
     });
-  }, [rowData, showBots, showQueues, showSystems, showArchived, searchText, selectedTags]);
+  }, [rowData, showBots, showQueues, showSystems, showArchived, pauseFilter, searchText, selectedTags]);
 
   // Handle cell click - open node settings dialog when clicking on the name cell
   const handleCellClicked = useCallback((event: CellClickedEvent) => {

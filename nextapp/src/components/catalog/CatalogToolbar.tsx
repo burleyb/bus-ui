@@ -25,7 +25,7 @@ import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 
 // Icons for the filter buttons
-import { FaRobot, FaArchive } from 'react-icons/fa';
+import { FaRobot, FaArchive, FaPause } from 'react-icons/fa';
 import { BsInboxFill } from 'react-icons/bs';
 import { MdStorage } from 'react-icons/md';
 
@@ -41,7 +41,7 @@ const FilterButton = ({
   label: string; 
   isActive: boolean; 
   onClick: () => void;
-  type?: "queue" | "bot" | "system" | "archive" | "default";
+  type?: "queue" | "bot" | "system" | "archive" | "pause" | "default";
 }) => {
   // Define colors based on button type
   const getActiveClasses = () => {
@@ -54,6 +54,8 @@ const FilterButton = ({
         return "border-green-400 bg-green-100 hover:bg-green-200 text-green-700 dark:border-green-700 dark:bg-green-900/60 dark:hover:bg-green-900 dark:text-green-300";
       case "archive":
         return "border-amber-400 bg-amber-100 hover:bg-amber-200 text-amber-700 dark:border-amber-700 dark:bg-amber-900/60 dark:hover:bg-amber-900 dark:text-amber-300";
+      case "pause":
+        return "border-orange-400 bg-orange-100 hover:bg-orange-200 text-orange-700 dark:border-orange-700 dark:bg-orange-900/60 dark:hover:bg-orange-900 dark:text-orange-300";
       default:
         return "border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary";
     }
@@ -78,12 +80,14 @@ interface CatalogToolbarProps {
   showBots: boolean;
   showSystems: boolean;
   showArchived: boolean;
+  pauseFilter: 'all' | 'paused' | 'unpaused';
   timePeriod?: TimePeriod;
   onSearchChange: (search: string) => void;
   onShowQueuesChange: (show: boolean) => void;
   onShowBotsChange: (show: boolean) => void;
   onShowSystemsChange: (show: boolean) => void;
   onShowArchivedChange: (show: boolean) => void;
+  onPauseFilterChange: (filter: 'all' | 'paused' | 'unpaused') => void;
   onTimePeriodChange: (timePeriod: TimePeriod) => void;
 }
 
@@ -93,12 +97,14 @@ export default function CatalogToolbar({
   showBots = true,
   showSystems = true,
   showArchived = false,
+  pauseFilter = 'all',
   timePeriod,
   onSearchChange,
   onShowQueuesChange,
   onShowBotsChange,
   onShowSystemsChange,
   onShowArchivedChange,
+  onPauseFilterChange,
   onTimePeriodChange
 }: CatalogToolbarProps) {
   // Bookmark dialog state
@@ -371,6 +377,22 @@ export default function CatalogToolbar({
               isActive={showArchived}
               onClick={() => onShowArchivedChange(!showArchived)}
               type="archive"
+            />
+            
+            <FilterButton
+              icon={<FaPause size={16} />}
+              label={pauseFilter === 'all' ? 'Paused' : pauseFilter === 'paused' ? 'Paused' : 'Unpaused'}
+              isActive={pauseFilter !== 'all'}
+              onClick={() => {
+                // Toggle between all, paused, and unpaused
+                const nextFilter = pauseFilter === 'all' 
+                  ? 'paused' 
+                  : pauseFilter === 'paused' 
+                    ? 'unpaused' 
+                    : 'all';
+                onPauseFilterChange(nextFilter);
+              }}
+              type="pause"
             />
             
             <div className="relative" ref={dropdownRef}>
