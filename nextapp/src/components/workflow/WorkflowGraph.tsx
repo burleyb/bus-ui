@@ -384,6 +384,17 @@ export default function WorkflowGraph({
                   </div>
                   <span className="text-gray-700 dark:text-gray-300">System</span>
                 </div>
+                <div className="flex items-center">
+                  <div className="h-5 w-5 mr-1 relative">
+                    <svg viewBox="0 0 24 24" width="24" height="24">
+                      {/* Green circle for focused node */}
+                      <circle cx="12" cy="12" r="11" fill="none" stroke="rgb(34 197 94 / 1)" strokeWidth="2" />
+                      {/* Bot icon in the center */}
+                      <image href={`${typeof window !== 'undefined' ? window.location.origin : ''}/images/nodes/bot.png`} x="4" y="4" width="16" height="16" />
+                    </svg>
+                  </div>
+                  <span className="text-gray-700 dark:text-gray-300">Focused Node</span>
+                </div>
               </div>
             </div>
             
