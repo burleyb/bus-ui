@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import moment from 'moment';
 import {
   ColumnDef,
   ColumnFiltersState,
@@ -42,7 +43,7 @@ interface SortableHeaderProps {
 
 const SortableHeader: React.FC<SortableHeaderProps> = ({ column, title }) => {
   return (
-    <div className="flex items-center space-x-1">
+    <div className="flex items-center justify-center space-x-1">
       <span>{title}</span>
       <ArrowUpDown 
         className="ml-1 h-4 w-4 cursor-pointer opacity-50 hover:opacity-100" 
@@ -90,6 +91,20 @@ const NodeNameCell = ({ row }: { row: any }) => {
       </div>
     </div>
   );
+};
+
+// Function to format lag time in a human-readable format
+const formatLagTime = (duration: number | undefined | null): string => {
+  if (duration === undefined || duration === null || duration === 0) return '0';
+  return moment.duration(duration).humanize();
+};
+
+// Function to format date time
+const formatDateTime = (timestamp: string | number | null | undefined): string => {
+  if (timestamp === undefined || timestamp === null || timestamp === 'N/A') return 'N/A';
+  // Ensure we don't try to format objects
+  if (typeof timestamp === 'object') return 'N/A';
+  return moment(timestamp).format('MMM D, YYYY h:mm A');
 };
 
 // Workflow Link Cell Component
@@ -242,6 +257,26 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
     {
       accessorKey: 'lastAction',
       header: ({ column }) => <SortableHeader column={column} title="Last Action" />,
+      cell: ({ row }) => {
+        // Get the value and handle empty objects safely
+        const rawValue = row.getValue('lastAction');
+        let value: string | number | null | undefined = null;
+        
+        // Check if it's a simple value we can use
+        if (rawValue === null || rawValue === undefined || rawValue === 'N/A') {
+          value = 'N/A';
+        } else if (typeof rawValue !== 'object') {
+          value = rawValue as string | number;
+        } else {
+          value = 'N/A'; // For object values
+        }
+        
+        return (
+          <div className="text-center">
+            {value !== 'N/A' ? formatDateTime(value) : 'N/A'}
+          </div>
+        );
+      },
       enableSorting: true,
       enableResizing: true,
       size: 150,
@@ -252,7 +287,7 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
       cell: ({ row }) => {
         const value = row.getValue('errorCount');
         return (
-          <div className="text-right">
+          <div className="text-center">
             {value !== undefined && value !== null ? Number(value).toLocaleString() : '0'}
           </div>
         );
@@ -267,7 +302,7 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
       cell: ({ row }) => {
         const value = row.getValue('readCount');
         return (
-          <div className="text-right">
+          <div className="text-center">
             {value !== undefined && value !== null ? Number(value).toLocaleString() : '0'}
           </div>
         );
@@ -282,7 +317,7 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
       cell: ({ row }) => {
         const value = row.getValue('writeCount');
         return (
-          <div className="text-right">
+          <div className="text-center">
             {value !== undefined && value !== null ? Number(value).toLocaleString() : '0'}
           </div>
         );
@@ -299,7 +334,7 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
         // Don't display executions for queues
         if (row.original.type !== 'bot') return null;
         return (
-          <div className="text-right">
+          <div className="text-center">
             {value !== undefined && value !== null ? Number(value).toLocaleString() : '0'}
           </div>
         );
@@ -312,10 +347,22 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
       accessorKey: 'sourceLag',
       header: ({ column }) => <SortableHeader column={column} title="Source Lag" />,
       cell: ({ row }) => {
-        const value = row.getValue('sourceLag');
+        // Get the value and handle empty objects safely
+        const rawValue = row.getValue('sourceLag');
+        let value: number | null = null;
+        
+        // Check if it's a number or can be converted to one
+        if (rawValue === null || rawValue === undefined) {
+          value = 0;
+        } else if (typeof rawValue !== 'object') {
+          value = Number(rawValue);
+        } else {
+          value = 0; // For object values
+        }
+        
         return (
-          <div className="text-right">
-            {value !== undefined && value !== null ? Number(value).toLocaleString() : '0'}
+          <div className="text-center">
+            {formatLagTime(value)}
           </div>
         );
       },
@@ -327,10 +374,22 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
       accessorKey: 'writeLag',
       header: ({ column }) => <SortableHeader column={column} title="Write Lag" />,
       cell: ({ row }) => {
-        const value = row.getValue('writeLag');
+        // Get the value and handle empty objects safely
+        const rawValue = row.getValue('writeLag');
+        let value: number | null = null;
+        
+        // Check if it's a number or can be converted to one
+        if (rawValue === null || rawValue === undefined) {
+          value = 0;
+        } else if (typeof rawValue !== 'object') {
+          value = Number(rawValue);
+        } else {
+          value = 0; // For object values
+        }
+        
         return (
-          <div className="text-right">
-            {value !== undefined && value !== null ? Number(value).toLocaleString() : '0'}
+          <div className="text-center">
+            {formatLagTime(value)}
           </div>
         );
       },
@@ -361,13 +420,13 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
         name,
         tags: node.tags || [],
         status: node.status,
-        lastAction: node.lastAction || 'N/A',
-        errorCount: stats.errorCount ?? 0,
-        readCount: stats.readCount ?? 0,
-        writeCount: stats.writeCount ?? 0,
-        executionCount: type === 'bot' ? (stats.executionCount ?? 0) : undefined,
-        sourceLag: stats.sourceLag ?? 0,
-        writeLag: stats.writeLag ?? 0,
+        lastAction: node?.last_run?.start || 'N/A',
+        errorCount: node.errors ?? 0,
+        readCount: node?.queues?.read?.count ?? 0,
+        writeCount: node?.queues?.write?.count ?? 0,
+        executionCount: type === 'bot' ? (node.executions ?? 0) : undefined,
+        sourceLag: node?.queues?.read?.last_read_lag ?? 0,
+        writeLag: node?.queues?.write?.last_write_lag ?? 0,
         isArchived: node.archived || node.status === 'archived',
         isPaused: node.paused || node.status === 'paused',
         isAlarmed: node.isAlarmed,
