@@ -182,12 +182,57 @@ export default function WorkflowGraph({
   
   const handleExpandNode = useCallback((nodeId: string, direction: 'left' | 'right') => {
     // Toggle expanded state
-    const newState = toggleExpanded(nodeId, direction);
-    updateGraphState({ collapsedState: newState });
+    const expandResult = toggleExpanded(nodeId, direction);
+    
+    // Apply the one-generation-at-a-time expansion behavior
+    if (expandResult.wasNewlyExpanded && state.nodes && state.nodes[nodeId]) {
+      const newCollapsedState = { ...expandResult.collapsedState };
+      const nodeData = state.nodes[nodeId];
+      
+      // When expanding ancestors (left direction), collapse their parents
+      if (direction === 'left' && nodeData.link_to?.parent) {
+        Object.keys(nodeData.link_to.parent).forEach(parentId => {
+          if (!newCollapsedState.collapsed.left.includes(parentId)) {
+            newCollapsedState.collapsed.left.push(parentId);
+            
+            // Remove from expanded if present
+            const parentExpandedIndex = newCollapsedState.expanded.left.indexOf(parentId);
+            if (parentExpandedIndex !== -1) {
+              newCollapsedState.expanded.left.splice(parentExpandedIndex, 1);
+            }
+          }
+        });
+        
+        console.log(`Auto-collapsed ${Object.keys(nodeData.link_to.parent).length} parent nodes of ${nodeId} to maintain one-generation view`);
+      }
+      
+      // When expanding descendants (right direction), collapse their children
+      if (direction === 'right' && nodeData.link_to?.children) {
+        Object.keys(nodeData.link_to.children).forEach(childId => {
+          if (!newCollapsedState.collapsed.right.includes(childId)) {
+            newCollapsedState.collapsed.right.push(childId);
+            
+            // Remove from expanded if present
+            const childExpandedIndex = newCollapsedState.expanded.right.indexOf(childId);
+            if (childExpandedIndex !== -1) {
+              newCollapsedState.expanded.right.splice(childExpandedIndex, 1);
+            }
+          }
+        });
+        
+        console.log(`Auto-collapsed ${Object.keys(nodeData.link_to.children).length} child nodes of ${nodeId} to maintain one-generation view`);
+      }
+      
+      // Update with new collapsed state including auto-collapsed next generation
+      updateGraphState({ collapsedState: newCollapsedState });
+    } else {
+      // Standard update for toggling expanded state off or when no nodes data
+      updateGraphState({ collapsedState: expandResult.collapsedState });
+    }
     
     // Center the graph after expanding
     handleCenterGraph();
-  }, [toggleExpanded, updateGraphState, handleCenterGraph]);
+  }, [toggleExpanded, updateGraphState, handleCenterGraph, state.nodes]);
   
   const handleFocusClick = useCallback((nodeId: string) => {
     // Update focus node

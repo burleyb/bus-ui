@@ -306,9 +306,13 @@ export function useWorkflowGraph({
     // Check if node is already expanded
     const expandedIndex = newCollapsedState.expanded[direction].indexOf(nodeId);
     
+    // Flag to indicate if the node was newly expanded (for parent component to handle collapsing children)
+    let wasNewlyExpanded = false;
+    
     if (expandedIndex === -1) {
       // Node is not expanded, so expand it
       newCollapsedState.expanded[direction].push(nodeId);
+      wasNewlyExpanded = true;
       
       // And remove from collapsed if present
       const collapsedIndex = newCollapsedState.collapsed[direction].indexOf(nodeId);
@@ -323,7 +327,13 @@ export function useWorkflowGraph({
     setCollapsedState(newCollapsedState);
     debouncedUpdateHash(undefined, undefined, newCollapsedState.collapsed, newCollapsedState.expanded);
     
-    return newCollapsedState;
+    // Return information about the operation for parent component to handle collapsing children
+    return {
+      collapsedState: newCollapsedState,
+      wasNewlyExpanded,
+      nodeId,
+      direction
+    };
   }, [collapsedState, debouncedUpdateHash]);
   
   // Toggle stats visibility
