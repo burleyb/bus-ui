@@ -147,12 +147,32 @@ export function getNodeVisualProperties(
   isAlarmed?: boolean, 
   isArchived?: boolean,
   isPrimary?: boolean,
-  withStroke: boolean = false
+  withStroke: boolean = false,
+  nodeIcon?: string
 ) {
   // Default values
   let shape = 'circle';
   let fillColor = '#3b82f6'; // Default blue
   let showStroke = withStroke;
+  
+  // Special case for system nodes with URL icons - hide stroke
+  if (nodeType === 'system' && nodeIcon && (nodeIcon.startsWith('http://') || nodeIcon.startsWith('https://'))) {
+    console.log('System node with URL icon - hiding stroke:', {
+      nodeType,
+      nodeIcon,
+      isURL: true,
+      showStrokeBefore: showStroke
+    });
+    showStroke = false;
+    // We also want to keep the fill color for system nodes with URL icons
+    // This makes sure the background appears behind the icon
+    // Don't set fillColor to 'none' here
+  }
+  
+  // Always show stroke for primary nodes
+  if (isPrimary) {
+    showStroke = true;
+  }
   
   // For bot nodes, map status to shape and color
   if (nodeType === 'bot') {
@@ -167,17 +187,16 @@ export function getNodeVisualProperties(
       case 'error':
       case 'danger':
         shape = 'triangle'; // Use triangle for error status
-        showStroke = false; // Triangle and diamond never have strokes
+        if (!isPrimary) showStroke = false; // Triangle and diamond never have strokes (except primary nodes)
         break;
       case 'blocked':
       case 'rogue':
         shape = 'diamond'; // Use diamond for blocked/rogue
-        showStroke = false; // Triangle and diamond never have strokes
+        if (!isPrimary) showStroke = false; // Triangle and diamond never have strokes (except primary nodes)
         break;
       case 'paused':
       case 'archived':
-        shape = 'circle'; // Use square for paused/archived
-        // showStroke = false; // Triangle and diamond never have strokes
+        shape = 'circle'; // Use circle for paused/archived
         break;
       default:
         shape = 'circle'; // Default to circle
@@ -185,7 +204,7 @@ export function getNodeVisualProperties(
     
     // Determine fill color
     if (isPrimary) {
-      fillColor = '#3b82f6'; // Blue for primary node
+      fillColor = 'rgb(34 197 94 / var(--tw-bg-opacity, 1))'; // Blue for primary node
     } else if (isArchived) {
       fillColor = '#9ca3af'; // Gray for archived nodes
     } else if (isAlarmed || 
@@ -194,13 +213,17 @@ export function getNodeVisualProperties(
         effectiveStatus === 'rogue') {
       fillColor = 'none'; // No color for alarmed or error nodes
     } else {
-      fillColor = '#3b82f6'; // Green for normal bots
+      fillColor = '#3b82f6'; // Blue for normal bots
     }
   } else {
     // For non-bot nodes, use blue
     fillColor = isPrimary ? '#3b82f6' : '#3b82f6';
   }
-  if(!showStroke) {
+  
+  // The following condition was incorrectly updated previously
+  // Only set fillColor to 'none' for triangle/diamond shaped bot nodes that don't show a stroke
+  // BUT, don't apply this to system nodes with URL icons
+  if (!showStroke && nodeType === 'bot' && (shape === 'triangle' || shape === 'diamond')) {
     fillColor = 'none';
   }
   

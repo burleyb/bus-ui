@@ -31,6 +31,15 @@ export default function ShapedNodeIcon({
   const type = node.type?.toLowerCase() || 'unknown';
   const status = node.status?.toLowerCase() || 'unknown';
   
+  // Debugging for system nodes with icons
+  if (type === 'system' && node.icon) {
+    console.log('ShapedNodeIcon rendering system node:', {
+      id: node.id,
+      icon: node.icon,
+      isUrlIcon: node.icon.startsWith('http://') || node.icon.startsWith('https://')
+    });
+  }
+  
   // Determine if the node is alarmed
   const isAlarmed = node.isAlarmed || (node.id && state.nodes?.[node.id]?.isAlarmed);
   
@@ -40,7 +49,9 @@ export default function ShapedNodeIcon({
     status,
     isAlarmed,
     node.archived,
-    primaryNode
+    primaryNode,
+    true,
+    node.icon
   );
   
   // Set radius and adjust for shape

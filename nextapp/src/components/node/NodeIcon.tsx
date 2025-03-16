@@ -84,8 +84,19 @@ export function getNodeImagesSvgString(node: NodeProps, nodes?: any, baseUrl: st
   
   const type = node.type?.toLowerCase() || 'unknown';
   
+  // Enhanced debugging for system nodes
+  if (type === 'system') {
+    console.log('getNodeImagesSvgString for system node:', {
+      id: node.id,
+      icon: node.icon,
+      hasIcon: !!node.icon,
+      isUrlIcon: node.icon && (node.icon.startsWith('http://') || node.icon.startsWith('https://')) ? 'yes' : 'no'
+    });
+  }
+  
   // Special handling for system nodes with URL icons
   if (type === 'system' && node.icon && (node.icon.startsWith('http://') || node.icon.startsWith('https://'))) {
+    console.log(`Rendering system node [${node.id}] with URL icon: ${node.icon}`);
     return `<image href="${node.icon}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" />`;
   }
   

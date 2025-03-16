@@ -726,23 +726,26 @@ export function WorkflowGraphRenderer({
     node
       .append('path')
       .attr('class', 'node-shape')
-      .attr('d', (d) => {
+      .attr('d', (d: any) => {
         // Infinity nodes have no shapes
         if (d.type === 'infinity') return '';
         
-        // Get node visual properties using the utility function
+        // Get node visual properties
         const isAlarmed = ((d as any).isAlarmed || state.nodes?.[d.id]?.isAlarmed) && 
-                          (d.status === 'running' || d.status === 'paused');
+          !state.nodes?.[d.id]?.alarmsAcknowledged;
+        const isArchived = !!((d as any).archived || state.nodes?.[d.id]?.archived);
+        
+        // IMPORTANT: Use direct check against primaryNode instead of state.nodes
         const isPrimary = (d.originalId || d.id) === primaryNode;
-        const isArchived = d.status?.toLowerCase() === 'archived' || (d as any).archived;
         
         const { shape } = getNodeVisualProperties(
-          d.type || 'unknown',
-          d.status?.toLowerCase() || 'unknown',
+          (d as any).type || 'unknown',
+          ((d as any).status)?.toLowerCase() || 'unknown',
           isAlarmed,
           isArchived,
           isPrimary,
-          true // Explicitly request strokes for the workflow graph
+          true, // Explicitly request strokes for the workflow graph
+          d.icon // Pass the icon to identify system nodes with URL icons
         );
         
         // Store shape for later use
@@ -757,43 +760,58 @@ export function WorkflowGraphRenderer({
         
         return getShapePath(shape, radius);
       })
-      .attr('fill', (d) => {
+      .attr('fill', (d: any) => {
         // Get node visual properties
         const isAlarmed = ((d as any).isAlarmed || state.nodes?.[d.id]?.isAlarmed) && 
-                          (d.status === 'running' || d.status === 'paused');
+                          !state.nodes?.[d.id]?.alarmsAcknowledged;
+        const isArchived = !!((d as any).archived || state.nodes?.[d.id]?.archived);
+        
+        // IMPORTANT: Use direct check against primaryNode instead of state.nodes
         const isPrimary = (d.originalId || d.id) === primaryNode;
-        const isArchived = d.status?.toLowerCase() === 'archived' || (d as any).archived;
         
         const { fillColor } = getNodeVisualProperties(
-          d.type || 'unknown',
-          d.status?.toLowerCase() || 'unknown',
+          (d as any).type || 'unknown',
+          ((d as any).status)?.toLowerCase() || 'unknown',
           isAlarmed,
           isArchived,
           isPrimary,
-          true // Explicitly request strokes for the workflow graph
+          true,
+          d.icon
         );
         
         return fillColor;
       })
-      .attr('stroke', (d) => {
+      .attr('stroke', (d: any) => {
         // Get node visual properties
         const isAlarmed = ((d as any).isAlarmed || state.nodes?.[d.id]?.isAlarmed) && 
-                          (d.status === 'running' || d.status === 'paused');
-        const isPrimary = (d.originalId || d.id) === primaryNode;
-        const isArchived = d.status?.toLowerCase() === 'archived' || (d as any).archived;
+                          !state.nodes?.[d.id]?.alarmsAcknowledged;
+        const isArchived = !!((d as any).archived || state.nodes?.[d.id]?.archived);
         
-        const { strokeColor } = getNodeVisualProperties(
-          d.type || 'unknown',
-          d.status?.toLowerCase() || 'unknown',
+        // IMPORTANT: Use direct check against primaryNode instead of state.nodes
+        const isPrimary = (d.originalId || d.id) === primaryNode;
+        
+        const { showStroke, strokeColor } = getNodeVisualProperties(
+          (d as any).type || 'unknown',
+          ((d as any).status)?.toLowerCase() || 'unknown',
           isAlarmed,
           isArchived,
           isPrimary,
-          true // Explicitly request strokes for the workflow graph
+          true,
+          d.icon
         );
         
-        return strokeColor;
+        // Ensure primary nodes always have a stroke
+        if (isPrimary) {
+          return '#ffffff'; // Force white stroke for primary node
+        }
+        
+        return showStroke ? strokeColor : 'none';
       })
-      .attr('stroke-width', 2);
+      .attr('stroke-width', (d: any) => {
+        // Make primary node stroke thicker for emphasis
+        const isPrimary = (d.originalId || d.id) === primaryNode;
+        return isPrimary ? 0 : 2; // Thicker stroke for primary node
+      });
     
     // Store the shape for each node for later reference
     node.each(function(d) {
@@ -868,7 +886,8 @@ export function WorkflowGraphRenderer({
             status: isAlarmed ? 'danger' : d.status,
             archived: (d as any).archived || nodeData.archived,
             paused: (d as any).paused || nodeData.paused,
-            isAlarmed: isAlarmed
+            isAlarmed: isAlarmed,
+            icon: (d as any).icon || (nodeData as any).icon // Use type assertion to avoid TypeScript errors
           }, 
           state.nodes || {}, 
           baseUrl
