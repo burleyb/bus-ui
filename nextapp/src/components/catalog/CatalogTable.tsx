@@ -193,21 +193,35 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
       header: ({ table }) => (
         <div className="flex justify-center items-center">
           <Checkbox
-            checked={table.getIsAllPageRowsSelected()}
+            checked={
+              table.getIsAllPageRowsSelected() || 
+              (table.getFilteredRowModel().rows.length > 0 &&
+               table.getFilteredRowModel().rows.every(row => row.getIsSelected()))
+            }
             onCheckedChange={(value) => {
+              console.log("Select all checkbox clicked, new value:", value);
+              
               // Toggle all rows in the table
               table.toggleAllPageRowsSelected(!!value);
               
               // Update our direct tracking of selected nodes
               if (value) {
-                // Select all visible rows
-                const allRowIds = table.getRowModel().rows.map(r => r.original.id);
+                // Select all visible rows - this should be synchronized with what table.toggleAllPageRowsSelected does
+                const allRowIds = table.getRowModel().rows.map(row => row.original.id);
+                console.log("Selecting all visible rows:", allRowIds.length);
                 setSelectedNodeIds(allRowIds);
-                console.log("Selected all rows:", allRowIds.length);
+                
+                // Also update row selection state for consistency
+                const newRowSelection: RowSelectionState = {};
+                table.getRowModel().rows.forEach(row => {
+                  newRowSelection[row.id] = true;
+                });
+                setRowSelection(newRowSelection);
               } else {
                 // Deselect all
+                console.log("Deselecting all rows");
                 setSelectedNodeIds([]);
-                console.log("Deselected all rows");
+                setRowSelection({});
               }
             }}
             aria-label="Select all"
@@ -217,7 +231,7 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
       ),
       cell: ({ row }) => (
         <div 
-          className="flex justify-center items-center" 
+          className="flex justify-center items-center checkbox-cell" 
           onClick={(e) => {
             e.stopPropagation();
             handleRowSelectionToggle(row, !row.getIsSelected());
@@ -509,6 +523,21 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
     onRowSelectionChange: (updatedRowSelection) => {
       console.log("Row selection changed to:", updatedRowSelection);
       setRowSelection(updatedRowSelection);
+      
+      // Synchronize selectedNodeIds with the updated row selection
+      const newSelectedNodeIds: string[] = [];
+      Object.entries(updatedRowSelection).forEach(([rowId, isSelected]) => {
+        if (isSelected) {
+          // Find the row by ID and add its node ID to our tracking
+          const row = table.getRowModel().rowsById[rowId];
+          if (row) {
+            newSelectedNodeIds.push(row.original.id);
+          }
+        }
+      });
+      
+      console.log("Updating selectedNodeIds to:", newSelectedNodeIds.length, "items");
+      setSelectedNodeIds(newSelectedNodeIds);
     },
     onColumnFiltersChange: setColumnFilters,
     onSortingChange: setSorting,
@@ -527,27 +556,15 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
     }
   }, [openNodeSettingsDialog]);
 
-  // Replace the simplified handling with a more robust approach
+  // Replace the handleRowSelectionToggle function
   const handleRowSelectionToggle = useCallback((row: any, value: boolean) => {
-    console.log(`Toggling row selection for row ID: ${row.id}, new value: ${value}`);
+    console.log(`Toggling row selection for row ID: ${row.id}, node ID: ${row.original.id}, new value: ${value}`);
     
-    // Update both TanStack's selection state and our direct tracking
+    // Update TanStack's selection state
     row.toggleSelected(value);
     
-    // Update our direct tracking of selected nodes
-    setSelectedNodeIds(prev => {
-      const nodeId = row.original.id;
-      
-      if (value && !prev.includes(nodeId)) {
-        return [...prev, nodeId];
-      } else if (!value && prev.includes(nodeId)) {
-        return prev.filter(id => id !== nodeId);
-      }
-      
-      return prev;
-    });
-    
-    console.log(`Row selection state after toggle:`, row.getIsSelected());
+    // We don't need to manually update selectedNodeIds here since
+    // the onRowSelectionChange handler on the table will take care of that
   }, []);
 
   // Get all selected rows for bulk actions with improved logic
@@ -688,19 +705,24 @@ const CatalogTable: React.FC<CatalogTableProps> = ({
                       className="h-20 cursor-pointer" 
                       onClick={(e) => {
                         console.log(`Row clicked: ${row.id}, current selection state: ${row.getIsSelected()}`);
-                        handleRowSelectionToggle(row, !row.getIsSelected());
+                        // Only handle row selection if the click wasn't on a specific control element
+                        if (!(e.target as HTMLElement).closest('.checkbox-cell') && 
+                            !(e.target as HTMLElement).closest('.name-cell')) {
+                          handleRowSelectionToggle(row, !row.getIsSelected());
+                        }
                       }}
                     >
                       {row.getVisibleCells().map((cell) => (
                         <TableCell 
                           key={cell.id}
-                          className="px-4 py-2"
+                          className={`px-4 py-2 ${cell.column.id === 'select' ? 'checkbox-cell' : ''} ${cell.column.id === 'name' ? 'name-cell' : ''}`}
                           onClick={(e) => {
-                            if (cell.column.id === 'select' || cell.column.id === 'name') {
+                            if (cell.column.id === 'select') {
+                              // Let the checkbox handle its own click
                               e.stopPropagation();
-                              if (cell.column.id === 'name') {
-                                handleCellClick(e, row, cell.column.id);
-                              }
+                            } else if (cell.column.id === 'name') {
+                              e.stopPropagation();
+                              handleCellClick(e, row, cell.column.id);
                             }
                           }}
                           style={{
